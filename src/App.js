@@ -1,8 +1,20 @@
 import React, { useState, useRef, useCallback } from 'react';
 
 const HashtagTimeline = () => {
-  const [scale, setScale] = useState(1);
-  const [panX, setPanX] = useState(0);
+  // 定数を最初に定義
+  const startYear = -5000;
+  const endYear = 5000;
+  const totalYears = endYear - startYear;
+  const basePixelsPerYear = 2;
+
+  const [scale, setScale] = useState(2.5); // 2.5を新しい1xとする
+  const [panX, setPanX] = useState(() => {
+    // 初期位置: 2030年が右端に見えるように計算
+    const targetYear = 2030;
+    const initialPixelsPerYear = basePixelsPerYear * 2.5; // basePixelsPerYear * initialScale
+    const targetX = (targetYear - startYear) * initialPixelsPerYear;
+    return window.innerWidth - targetX;
+  });
   const [timelineCardY, setTimelineCardY] = useState(100); // 年表カードのY位置
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
@@ -10,11 +22,6 @@ const HashtagTimeline = () => {
   const lastMouseX = useRef(0);
   const lastMouseY = useRef(0);
 
-  const startYear = -5000;
-  const endYear = 5000;
-  const totalYears = endYear - startYear;
-  
-  const basePixelsPerYear = 2;
   const currentPixelsPerYear = basePixelsPerYear * scale;
 
   const handleWheel = useCallback((e) => {
@@ -25,7 +32,7 @@ const HashtagTimeline = () => {
     const yearAtMouse = startYear + (mouseX - panX) / currentPixelsPerYear;
     
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(0.1, Math.min(200, scale * zoomFactor));
+    const newScale = Math.max(0.25, Math.min(500, scale * zoomFactor)); 
     
     const newPixelsPerYear = basePixelsPerYear * newScale;
     let newPanX = mouseX - (yearAtMouse - startYear) * newPixelsPerYear;
@@ -92,15 +99,17 @@ const HashtagTimeline = () => {
   const generateYearMarkers = () => {
     const markers = [];
     
+    // スケールの基準を2.5倍に調整したので、条件も調整
+    const adjustedScale = scale / 2.5;
     let yearInterval;
-    if (scale > 30) yearInterval = 1;
-    else if (scale > 15) yearInterval = 2;
-    else if (scale > 5) yearInterval = 5;
-    else if (scale > 2) yearInterval = 10;
-    else if (scale > 1) yearInterval = 50;
-    else if (scale > 0.5) yearInterval = 100;
-    else if (scale > 0.25) yearInterval = 200;
-    else if (scale > 0.1) yearInterval = 500;
+    if (adjustedScale > 12) yearInterval = 1;        // 元の30
+    else if (adjustedScale > 6) yearInterval = 2;    // 元の15
+    else if (adjustedScale > 2) yearInterval = 5;    // 元の5
+    else if (adjustedScale > 1) yearInterval = 10; // 元の2
+    else if (adjustedScale > 0.4) yearInterval = 50; // 元の1
+    else if (adjustedScale > 0.2) yearInterval = 100;// 元の0.5
+    else if (adjustedScale > 0.1) yearInterval = 200;// 元の0.25
+    else if (adjustedScale > 0.04) yearInterval = 500;// 元の0.1
     else yearInterval = 1000;
 
     for (let year = startYear; year <= endYear; year += yearInterval) {
@@ -287,7 +296,7 @@ const HashtagTimeline = () => {
         <h1 style={styles.title}>#ハッシュタグ年表</h1>
         <div style={styles.headerRight}>
           <button style={styles.addButton}>+ イベントを追加</button>
-          <span style={styles.zoomInfo}>ズーム: {scale.toFixed(1)}x</span>
+          <span style={styles.zoomInfo}>ズーム: {(scale / 2.5).toFixed(1)}x</span>
         </div>
       </div>
 
