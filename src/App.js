@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 const HashtagTimeline = () => {
   // 定数を最初に定義
@@ -408,7 +408,7 @@ const HashtagTimeline = () => {
   }, [isModalOpen, closeModal]);
 
   // ESCキーのイベントリスナーをセットアップ
-  React.useEffect(() => {
+  useEffect(() => {
     if (isModalOpen) {
       document.addEventListener('keydown', handleKeyDown);
       return () => {
@@ -476,7 +476,70 @@ const HashtagTimeline = () => {
     setHighlightedEvents(matchingEventIds);
   }, [events]);
 
-  // 検索にヒットしたタグを上位タグとして表示
+  // イベントの重なりを自動調整する（段階的配置方式）
+  const adjustEventPositions = useCallback(() => {
+    const eventWidth = 120; // イベントの幅（概算）
+    const eventHeight = 40; // イベントの高さ
+    const minGap = 10; // 最小間隔
+    const baseY = 60; // 基準のY位置
+    
+    // X座標でソートして左から順に処理
+    const sortedEvents = [...events].sort((a, b) => {
+      const aX = getXFromYear(a.startDate.getFullYear());
+      const bX = getXFromYear(b.startDate.getFullYear());
+      return aX - bX;
+    });
+    
+    const placedEvents = []; // すでに配置されたイベントの配列
+    
+    return sortedEvents.map(event => {
+      const eventX = getXFromYear(event.startDate.getFullYear());
+      let assignedY = baseY; // 初期は基準位置
+      let level = 0; // 段数
+      
+      // 重ならない段を見つけるまでループ
+      while (true) {
+        let hasCollision = false;
+        
+        // すでに配置されたイベントとの重なりをチェック
+        for (const placedEvent of placedEvents) {
+          const placedX = placedEvent.adjustedPosition.x;
+          const placedY = placedEvent.adjustedPosition.y;
+          
+          // X軸での重なりチェック
+          if (Math.abs(eventX - placedX) < eventWidth + minGap) {
+            // Y軸での重なりチェック
+            if (Math.abs(assignedY - placedY) < eventHeight + minGap) {
+              hasCollision = true;
+              break;
+            }
+          }
+        }
+        
+        if (!hasCollision) {
+          // 重ならない位置が見つかった
+          break;
+        }
+        
+        // 次の段に移動
+        level++;
+        assignedY = baseY + (level * (eventHeight + minGap));
+        
+        // 安全装置：10段まで
+        if (level >= 10) break;
+      }
+      
+      const adjustedEvent = {
+        ...event,
+        adjustedPosition: { x: eventX, y: assignedY }
+      };
+      
+      // 配置済みリストに追加
+      placedEvents.push(adjustedEvent);
+      
+      return adjustedEvent;
+    });
+  }, [events, getXFromYear]);
   const getTopTagsFromSearch = useCallback(() => {
     if (searchTerm.trim() === '' || highlightedEvents.size === 0) {
       return allTags.slice(0, 6);
@@ -838,7 +901,7 @@ const HashtagTimeline = () => {
         </div>
 
         {/* 動的イベント表示 */}
-        {events.map(event => {
+        {adjustEventPositions().map(event => {
           const isHighlighted = highlightedEvents.has(event.id);
           return (
             <div
@@ -851,8 +914,8 @@ const HashtagTimeline = () => {
                   : event.id === 1 || event.id === 2 
                     ? (event.id === 1 ? '#3b82f6' : '#ef4444')
                     : '#6b7280', // デフォルト色（グレー）
-                left: getXFromYear(event.startDate.getFullYear()),
-                top: event.position.y + 'px',
+                left: event.adjustedPosition.x,
+                top: event.adjustedPosition.y + 'px',
                 border: isHighlighted ? '2px solid #059669' : 'none',
                 transform: 'translateX(-50%)',
                 zIndex: isHighlighted ? 5 : 1
