@@ -228,13 +228,18 @@ const HashtagTimeline = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedEvents, setHighlightedEvents] = useState(new Set());
   
+  // ヘルプボックスの開閉状態
+  const [isHelpOpen, setIsHelpOpen] = useState(true);
+  
   // モーダルの状態
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
+  const [editingEvent, setEditingEvent] = useState(null); // 編集中のイベント
   const [newEvent, setNewEvent] = useState({
     title: '',
     description: '',
-    date: new Date()
+    date: new Date(),
+    manualTags: [] // 手動で追加されたタグ
   });
 
   const timelineRef = useRef(null);
@@ -244,6 +249,19 @@ const HashtagTimeline = () => {
   const lastMouseY = useRef(0);
 
   const currentPixelsPerYear = basePixelsPerYear * scale;
+
+  // タグを説明文から抽出
+  const extractTagsFromDescription = useCallback((description) => {
+    const tagRegex = /#([^\s#]+)/g;
+    const matches = [];
+    let match;
+    while ((match = tagRegex.exec(description)) !== null) {
+      matches.push(match[1]);
+    }
+    return matches;
+  }, []);
+
+
 
 
 
@@ -264,40 +282,80 @@ const HashtagTimeline = () => {
       return;
     }
 
+    // イベント上でのダブルクリックかチェック
+    const eventElement = e.target.closest('[data-event-id]');
+    if (eventElement) {
+      // 既存イベントの編集
+      const eventId = parseInt(eventElement.dataset.eventId);
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        setEditingEvent(event);
+        setNewEvent({
+          title: event.title,
+          description: event.description,
+          date: event.startDate,
+          manualTags: event.tags.filter(tag => tag !== event.title && !extractTagsFromDescription(event.description).includes(tag))
+        });
+        
+        // モーダル位置をイベントの近くに設定
+        const rect = eventElement.getBoundingClientRect();
+        const timelineRect = timelineRef.current.getBoundingClientRect();
+        setModalPosition({ 
+          x: rect.left - timelineRect.left + rect.width/2, 
+          y: rect.top - timelineRect.top + rect.height 
+        });
+        setIsModalOpen(true);
+      }
+      return;
+    }
+
+    // 新規イベント作成
     const rect = timelineRef.current.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const clickY = e.clientY - rect.top;
     
     const year = getYearFromX(clickX);
-    const clickDate = new Date(Math.round(year), 0, 1);
     
+    // ズームレベルに応じて日付の精度を調整
+    let clickDate;
+    const adjustedScale = scale / 2.5; // 基準スケール
+    if (adjustedScale < 1) {
+      // 縮小時は1月1日固定
+      clickDate = new Date(Math.round(year), 0, 1);
+    } else {
+      // 拡大時でも月単位で計算、常に1日に設定
+      const yearStart = (Math.round(year) - startYear) * currentPixelsPerYear + panX;
+      const monthOffset = (clickX - yearStart) / (currentPixelsPerYear / 12);
+      const monthOfYear = Math.floor(Math.max(0, Math.min(11, monthOffset)));
+      // 必ず1日に設定
+      clickDate = new Date();
+      clickDate.setFullYear(Math.round(year));
+      clickDate.setMonth(monthOfYear);
+      clickDate.setDate(1);
+    }
+    
+    setEditingEvent(null);
     setNewEvent({
       title: '',
       description: '',
-      date: clickDate
+      date: clickDate,
+      manualTags: []
     });
     
     setModalPosition({ x: clickX, y: clickY });
     setIsModalOpen(true);
-  }, [getYearFromX]);
+  }, [getYearFromX, events, extractTagsFromDescription, currentPixelsPerYear, panX, scale, startYear]);
 
-  // タグを説明文から抽出
-  const extractTagsFromDescription = (description) => {
-    const tagRegex = /#([^\s#]+)/g;
-    const matches = [];
-    let match;
-    while ((match = tagRegex.exec(description)) !== null) {
-      matches.push(match[1]);
-    }
-    return matches;
-  };
+
 
   // イベント保存
   const saveEvent = useCallback(() => {
     if (!newEvent.title.trim()) return;
 
     const extractedTags = extractTagsFromDescription(newEvent.description);
-    const eventTags = [newEvent.title, ...extractedTags];
+    const allEventTags = [newEvent.title, ...extractedTags, ...newEvent.manualTags];
+    // 重複を排除
+    const eventTags = [...new Set(allEventTags.filter(tag => tag.trim()))];
     
     // 新しいタグをallTagsに追加
     const newTags = eventTags.filter(tag => !allTags.includes(tag));
@@ -305,26 +363,86 @@ const HashtagTimeline = () => {
       setAllTags(prev => [...prev, ...newTags]);
     }
 
-    const event = {
-      id: Date.now(), // 簡単なID生成
-      title: newEvent.title,
-      startDate: newEvent.date,
-      endDate: newEvent.date,
-      description: newEvent.description,
-      tags: eventTags,
-      position: { x: modalPosition.x, y: modalPosition.y }
-    };
+    if (editingEvent) {
+      // 既存イベントの更新
+      const updatedEvent = {
+        ...editingEvent,
+        title: newEvent.title,
+        startDate: newEvent.date,
+        endDate: newEvent.date,
+        description: newEvent.description,
+        tags: eventTags
+      };
+      setEvents(prev => prev.map(e => e.id === editingEvent.id ? updatedEvent : e));
+    } else {
+      // 新規イベントの作成
+      const event = {
+        id: Date.now(),
+        title: newEvent.title,
+        startDate: newEvent.date,
+        endDate: newEvent.date,
+        description: newEvent.description,
+        tags: eventTags,
+        position: { x: modalPosition.x, y: modalPosition.y }
+      };
+      setEvents(prev => [...prev, event]);
+    }
 
-    setEvents(prev => [...prev, event]);
     setIsModalOpen(false);
-    setNewEvent({ title: '', description: '', date: new Date() });
-  }, [newEvent, modalPosition, allTags]);
+    setEditingEvent(null);
+    setNewEvent({ title: '', description: '', date: new Date(), manualTags: [] });
+  }, [newEvent, modalPosition, allTags, editingEvent, extractTagsFromDescription]);
 
   // モーダルを閉じる
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
-    setNewEvent({ title: '', description: '', date: new Date() });
+    setEditingEvent(null);
+    setNewEvent({ title: '', description: '', date: new Date(), manualTags: [] });
   }, []);
+
+  // ESCキーでモーダルを閉じる
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape' && isModalOpen) {
+      closeModal();
+    }
+  }, [isModalOpen, closeModal]);
+
+  // ESCキーのイベントリスナーをセットアップ
+  React.useEffect(() => {
+    if (isModalOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isModalOpen, handleKeyDown]);
+
+  // 手動タグの追加
+  const addManualTag = useCallback((tagText) => {
+    const trimmedTag = tagText.trim();
+    if (trimmedTag && !newEvent.manualTags.includes(trimmedTag)) {
+      setNewEvent(prev => ({
+        ...prev,
+        manualTags: [...prev.manualTags, trimmedTag]
+      }));
+    }
+  }, [newEvent.manualTags]);
+
+  // 手動タグの削除
+  const removeManualTag = useCallback((tagToRemove) => {
+    setNewEvent(prev => ({
+      ...prev,
+      manualTags: prev.manualTags.filter(tag => tag !== tagToRemove)
+    }));
+  }, []);
+
+  // 説明文からタグを抽出して表示用に統合
+  const getAllCurrentTags = useCallback(() => {
+    const extractedTags = extractTagsFromDescription(newEvent.description);
+    const titleTag = newEvent.title.trim() ? [newEvent.title.trim()] : [];
+    const allTags = [...titleTag, ...extractedTags, ...newEvent.manualTags];
+    return [...new Set(allTags.filter(tag => tag))]; // 重複排除
+  }, [newEvent.title, newEvent.description, newEvent.manualTags, extractTagsFromDescription]);
 
   // タグ検索機能
   const handleSearchChange = useCallback((e) => {
@@ -382,6 +500,9 @@ const HashtagTimeline = () => {
   }, [searchTerm, highlightedEvents, allTags, events]);
 
   const handleWheel = useCallback((e) => {
+    // モーダルが開いている時はズームを無効化
+    if (isModalOpen) return;
+    
     e.preventDefault();
     const rect = timelineRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
@@ -389,7 +510,7 @@ const HashtagTimeline = () => {
     const yearAtMouse = startYear + (mouseX - panX) / currentPixelsPerYear;
     
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(0.25, Math.min(50, scale * zoomFactor)); // 最小0.25(元の0.1), 最大50(元の20)
+    const newScale = Math.max(0.25, Math.min(500, scale * zoomFactor)); // 最大500倍に拡大
     
     const newPixelsPerYear = basePixelsPerYear * newScale;
     let newPanX = mouseX - (yearAtMouse - startYear) * newPixelsPerYear;
@@ -404,16 +525,19 @@ const HashtagTimeline = () => {
     
     setScale(newScale);
     setPanX(newPanX);
-  }, [scale, panX, currentPixelsPerYear, startYear, totalYears, basePixelsPerYear]);
+  }, [scale, panX, currentPixelsPerYear, startYear, totalYears, basePixelsPerYear, isModalOpen]);
 
   const handleMouseDown = useCallback((e) => {
+    // モーダルが開いている時はパンを無効化
+    if (isModalOpen) return;
+    
     // 年表カードやパネル上でのクリックは無視
     if (e.target.closest('.floating-panel') || e.target.closest('.timeline-card')) {
       return;
     }
     isDragging.current = true;
     lastMouseX.current = e.clientX;
-  }, []);
+  }, [isModalOpen]);
 
   const handleMouseMove = useCallback((e) => {
     if (isDragging.current) {
@@ -719,6 +843,7 @@ const HashtagTimeline = () => {
           return (
             <div
               key={event.id}
+              data-event-id={event.id}
               style={{
                 ...styles.event,
                 backgroundColor: isHighlighted 
@@ -754,9 +879,9 @@ const HashtagTimeline = () => {
         {isModalOpen && (
           <div style={{
             position: 'absolute',
-            left: Math.min(modalPosition.x, window.innerWidth - 300),
-            top: Math.min(modalPosition.y, window.innerHeight - 200),
-            width: '280px',
+            left: Math.min(modalPosition.x, window.innerWidth - 350),
+            top: Math.min(modalPosition.y, window.innerHeight - 400),
+            width: '320px',
             backgroundColor: 'white',
             border: '1px solid #d1d5db',
             borderRadius: '8px',
@@ -765,15 +890,27 @@ const HashtagTimeline = () => {
             zIndex: 20
           }}>
             <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600' }}>
-              新しいイベント
+              {editingEvent ? 'イベントを編集' : '新しいイベント'}
             </h3>
             
+            {/* 日時入力 */}
             <div style={{ marginBottom: '12px' }}>
-              <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
-                日付: {newEvent.date.getFullYear()}年
-              </label>
+              <input
+                type="date"
+                value={newEvent.date.toISOString().split('T')[0]}
+                onChange={(e) => setNewEvent(prev => ({ ...prev, date: new Date(e.target.value) }))}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
             </div>
             
+            {/* タイトル入力 */}
             <div style={{ marginBottom: '12px' }}>
               <input
                 type="text"
@@ -792,9 +929,10 @@ const HashtagTimeline = () => {
               />
             </div>
             
-            <div style={{ marginBottom: '16px' }}>
+            {/* 説明文入力 */}
+            <div style={{ marginBottom: '12px' }}>
               <textarea
-                placeholder="説明（#タグ を含めることができます）"
+                placeholder="説明文。例: #建築 #モダニズム による代表作"
                 value={newEvent.description}
                 onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))}
                 style={{
@@ -808,6 +946,94 @@ const HashtagTimeline = () => {
                   boxSizing: 'border-box'
                 }}
               />
+            </div>
+
+            {/* 統合されたタグ表示・編集 */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
+                タグ (Enterで追加、×で削除)
+              </label>
+              <div style={{ 
+                display: 'flex', 
+                flexWrap: 'wrap', 
+                gap: '4px',
+                minHeight: '40px',
+                padding: '8px',
+                border: '1px solid #d1d5db',
+                borderRadius: '4px',
+                backgroundColor: 'white',
+                alignItems: 'flex-start'
+              }}>
+                {/* 既存タグの表示 */}
+                {getAllCurrentTags().map((tag, index) => (
+                  <span
+                    key={`${tag}-${index}`}
+                    style={{
+                      padding: '4px 8px',
+                      backgroundColor: '#3b82f6',
+                      color: 'white',
+                      fontSize: '12px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      height: '24px'
+                    }}
+                  >
+                    {tag}
+                    {/* 手動タグのみ削除可能 */}
+                    {newEvent.manualTags.includes(tag) && (
+                      <button
+                        onClick={() => removeManualTag(tag)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'white',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          padding: '0',
+                          width: '16px',
+                          height: '16px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderRadius: '50%'
+                        }}
+                        onMouseOver={(e) => e.target.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+                        onMouseOut={(e) => e.target.style.backgroundColor = 'transparent'}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))}
+                
+                {/* インライン追加フィールド */}
+                <input
+                  type="text"
+                  placeholder={getAllCurrentTags().length === 0 ? "タグを入力してEnterで追加" : "新しいタグ"}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && e.target.value.trim()) {
+                      e.preventDefault();
+                      addManualTag(e.target.value.trim());
+                      e.target.value = ''; // 入力をクリア
+                    }
+                  }}
+                  style={{
+                    border: 'none',
+                    outline: 'none',
+                    padding: '4px 8px',
+                    fontSize: '12px',
+                    minWidth: '100px',
+                    backgroundColor: 'transparent',
+                    height: '24px',
+                    flex: 1
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '4px' }}>
+                💡 タイトルと説明文の #タグ名 は自動的に追加されます
+              </div>
             </div>
             
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
@@ -824,6 +1050,27 @@ const HashtagTimeline = () => {
               >
                 キャンセル
               </button>
+              {editingEvent && (
+                <button
+                  onClick={() => {
+                    if (window.confirm('このイベントを削除しますか？')) {
+                      setEvents(prev => prev.filter(e => e.id !== editingEvent.id));
+                      closeModal();
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    border: 'none',
+                    borderRadius: '4px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  削除
+                </button>
+              )}
               <button
                 onClick={saveEvent}
                 style={{
@@ -836,20 +1083,61 @@ const HashtagTimeline = () => {
                   fontSize: '14px'
                 }}
               >
-                作成
+                {editingEvent ? '更新' : '作成'}
               </button>
             </div>
           </div>
         )}
 
-        <div style={styles.helpBox}>
-          <div>マウスホイール: ズーム</div>
-          <div>ドラッグ: パン</div>
-          <div>年表カード: 縦ドラッグで移動</div>
-          <div>ダブルクリック: イベント追加</div>
-          {highlightedEvents.size > 0 && (
-            <div style={{ marginTop: '8px', color: '#10b981' }}>
-              🔍 {highlightedEvents.size}件ヒット
+        {/* 開閉可能なヘルプボックス */}
+        <div style={{
+          position: 'absolute',
+          bottom: '16px',
+          right: '16px',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          color: 'white',
+          borderRadius: '6px',
+          fontSize: '12px',
+          lineHeight: '1.4',
+          maxWidth: '250px',
+          zIndex: 10
+        }}>
+          {/* ヘッダー */}
+          <div 
+            style={{
+              padding: '8px 12px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: isHelpOpen ? '1px solid rgba(255,255,255,0.2)' : 'none'
+            }}
+            onClick={() => setIsHelpOpen(!isHelpOpen)}
+          >
+            <span style={{ fontWeight: '500' }}>操作ガイド</span>
+            <span style={{ fontSize: '14px', transition: 'transform 0.2s', transform: isHelpOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              ▼
+            </span>
+          </div>
+          
+          {/* コンテンツ */}
+          {isHelpOpen && (
+            <div style={{ padding: '8px 12px' }}>
+              <div>マウスホイール: ズーム</div>
+              <div>ドラッグ: パン移動</div>
+              <div>年表カード: 縦ドラッグで移動</div>
+              <div>ダブルクリック: イベント追加・編集</div>
+              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                <div>タグの作り方:</div>
+                <div style={{ marginLeft: '12px', fontSize: '11px', opacity: 0.9 }}>
+                  説明文で <code style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: '1px 3px', borderRadius: '2px' }}>#タグ名</code> を使用
+                </div>
+              </div>
+              {highlightedEvents.size > 0 && (
+                <div style={{ marginTop: '8px', color: '#10b981', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)' }}>
+                  {highlightedEvents.size}件ヒット中
+                </div>
+              )}
             </div>
           )}
         </div>
