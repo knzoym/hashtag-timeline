@@ -7,15 +7,236 @@ const HashtagTimeline = () => {
   const totalYears = endYear - startYear;
   const basePixelsPerYear = 2;
 
-  const [scale, setScale] = useState(2.5); // 2.5を新しい1xとする
+  const [scale, setScale] = useState(2.5);
   const [panX, setPanX] = useState(() => {
-    // 初期位置: 2030年が右端に見えるように計算
     const targetYear = 2030;
-    const initialPixelsPerYear = basePixelsPerYear * 2.5; // basePixelsPerYear * initialScale
+    const initialPixelsPerYear = basePixelsPerYear * 2.5;
     const targetX = (targetYear - startYear) * initialPixelsPerYear;
     return window.innerWidth - targetX;
   });
-  const [timelineCardY, setTimelineCardY] = useState(100); // 年表カードのY位置
+  const [timelineCardY, setTimelineCardY] = useState(100);
+  
+  // イベントとタグの管理
+  const [events, setEvents] = useState([
+    // サンプルデータ
+    {
+      id: 1,
+      title: '明治維新',
+      startDate: new Date(1868, 0, 3),
+      endDate: new Date(1868, 0, 3),
+      description: '#江戸幕府 が終焉し、#明治政府 が成立。日本の近代化が始まる重要な転換点となった。',
+      tags: ['明治維新', '江戸幕府', '明治政府', '日本史', '歴史'],
+      position: { x: 0, y: 60 }
+    },
+    {
+      id: 2,
+      title: '終戦',
+      startDate: new Date(1945, 7, 15),
+      endDate: new Date(1945, 7, 15),
+      description: '太平洋戦争が終結。日本が連合国に降伏した。',
+      tags: ['終戦', '太平洋戦争', '日本史', '歴史'],
+      position: { x: 0, y: 60 }
+    },
+    {
+      id: 101,
+      title: 'バウハウス設立',
+      startDate: new Date(1919, 3, 1),
+      endDate: new Date(1919, 3, 1),
+      description: '#モダニズム の原点。#バウハウス は機能美と合理性を追求した芸術学校。',
+      tags: ['バウハウス', 'モダニズム', '建築教育', '近代建築'],
+      position: { x: 0, y: 80 }
+    },
+    {
+      id: 102,
+      title: 'ル・コルビュジエ「サヴォア邸」完成',
+      startDate: new Date(1931, 0, 1),
+      endDate: new Date(1931, 0, 1),
+      description: '近代建築の五原則を体現した #ル・コルビュジエ の代表作。',
+      tags: ['ル・コルビュジエ', '近代建築', 'モダニズム', '住宅建築'],
+      position: { x: 0, y: 80 }
+    },
+    {
+      id: 103,
+      title: 'フランク・ロイド・ライト「落水荘」完成',
+      startDate: new Date(1939, 0, 1),
+      endDate: new Date(1939, 0, 1),
+      description: '自然との調和を実現した #有機的建築 の傑作。',
+      tags: ['フランク・ロイド・ライト', '有機的建築', 'アメリカ建築'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 104,
+      title: 'CIAMの設立',
+      startDate: new Date(1928, 0, 1),
+      endDate: new Date(1928, 0, 1),
+      description: '#CIAM は近代建築の国際的普及を目指す会議体。',
+      tags: ['CIAM', '都市計画', '近代建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 105,
+      title: '丹下健三「広島平和記念資料館」完成',
+      startDate: new Date(1955, 0, 1),
+      endDate: new Date(1955, 0, 1),
+      description: '#丹下健三 による戦後日本のモダニズム建築。',
+      tags: ['丹下健三', '日本建築', '広島', 'モダニズム'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 106,
+      title: 'エーロ・サーリネン「TWAフライトセンター」完成',
+      startDate: new Date(1962, 0, 1),
+      endDate: new Date(1962, 0, 1),
+      description: '曲線的なフォルムが象徴的な #未来派建築 の代表作。',
+      tags: ['サーリネン', '空港建築', '未来派建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 107,
+      title: '建築運動「メタボリズム」提唱',
+      startDate: new Date(1960, 0, 1),
+      endDate: new Date(1960, 0, 1),
+      description: '新陳代謝する都市を構想した #メタボリズム 運動。',
+      tags: ['メタボリズム', '都市構想', '日本建築'],
+      position: { x: 0, y: 110 }
+    },
+    {
+      id: 108,
+      title: '磯崎新「大分県立図書館」完成',
+      startDate: new Date(1966, 0, 1),
+      endDate: new Date(1966, 0, 1),
+      description: '#磯崎新 初期の代表作。#モダニズム に根ざしつつ独自の構造美を持つ。',
+      tags: ['磯崎新', '図書館建築', '日本建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 109,
+      title: 'リチャード・ロジャース「ロイドビル」完成',
+      startDate: new Date(1986, 0, 1),
+      endDate: new Date(1986, 0, 1),
+      description: '#ハイテック建築 の象徴的作品。',
+      tags: ['ハイテック建築', 'リチャード・ロジャース', 'イギリス建築'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 110,
+      title: 'ザハ・ハディドが注目される',
+      startDate: new Date(1983, 0, 1),
+      endDate: new Date(1983, 0, 1),
+      description: '1983年の #香港のピーク・クラブ 計画で国際的注目を浴びた。',
+      tags: ['ザハ・ハディド', '女性建築家', 'ポストモダン'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 111,
+      title: '伊東豊雄「せんだいメディアテーク」完成',
+      startDate: new Date(2001, 0, 1),
+      endDate: new Date(2001, 0, 1),
+      description: '#日本建築 における情報化時代の先駆。',
+      tags: ['伊東豊雄', '情報建築', 'せんだいメディアテーク'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 112,
+      title: 'ピーター・ズントー「テルメ・ヴァルス」完成',
+      startDate: new Date(1996, 0, 1),
+      endDate: new Date(1996, 0, 1),
+      description: '素材と空間体験を重視した #ミニマリズム 建築の傑作。',
+      tags: ['ピーター・ズントー', 'スイス建築', 'ミニマリズム'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 113,
+      title: 'レム・コールハース「ボルドーの家」完成',
+      startDate: new Date(1998, 0, 1),
+      endDate: new Date(1998, 0, 1),
+      description: '#OMA による可変性のある住宅。',
+      tags: ['レム・コールハース', 'OMA', '住宅建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 114,
+      title: '谷口吉生「東京国立博物館 法隆寺宝物館」完成',
+      startDate: new Date(1999, 0, 1),
+      endDate: new Date(1999, 0, 1),
+      description: '静謐で洗練された日本の #現代建築 。',
+      tags: ['谷口吉生', 'ミュージアム建築', '日本建築'],
+      position: { x: 0, y: 95 }
+    },
+    {
+      id: 115,
+      title: '安藤忠雄「光の教会」完成',
+      startDate: new Date(1989, 0, 1),
+      endDate: new Date(1989, 0, 1),
+      description: '#安藤忠雄 による光と空間の宗教建築。',
+      tags: ['安藤忠雄', '光の教会', '宗教建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 116,
+      title: '原広司「梅田スカイビル」完成',
+      startDate: new Date(1993, 0, 1),
+      endDate: new Date(1993, 0, 1),
+      description: '都市を空中でつなぐ構想を体現した #空中都市 建築。',
+      tags: ['原広司', '空中都市', '日本建築'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 117,
+      title: '黒川紀章「中銀カプセルタワー」完成',
+      startDate: new Date(1972, 0, 1),
+      endDate: new Date(1972, 0, 1),
+      description: '#メタボリズム を象徴するカプセル型集合住宅。',
+      tags: ['黒川紀章', '中銀カプセルタワー', '集合住宅'],
+      position: { x: 0, y: 110 }
+    },
+    {
+      id: 118,
+      title: '清家清「私の家」完成',
+      startDate: new Date(1954, 0, 1),
+      endDate: new Date(1954, 0, 1),
+      description: '#戦後建築 の代表的な小住宅。',
+      tags: ['清家清', '住宅建築', '戦後建築'],
+      position: { x: 0, y: 100 }
+    },
+    {
+      id: 119,
+      title: 'ヴィトラ・デザイン・ミュージアム（フランク・ゲーリー）完成',
+      startDate: new Date(1989, 0, 1),
+      endDate: new Date(1989, 0, 1),
+      description: 'ポストモダンの象徴的なデザインミュージアム。',
+      tags: ['フランク・ゲーリー', 'ポストモダン', '美術館'],
+      position: { x: 0, y: 90 }
+    },
+    {
+      id: 120,
+      title: 'OMA「シアトル図書館」完成',
+      startDate: new Date(2004, 0, 1),
+      endDate: new Date(2004, 0, 1),
+      description: '#レム・コールハース による #情報空間 の実験。',
+      tags: ['OMA', 'シアトル図書館', '情報空間'],
+      position: { x: 0, y: 100 }
+    }
+  ]);
+  
+  const [allTags, setAllTags] = useState([
+    '明治維新', '江戸幕府', '明治政府', '終戦', '太平洋戦争', 
+    '日本史', '歴史', '政治', '文化'
+  ]);
+  
+  // 検索とフィルタリングの状態
+  const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedEvents, setHighlightedEvents] = useState(new Set());
+  
+  // モーダルの状態
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalPosition, setModalPosition] = useState({ x: 0, y: 0 });
+  const [newEvent, setNewEvent] = useState({
+    title: '',
+    description: '',
+    date: new Date()
+  });
+
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
   const isCardDragging = useRef(false);
@@ -23,6 +244,142 @@ const HashtagTimeline = () => {
   const lastMouseY = useRef(0);
 
   const currentPixelsPerYear = basePixelsPerYear * scale;
+
+
+
+  // 座標から年を計算
+  const getYearFromX = useCallback((x) => {
+    return startYear + (x - panX) / currentPixelsPerYear;
+  }, [startYear, panX, currentPixelsPerYear]);
+
+  // 年から座標を計算
+  const getXFromYear = useCallback((year) => {
+    return (year - startYear) * currentPixelsPerYear + panX;
+  }, [startYear, currentPixelsPerYear, panX]);
+
+  // ダブルクリックでイベント作成
+  const handleDoubleClick = useCallback((e) => {
+    // パネルやカード上のダブルクリックは無視
+    if (e.target.closest('.floating-panel') || e.target.closest('.timeline-card')) {
+      return;
+    }
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    
+    const year = getYearFromX(clickX);
+    const clickDate = new Date(Math.round(year), 0, 1);
+    
+    setNewEvent({
+      title: '',
+      description: '',
+      date: clickDate
+    });
+    
+    setModalPosition({ x: clickX, y: clickY });
+    setIsModalOpen(true);
+  }, [getYearFromX]);
+
+  // タグを説明文から抽出
+  const extractTagsFromDescription = (description) => {
+    const tagRegex = /#([^\s#]+)/g;
+    const matches = [];
+    let match;
+    while ((match = tagRegex.exec(description)) !== null) {
+      matches.push(match[1]);
+    }
+    return matches;
+  };
+
+  // イベント保存
+  const saveEvent = useCallback(() => {
+    if (!newEvent.title.trim()) return;
+
+    const extractedTags = extractTagsFromDescription(newEvent.description);
+    const eventTags = [newEvent.title, ...extractedTags];
+    
+    // 新しいタグをallTagsに追加
+    const newTags = eventTags.filter(tag => !allTags.includes(tag));
+    if (newTags.length > 0) {
+      setAllTags(prev => [...prev, ...newTags]);
+    }
+
+    const event = {
+      id: Date.now(), // 簡単なID生成
+      title: newEvent.title,
+      startDate: newEvent.date,
+      endDate: newEvent.date,
+      description: newEvent.description,
+      tags: eventTags,
+      position: { x: modalPosition.x, y: modalPosition.y }
+    };
+
+    setEvents(prev => [...prev, event]);
+    setIsModalOpen(false);
+    setNewEvent({ title: '', description: '', date: new Date() });
+  }, [newEvent, modalPosition, allTags]);
+
+  // モーダルを閉じる
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setNewEvent({ title: '', description: '', date: new Date() });
+  }, []);
+
+  // タグ検索機能
+  const handleSearchChange = useCallback((e) => {
+    const term = e.target.value;
+    setSearchTerm(term);
+    
+    if (term.trim() === '') {
+      setHighlightedEvents(new Set());
+      return;
+    }
+    
+    // 検索語を小文字で分割（スペース区切りで複数タグ検索可能）
+    const searchTerms = term.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    
+    const matchingEventIds = new Set();
+    events.forEach(event => {
+      const eventTags = event.tags.map(tag => tag.toLowerCase());
+      const eventTitle = event.title.toLowerCase();
+      
+      // すべての検索語がタグまたはタイトルに含まれているかチェック
+      const allTermsMatch = searchTerms.every(searchTerm => 
+        eventTags.some(tag => tag.includes(searchTerm)) || 
+        eventTitle.includes(searchTerm)
+      );
+      
+      if (allTermsMatch) {
+        matchingEventIds.add(event.id);
+      }
+    });
+    
+    setHighlightedEvents(matchingEventIds);
+  }, [events]);
+
+  // 検索にヒットしたタグを上位タグとして表示
+  const getTopTagsFromSearch = useCallback(() => {
+    if (searchTerm.trim() === '' || highlightedEvents.size === 0) {
+      return allTags.slice(0, 6);
+    }
+    
+    // ハイライトされたイベントのタグを集計
+    const tagCounts = {};
+    events.forEach(event => {
+      if (highlightedEvents.has(event.id)) {
+        event.tags.forEach(tag => {
+          tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+        });
+      }
+    });
+    
+    // 使用頻度順にソートして上位6つを返す
+    return Object.entries(tagCounts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 6)
+      .map(([tag]) => tag);
+  }, [searchTerm, highlightedEvents, allTags, events]);
 
   const handleWheel = useCallback((e) => {
     e.preventDefault();
@@ -32,7 +389,7 @@ const HashtagTimeline = () => {
     const yearAtMouse = startYear + (mouseX - panX) / currentPixelsPerYear;
     
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(0.25, Math.min(500, scale * zoomFactor)); 
+    const newScale = Math.max(0.25, Math.min(50, scale * zoomFactor)); // 最小0.25(元の0.1), 最大50(元の20)
     
     const newPixelsPerYear = basePixelsPerYear * newScale;
     let newPanX = mouseX - (yearAtMouse - startYear) * newPixelsPerYear;
@@ -105,7 +462,7 @@ const HashtagTimeline = () => {
     if (adjustedScale > 12) yearInterval = 1;        // 元の30
     else if (adjustedScale > 6) yearInterval = 2;    // 元の15
     else if (adjustedScale > 2) yearInterval = 5;    // 元の5
-    else if (adjustedScale > 1) yearInterval = 10; // 元の2
+    else if (adjustedScale > 0.8) yearInterval = 10; // 元の2
     else if (adjustedScale > 0.4) yearInterval = 50; // 元の1
     else if (adjustedScale > 0.2) yearInterval = 100;// 元の0.5
     else if (adjustedScale > 0.1) yearInterval = 200;// 元の0.25
@@ -308,6 +665,7 @@ const HashtagTimeline = () => {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
       >
         {generateYearMarkers()}
 
@@ -316,19 +674,30 @@ const HashtagTimeline = () => {
           <input
             type="text"
             placeholder="タグで絞り込み"
+            value={searchTerm}
+            onChange={handleSearchChange}
             style={styles.searchInput}
           />
           
           <div style={styles.tagSection}>
             <h3 style={styles.sectionTitle}>上位タグ</h3>
             <div style={styles.tagContainer}>
-              {['歴史', '日本史', '政治', '文化'].map(tag => (
+              {getTopTagsFromSearch().map(tag => (
                 <span key={tag} style={styles.tag}>{tag}</span>
               ))}
             </div>
           </div>
 
-          <button style={styles.createButton}>年表を作成</button>
+          <button 
+            style={{
+              ...styles.createButton,
+              opacity: highlightedEvents.size > 0 ? 1 : 0.5,
+              cursor: highlightedEvents.size > 0 ? 'pointer' : 'not-allowed'
+            }}
+            disabled={highlightedEvents.size === 0}
+          >
+            年表を作成 {highlightedEvents.size > 0 && `(${highlightedEvents.size})`}
+          </button>
         </div>
 
         {/* ドラッグ可能な年表カード */}
@@ -344,28 +713,30 @@ const HashtagTimeline = () => {
           </div>
         </div>
 
-        {/* サンプルイベント */}
-        <div
-          style={{
-            ...styles.event,
-            backgroundColor: '#3b82f6',
-            left: (1868 - startYear) * currentPixelsPerYear + panX,
-            top: '60px'
-          }}
-        >
-          明治維新
-        </div>
-
-        <div
-          style={{
-            ...styles.event,
-            backgroundColor: '#ef4444',
-            left: (1945 - startYear) * currentPixelsPerYear + panX,
-            top: '60px'
-          }}
-        >
-          終戦
-        </div>
+        {/* 動的イベント表示 */}
+        {events.map(event => {
+          const isHighlighted = highlightedEvents.has(event.id);
+          return (
+            <div
+              key={event.id}
+              style={{
+                ...styles.event,
+                backgroundColor: isHighlighted 
+                  ? '#10b981' // ハイライト色（緑）
+                  : event.id === 1 || event.id === 2 
+                    ? (event.id === 1 ? '#3b82f6' : '#ef4444')
+                    : '#6b7280', // デフォルト色（グレー）
+                left: getXFromYear(event.startDate.getFullYear()),
+                top: event.position.y + 'px',
+                border: isHighlighted ? '2px solid #059669' : 'none',
+                transform: 'translateX(-50%)',
+                zIndex: isHighlighted ? 5 : 1
+              }}
+            >
+              {event.title}
+            </div>
+          );
+        })}
 
         {/* 現在ライン */}
         <div
@@ -379,11 +750,108 @@ const HashtagTimeline = () => {
           }}
         />
 
+        {/* イベント作成モーダル */}
+        {isModalOpen && (
+          <div style={{
+            position: 'absolute',
+            left: Math.min(modalPosition.x, window.innerWidth - 300),
+            top: Math.min(modalPosition.y, window.innerHeight - 200),
+            width: '280px',
+            backgroundColor: 'white',
+            border: '1px solid #d1d5db',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+            padding: '16px',
+            zIndex: 20
+          }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '16px', fontWeight: '600' }}>
+              新しいイベント
+            </h3>
+            
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>
+                日付: {newEvent.date.getFullYear()}年
+              </label>
+            </div>
+            
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                placeholder="イベントタイトル"
+                value={newEvent.title}
+                onChange={(e) => setNewEvent(prev => ({ ...prev, title: e.target.value }))}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+                autoFocus
+              />
+            </div>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <textarea
+                placeholder="説明（#タグ を含めることができます）"
+                value={newEvent.description}
+                onChange={(e) => setNewEvent(prev => ({ ...prev, description: e.target.value }))}
+                style={{
+                  width: '100%',
+                  height: '60px',
+                  padding: '8px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                  resize: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={closeModal}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  backgroundColor: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={saveEvent}
+                style={{
+                  padding: '6px 12px',
+                  border: 'none',
+                  borderRadius: '4px',
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                作成
+              </button>
+            </div>
+          </div>
+        )}
+
         <div style={styles.helpBox}>
           <div>マウスホイール: ズーム</div>
           <div>ドラッグ: パン</div>
           <div>年表カード: 縦ドラッグで移動</div>
-          <div>ダブルクリック: イベント追加（次回実装）</div>
+          <div>ダブルクリック: イベント追加</div>
+          {highlightedEvents.size > 0 && (
+            <div style={{ marginTop: '8px', color: '#10b981' }}>
+              🔍 {highlightedEvents.size}件ヒット
+            </div>
+          )}
         </div>
       </div>
     </div>
