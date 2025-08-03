@@ -3,9 +3,12 @@ import React, { useState, useRef, useCallback } from 'react';
 const HashtagTimeline = () => {
   const [scale, setScale] = useState(1);
   const [panX, setPanX] = useState(0);
+  const [timelineCardY, setTimelineCardY] = useState(100); // 年表カードのY位置
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
+  const isCardDragging = useRef(false);
   const lastMouseX = useRef(0);
+  const lastMouseY = useRef(0);
 
   const startYear = -5000;
   const endYear = 5000;
@@ -25,27 +28,65 @@ const HashtagTimeline = () => {
     const newScale = Math.max(0.1, Math.min(200, scale * zoomFactor));
     
     const newPixelsPerYear = basePixelsPerYear * newScale;
-    const newPanX = mouseX - (yearAtMouse - startYear) * newPixelsPerYear;
+    let newPanX = mouseX - (yearAtMouse - startYear) * newPixelsPerYear;
+    
+    // ズーム後もパン制限を適用
+    const timelineWidth = totalYears * newPixelsPerYear;
+    const viewportWidth = window.innerWidth;
+    const minPanX = -(timelineWidth - viewportWidth);
+    const maxPanX = 0;
+    
+    newPanX = Math.max(minPanX, Math.min(maxPanX, newPanX));
     
     setScale(newScale);
     setPanX(newPanX);
-  }, [scale, panX, currentPixelsPerYear]);
+  }, [scale, panX, currentPixelsPerYear, startYear, totalYears, basePixelsPerYear]);
 
   const handleMouseDown = useCallback((e) => {
+    // 年表カードやパネル上でのクリックは無視
+    if (e.target.closest('.floating-panel') || e.target.closest('.timeline-card')) {
+      return;
+    }
     isDragging.current = true;
     lastMouseX.current = e.clientX;
   }, []);
 
   const handleMouseMove = useCallback((e) => {
-    if (!isDragging.current) return;
+    if (isDragging.current) {
+      const deltaX = e.clientX - lastMouseX.current;
+      const newPanX = panX + deltaX;
+      
+      // パンの範囲制限を計算
+      const timelineWidth = totalYears * currentPixelsPerYear;
+      const viewportWidth = window.innerWidth;
+      
+      // 左端制限: 年表の開始点（-5000年）が画面右端を超えない
+      const minPanX = -(timelineWidth - viewportWidth);
+      // 右端制限: 年表の開始点（-5000年）が画面左端を超えない  
+      const maxPanX = 0;
+      
+      // 制限内でパンを更新
+      setPanX(Math.max(minPanX, Math.min(maxPanX, newPanX)));
+      lastMouseX.current = e.clientX;
+    }
     
-    const deltaX = e.clientX - lastMouseX.current;
-    setPanX(prev => prev + deltaX);
-    lastMouseX.current = e.clientX;
-  }, []);
+    if (isCardDragging.current) {
+      const deltaY = e.clientY - lastMouseY.current;
+      setTimelineCardY(prev => Math.max(80, Math.min(window.innerHeight - 100, prev + deltaY)));
+      lastMouseY.current = e.clientY;
+    }
+  }, [panX, totalYears, currentPixelsPerYear]);
 
   const handleMouseUp = useCallback(() => {
     isDragging.current = false;
+    isCardDragging.current = false;
+  }, []);
+
+  // 年表カードのドラッグ開始
+  const handleCardMouseDown = useCallback((e) => {
+    e.stopPropagation();
+    isCardDragging.current = true;
+    lastMouseY.current = e.clientY;
   }, []);
 
   const generateYearMarkers = () => {
@@ -134,28 +175,34 @@ const HashtagTimeline = () => {
       fontSize: '14px',
       color: '#6b7280'
     },
-    mainArea: {
-      display: 'flex',
-      height: 'calc(100vh - 64px)'
-    },
-    sidebar: {
+    timeline: {
+      width: '100vw',
+      height: 'calc(100vh - 64px)',
       position: 'relative',
+      backgroundColor: 'white',
+      cursor: isDragging.current ? 'grabbing' : 'grab'
+    },
+    // 浮遊する検索パネル
+    floatingPanel: {
+      position: 'absolute',
+      top: '20px',
+      left: '20px',
       width: '200px',
       backgroundColor: '#f5f5f3',
-      borderRight: '1px solid #e5e7eb',
-      boxShadow: '2px 0 4px rgba(0, 0, 0, 0.1)',
-      zIndex: 2
-    },
-    sidebarContent: {
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      zIndex: 10,
       padding: '16px'
     },
     searchInput: {
-      width: '80%',
+      width: '100%',
       padding: '8px 12px',
       border: '1px solid #d1d5db',
       borderRadius: '6px',
       marginBottom: '16px',
-      fontSize: '14px'
+      fontSize: '14px',
+      boxSizing: 'border-box'
     },
     tagSection: {
       marginBottom: '16px'
@@ -189,24 +236,26 @@ const HashtagTimeline = () => {
       cursor: 'pointer',
       fontWeight: '500'
     },
+    // ドラッグ可能な年表カード
     timelineCard: {
+      position: 'absolute',
+      left: '20px',
+      top: timelineCardY + 'px',
+      width: '200px',
       padding: '12px',
       backgroundColor: '#f9fafb',
       border: '1px solid #e5e7eb',
-      borderRadius: '6px',
-      marginBottom: '8px'
+      borderRadius: '8px',
+      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+      cursor: 'move',
+      zIndex: 9
     },
     timelineTitle: {
       fontSize: '14px',
       fontWeight: '600',
       marginBottom: '8px',
-      marginTop: '0px'
-    },
-    timeline: {
-      flex: 1,
-      position: 'relative',
-      backgroundColor: 'white',
-      cursor: isDragging.current ? 'grabbing' : 'grab'
+      marginTop: '0px',
+      userSelect: 'none'
     },
     event: {
       position: 'absolute',
@@ -242,88 +291,90 @@ const HashtagTimeline = () => {
         </div>
       </div>
 
-      <div style={styles.mainArea}>
-        <div style={styles.sidebar}>
-          <div style={styles.sidebarContent}>
-            <input
-              type="text"
-              placeholder="タグで絞り込み"
-              style={styles.searchInput}
-            />
-            
-            <div style={styles.tagSection}>
-              <h3 style={styles.sectionTitle}>上位タグ</h3>
-              <div style={styles.tagContainer}>
-                {['歴史', '日本史', '政治', '文化'].map(tag => (
-                  <span key={tag} style={styles.tag}>{tag}</span>
-                ))}
-              </div>
-            </div>
+      <div 
+        ref={timelineRef}
+        style={styles.timeline}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        {generateYearMarkers()}
 
-            <button style={styles.createButton}>年表を作成</button>
+        {/* 浮遊する検索パネル */}
+        <div className="floating-panel" style={styles.floatingPanel}>
+          <input
+            type="text"
+            placeholder="タグで絞り込み"
+            style={styles.searchInput}
+          />
+          
+          <div style={styles.tagSection}>
+            <h3 style={styles.sectionTitle}>上位タグ</h3>
+            <div style={styles.tagContainer}>
+              {['歴史', '日本史', '政治', '文化'].map(tag => (
+                <span key={tag} style={styles.tag}>{tag}</span>
+              ))}
+            </div>
           </div>
 
-          <div style={{borderTop: '1px solid #e5e7eb', padding: '16px'}}>
-            <div style={styles.timelineCard}>
-              <h4 style={styles.timelineTitle}>ざっくり日本史</h4>
-              <div style={styles.tagContainer}>
-                <span style={styles.tag}>日本史</span>
-                <span style={styles.tag}>歴史</span>
-              </div>
-            </div>
+          <button style={styles.createButton}>年表を作成</button>
+        </div>
+
+        {/* ドラッグ可能な年表カード */}
+        <div 
+          className="timeline-card"
+          style={styles.timelineCard}
+          onMouseDown={handleCardMouseDown}
+        >
+          <h4 style={styles.timelineTitle}>ざっくり日本史</h4>
+          <div style={styles.tagContainer}>
+            <span style={styles.tag}>日本史</span>
+            <span style={styles.tag}>歴史</span>
           </div>
         </div>
 
-        <div 
-          ref={timelineRef}
-          style={styles.timeline}
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+        {/* サンプルイベント */}
+        <div
+          style={{
+            ...styles.event,
+            backgroundColor: '#3b82f6',
+            left: (1868 - startYear) * currentPixelsPerYear + panX,
+            top: '60px'
+          }}
         >
-          {generateYearMarkers()}
+          明治維新
+        </div>
 
-          <div
-            style={{
-              ...styles.event,
-              backgroundColor: '#3b82f6',
-              left: (1868 - startYear) * currentPixelsPerYear + panX,
-              top: '60px'
-            }}
-          >
-            明治維新
-          </div>
+        <div
+          style={{
+            ...styles.event,
+            backgroundColor: '#ef4444',
+            left: (1945 - startYear) * currentPixelsPerYear + panX,
+            top: '60px'
+          }}
+        >
+          終戦
+        </div>
 
-          <div
-            style={{
-              ...styles.event,
-              backgroundColor: '#ef4444',
-              left: (1945 - startYear) * currentPixelsPerYear + panX,
-              top: '60px'
-            }}
-          >
-            終戦
-          </div>
+        {/* 現在ライン */}
+        <div
+          style={{
+            position: 'absolute',
+            left: (2025.6 - startYear) * currentPixelsPerYear + panX,
+            top: 0,
+            height: '100%',
+            borderLeft: '1px solid #f6a656ff',
+            pointerEvents: 'none'
+          }}
+        />
 
-          <div
-            style={{
-              position: 'absolute',
-              left: (2025.6 - startYear) * currentPixelsPerYear + panX,
-              top: 0,
-              height: '100%',
-              borderLeft: '1px solid #f6a656ff',
-              pointerEvents: 'none'
-            }}
-          >
-          </div>
-
-          <div style={styles.helpBox}>
-            <div>マウスホイール: ズーム</div>
-            <div>ドラッグ: パン</div>
-            <div>ダブルクリック: イベント追加（次回実装）</div>
-          </div>
+        <div style={styles.helpBox}>
+          <div>マウスホイール: ズーム</div>
+          <div>ドラッグ: パン</div>
+          <div>年表カード: 縦ドラッグで移動</div>
+          <div>ダブルクリック: イベント追加（次回実装）</div>
         </div>
       </div>
     </div>
