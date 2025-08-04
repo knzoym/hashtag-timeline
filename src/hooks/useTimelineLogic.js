@@ -321,7 +321,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
     setCreatedTimelines(prev => [newTimeline, ...prev]);
     
-    // アニメーション付きで年表ビューに切り替え
+    // 年表ビューに切り替え
     setIsTransitioning(true);
     setActiveTimeline(newTimeline);
     
