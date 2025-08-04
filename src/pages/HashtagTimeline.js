@@ -1,11 +1,10 @@
-// HashtagTimeline.js (メインコンポーネント)
+// HashtagTimeline.js (クリーンアップ版)
 import React, { useRef, useCallback, useMemo } from "react";
 import { EventModal } from "../components/EventModal";
 import { TimelineModal } from "../components/TimelineModal";
 import { SearchPanel } from "../components/SearchPanel";
 import { HelpBox } from "../components/HelpBox";
 import { useTimelineLogic } from "../hooks/useTimelineLogic";
-import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { createTimelineStyles } from "../styles/timelineStyles";
 
 const HashtagTimeline = () => {
@@ -20,57 +19,20 @@ const HashtagTimeline = () => {
   // カスタムフックから必要な状態と関数を取得
   const {
     // 状態
-    scale,
-    panX,
-    panY,
-    timelineCardY,
-    searchTerm,
-    highlightedEvents,
-    createdTimelines,
-    isHelpOpen,
-    isModalOpen,
-    isTimelineModalOpen,
-    modalPosition,
-    editingEvent,
-    newEvent,
-    selectedTimeline,
-    viewMode,
-    activeTimeline,
-    isTransitioning,
-    timelineScale,
-    timelinePanX,
+    scale, panX, panY, timelineCardY, searchTerm, highlightedEvents, createdTimelines,
+    isHelpOpen, isModalOpen, isTimelineModalOpen, modalPosition, editingEvent, newEvent,
+    selectedTimeline, viewMode, activeTimeline, isTransitioning, timelineScale, timelinePanX,
     
     // 関数
-    setIsHelpOpen,
-    resetToInitialPosition,
-    handleSearchChange,
-    handleDoubleClick,
-    saveEvent,
-    closeModal,
-    addManualTag,
-    removeManualTag,
-    getAllCurrentTags,
-    createTimeline,
-    viewTimeline,
-    backToMainView,
-    closeTimelineView,
-    closeTimelineModal,
-    deleteTimeline,
-    adjustEventPositions,
-    getTopTagsFromSearch,
-    currentPixelsPerYear,
-    truncateTitle,
-    handleWheel,
-    handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
-    handleCardMouseDown,
-    handleEventChange,
-    setTimelineScale,
-    setTimelinePanX,
+    setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
+    saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
+    createTimeline, viewTimeline, backToMainView, closeTimelineView, closeTimelineModal,
+    deleteTimeline, adjustEventPositions, getTopTagsFromSearch, currentPixelsPerYear,
+    truncateTitle, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
+    handleCardMouseDown, handleEventChange, setTimelineScale, setTimelinePanX,
   } = useTimelineLogic(timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY, isShiftPressed);
 
-  // 年表マーカー生成
+  // 年表マーカー生成（メインビュー用）
   const generateYearMarkers = useCallback(() => {
     const markers = [];
     const adjustedScale = scale / 2.5;
@@ -86,8 +48,8 @@ const HashtagTimeline = () => {
     else if (adjustedScale > 0.04) yearInterval = 500;
     else yearInterval = 1000;
 
-    for (let year = TIMELINE_CONFIG.START_YEAR; year <= TIMELINE_CONFIG.END_YEAR; year += yearInterval) {
-      const x = (year - TIMELINE_CONFIG.START_YEAR) * currentPixelsPerYear + panX;
+    for (let year = -5000; year <= 5000; year += yearInterval) {
+      const x = (year - (-5000)) * currentPixelsPerYear + panX;
       if (x > -100 && x < window.innerWidth + 100) {
         markers.push(
           <div
@@ -366,7 +328,7 @@ const HashtagTimeline = () => {
         onMouseLeave={viewMode === 'main' ? handleMouseUp : undefined}
         onDoubleClick={viewMode === 'main' ? handleDoubleClick : undefined}
       >
-        {/* 年マーカー - メインビューまたは年表ビュー */}
+        {/* 年マーカー */}
         {viewMode === 'main' ? generateYearMarkers() : generateTimelineYearMarkers()}
 
         {/* 検索パネル - メインビューのみ */}
@@ -401,48 +363,22 @@ const HashtagTimeline = () => {
               transition: isTransitioning ? 'all 0.3s ease-in-out' : 'none',
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                marginBottom: "12px"
-              }}
-            >
-              <h3
-                style={{
-                  fontSize: "16px",
-                  fontWeight: "600",
-                  color: "#374151",
-                  margin: 0
-                }}
-              >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+              <h3 style={{ fontSize: "16px", fontWeight: "600", color: "#374151", margin: 0 }}>
                 {activeTimeline.name}
               </h3>
               <button
                 onClick={closeTimelineView}
                 style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "18px",
-                  color: "#6b7280",
-                  cursor: "pointer",
-                  padding: "0",
-                  width: "20px",
-                  height: "20px"
+                  background: "none", border: "none", fontSize: "18px", color: "#6b7280",
+                  cursor: "pointer", padding: "0", width: "20px", height: "20px"
                 }}
               >
                 ×
               </button>
             </div>
             
-            <div
-              style={{
-                fontSize: "14px",
-                color: "#6b7280",
-                marginBottom: "16px"
-              }}
-            >
+            <div style={{ fontSize: "14px", color: "#6b7280", marginBottom: "16px" }}>
               {activeTimeline.events.length}件のイベント<br />
               {Math.min(...activeTimeline.events.map(e => e.startDate.getFullYear()))}年 - {Math.max(...activeTimeline.events.map(e => e.startDate.getFullYear()))}年
             </div>
@@ -450,33 +386,16 @@ const HashtagTimeline = () => {
             {/* 主要タグ */}
             {activeTimeline.tags.length > 0 && (
               <div style={{ marginBottom: "16px" }}>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#374151",
-                    fontWeight: "600",
-                    marginBottom: "8px"
-                  }}
-                >
+                <div style={{ fontSize: "12px", color: "#374151", fontWeight: "600", marginBottom: "8px" }}>
                   主要タグ
                 </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "4px"
-                  }}
-                >
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                   {activeTimeline.tags.map((tag) => (
                     <span
                       key={tag}
                       style={{
-                        padding: "4px 8px",
-                        backgroundColor: "#dbeafe",
-                        color: "#1d4ed8",
-                        fontSize: "11px",
-                        borderRadius: "4px",
-                        border: "1px solid #93c5fd"
+                        padding: "4px 8px", backgroundColor: "#dbeafe", color: "#1d4ed8",
+                        fontSize: "11px", borderRadius: "4px", border: "1px solid #93c5fd"
                       }}
                     >
                       {tag}
@@ -486,15 +405,7 @@ const HashtagTimeline = () => {
               </div>
             )}
 
-            {/* 作成日 */}
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#9ca3af",
-                paddingTop: "12px",
-                borderTop: "1px solid #f3f4f6"
-              }}
-            >
+            <div style={{ fontSize: "12px", color: "#9ca3af", paddingTop: "12px", borderTop: "1px solid #f3f4f6" }}>
               作成日: {activeTimeline.createdAt.toLocaleDateString()}
             </div>
           </div>
@@ -502,11 +413,7 @@ const HashtagTimeline = () => {
 
         {/* ドラッグ可能な年表カード - メインビューのみ */}
         {viewMode === 'main' && (
-          <div
-            className="timeline-card"
-            style={styles.timelineCard}
-            onMouseDown={handleCardMouseDown}
-          >
+          <div className="timeline-card" style={styles.timelineCard} onMouseDown={handleCardMouseDown}>
             <h4 style={styles.timelineTitle}>ざっくり日本史</h4>
             <div style={styles.tagContainer}>
               <span style={styles.tag}>日本史</span>
@@ -519,13 +426,8 @@ const HashtagTimeline = () => {
         {viewMode === 'timeline' && (
           <div
             style={{
-              position: "absolute",
-              left: "300px",
-              top: "140px",
-              right: "20px",
-              height: "2px",
-              backgroundColor: "#d1d5db",
-              zIndex: 2,
+              position: "absolute", left: "300px", top: "140px", right: "20px", height: "2px",
+              backgroundColor: "#d1d5db", zIndex: 2,
               transition: isTransitioning ? 'all 0.3s ease-in-out' : 'none',
             }}
           />
@@ -551,37 +453,18 @@ const HashtagTimeline = () => {
                     transition: isTransitioning ? 'all 0.5s ease-in-out' : 'none',
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: "10px",
-                      color: "#666",
-                      marginBottom: "2px",
-                    }}
-                  >
+                  <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
                     {event.startDate.getFullYear()}
                   </div>
                   <div
                     style={{
-                      padding: "4px 8px",
-                      borderRadius: "4px",
-                      color: "white",
-                      fontWeight: "500",
-                      fontSize: "11px",
-                      minWidth: "60px",
-                      maxWidth: "120px",
-                      backgroundColor: isHighlighted
-                        ? "#10b981"
-                        : event.id === 1 || event.id === 2
-                        ? event.id === 1
-                          ? "#3b82f6"
-                          : "#ef4444"
-                        : "#6b7280",
+                      padding: "4px 8px", borderRadius: "4px", color: "white", fontWeight: "500",
+                      fontSize: "11px", minWidth: "60px", maxWidth: "120px",
+                      backgroundColor: isHighlighted ? "#10b981" : 
+                        event.id === 1 || event.id === 2 ? (event.id === 1 ? "#3b82f6" : "#ef4444") : "#6b7280",
                       border: isHighlighted ? "2px solid #059669" : "none",
-                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                      lineHeight: "1.1",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)", lineHeight: "1.1",
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                     }}
                   >
                     {truncateTitle(event.title)}
@@ -594,70 +477,36 @@ const HashtagTimeline = () => {
                 key={event.id}
                 className="event-item"
                 style={{
-                  position: "absolute",
-                  left: event.displayX - 60,
-                  top: event.displayY,
-                  width: "120px",
-                  zIndex: 3,
+                  position: "absolute", left: event.displayX - 60, top: event.displayY,
+                  width: "120px", zIndex: 3,
                   transition: isTransitioning ? 'all 0.5s ease-in-out' : 'none',
                 }}
               >
                 {/* 接続線 */}
                 <div
                   style={{
-                    position: "absolute",
-                    left: "60px",
-                    top: "-10px",
-                    width: "2px",
+                    position: "absolute", left: "60px", top: "-10px", width: "2px",
                     height: event.level === 0 ? "10px" : `${event.level * 80 + 10}px`,
-                    backgroundColor: "#6b7280",
-                    zIndex: 1
+                    backgroundColor: "#6b7280", zIndex: 1
                   }}
                 />
                 
                 {/* イベントカード */}
                 <div
                   style={{
-                    backgroundColor: "white",
-                    border: "2px solid #3b82f6",
-                    borderRadius: "6px",
-                    padding: "8px",
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-                    textAlign: "center",
-                    position: "relative",
-                    zIndex: 2
+                    backgroundColor: "white", border: "2px solid #3b82f6", borderRadius: "6px",
+                    padding: "8px", boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+                    textAlign: "center", position: "relative", zIndex: 2
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: "10px",
-                      color: "#6b7280",
-                      marginBottom: "4px",
-                      fontWeight: "500"
-                    }}
-                  >
+                  <div style={{ fontSize: "10px", color: "#6b7280", marginBottom: "4px", fontWeight: "500" }}>
                     {event.startDate.getFullYear()}年
                   </div>
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: "600",
-                      color: "#374151",
-                      lineHeight: "1.2",
-                      marginBottom: "4px"
-                    }}
-                  >
+                  <div style={{ fontSize: "12px", fontWeight: "600", color: "#374151", lineHeight: "1.2", marginBottom: "4px" }}>
                     {event.title}
                   </div>
                   {event.description && (
-                    <div
-                      style={{
-                        fontSize: "10px",
-                        color: "#6b7280",
-                        lineHeight: "1.3",
-                        marginTop: "4px"
-                      }}
-                    >
+                    <div style={{ fontSize: "10px", color: "#6b7280", lineHeight: "1.3", marginTop: "4px" }}>
                       {event.description.length > 50 
                         ? event.description.substring(0, 50) + "..."
                         : event.description
@@ -674,7 +523,7 @@ const HashtagTimeline = () => {
           style={{
             position: "absolute",
             left: viewMode === 'main' 
-              ? (2025.6 - TIMELINE_CONFIG.START_YEAR) * currentPixelsPerYear + panX
+              ? (2025.6 - (-5000)) * currentPixelsPerYear + panX
               : (() => {
                   if (!activeTimeline) return 0;
                   const years = activeTimeline.events.map(e => e.startDate.getFullYear());
@@ -685,10 +534,7 @@ const HashtagTimeline = () => {
                   const safeTimelinePanX = timelinePanX || 0;
                   return (2025.6 - adjustedMinYear) * safeTimelineScale * 50 + safeTimelinePanX + 300;
                 })(),
-            top: 0,
-            height: "100%",
-            borderLeft: "1px solid #f6a656ff",
-            pointerEvents: "none",
+            top: 0, height: "100%", borderLeft: "1px solid #f6a656ff", pointerEvents: "none",
             transition: isTransitioning ? 'all 0.3s ease-in-out' : 'none',
           }}
         />
@@ -707,15 +553,9 @@ const HashtagTimeline = () => {
         {viewMode === 'timeline' && (
           <div
             style={{
-              position: "absolute",
-              bottom: "20px",
-              right: "20px",
-              backgroundColor: "rgba(0, 0, 0, 0.8)",
-              color: "white",
-              padding: "8px 12px",
-              borderRadius: "6px",
-              fontSize: "12px",
-              zIndex: 10
+              position: "absolute", bottom: "20px", right: "20px",
+              backgroundColor: "rgba(0, 0, 0, 0.8)", color: "white",
+              padding: "8px 12px", borderRadius: "6px", fontSize: "12px", zIndex: 10
             }}
           >
             マウスホイール: ズーム | ドラッグ: 移動

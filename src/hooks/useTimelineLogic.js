@@ -5,12 +5,17 @@ import { sampleEvents, initialTags } from "../utils/eventUtils";
 import { 
   extractTagsFromDescription, 
   truncateTitle,
-  calculateInitialPanX,
   getYearFromX,
   getXFromYear 
 } from "../utils/timelineUtils";
 
 export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY, isShiftPressed) => {
+  const calculateInitialPanX = () => {
+  const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
+  const targetX = (2030 - (-5000)) * initialPixelsPerYear;
+  return window.innerWidth - targetX;
+};
+
   // 基本状態
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
   const [panX, setPanX] = useState(() => calculateInitialPanX());
@@ -31,7 +36,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [selectedTimeline, setSelectedTimeline] = useState(null);
   const [viewMode, setViewMode] = useState('main'); // 'main' | 'timeline'
   const [activeTimeline, setActiveTimeline] = useState(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
   
   // 年表ビュー用の状態
   const [timelineScale, setTimelineScale] = useState(2);
@@ -312,7 +316,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     setCreatedTimelines(prev => [newTimeline, ...prev]);
     
     // アニメーション付きで年表ビューに切り替え
-    setIsTransitioning(true);
     setActiveTimeline(newTimeline);
     
     // 年表ビュー用の初期位置を計算
@@ -328,7 +331,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     
     setTimeout(() => {
       setViewMode('timeline');
-      setIsTransitioning(false);
       // 検索をクリア
       setSearchTerm('');
       setHighlightedEvents(new Set());
@@ -337,7 +339,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
   // 年表表示
   const viewTimeline = useCallback((timeline) => {
-    setIsTransitioning(true);
     setActiveTimeline(timeline);
     
     // 既存の年表を表示する場合の位置計算
@@ -352,17 +353,14 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     
     setTimeout(() => {
       setViewMode('timeline');
-      setIsTransitioning(false);
     }, 100);
   }, []);
 
   // メインビューに戻る
   const backToMainView = useCallback(() => {
-    setIsTransitioning(true);
     setTimeout(() => {
       setViewMode('main');
       setActiveTimeline(null);
-      setIsTransitioning(false);
     }, 300);
   }, []);
 

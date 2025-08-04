@@ -210,23 +210,3 @@ export const initialTags = [
   "明治維新", "江戸幕府", "明治政府", "終戦", "太平洋戦争",
   "日本史", "歴史", "政治", "文化", "モダニズム", "近代建築"
 ];
-
-// イベント関連のユーティリティ関数
-export const createNewEvent = (title, date, description, tags) => ({
-  id: Date.now(),
-  title,
-  startDate: date,
-  endDate: date,
-  description,
-  tags,
-  position: { x: 0, y: 60 },
-});
-
-export const updateEvent = (event, updates) => ({
-  ...event,
-  ...updates,
-});
-
-export const sortEventsByDate = (events) => {
-  return [...events].sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
-};
