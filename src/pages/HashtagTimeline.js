@@ -149,19 +149,6 @@ const HashtagTimeline = () => {
           styles={styles}
         />
 
-        {/* ドラッグ可能な年表カード */}
-        <div
-          className="timeline-card"
-          style={styles.timelineCard}
-          onMouseDown={handleCardMouseDown}
-        >
-          <h4 style={styles.timelineTitle}>ざっくり日本史</h4>
-          <div style={styles.tagContainer}>
-            <span style={styles.tag}>日本史</span>
-            <span style={styles.tag}>歴史</span>
-          </div>
-        </div>
-
         {/* イベント表示 */}
         {adjustEventPositions().map((event) => {
           const isHighlighted = highlightedEvents.has(event.id);
