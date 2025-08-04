@@ -30,17 +30,8 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightedEvents, setHighlightedEvents] = useState(new Set());
 
-  // 年表管理状態
+  // 浮遊年表管理状態を修正
   const [createdTimelines, setCreatedTimelines] = useState([]);
-  const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
-  const [selectedTimeline, setSelectedTimeline] = useState(null);
-  const [viewMode, setViewMode] = useState('main'); // 'main' | 'timeline'
-  const [activeTimeline, setActiveTimeline] = useState(null);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  
-  // 年表ビュー用の状態
-  const [timelineScale, setTimelineScale] = useState(2);
-  const [timelinePanX, setTimelinePanX] = useState(0);
 
   // UI状態
   const [isHelpOpen, setIsHelpOpen] = useState(true);
@@ -119,7 +110,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
       .map(([tag]) => tag);
   }, [searchTerm, highlightedEvents, allTags, events]);
 
-  // イベント配置調整（修正版）
+  // イベント配置調整
   const adjustEventPositions = useCallback(() => {
     const sortedEvents = [...events].sort((a, b) => {
       const aX = getXFromYear(a.startDate.getFullYear(), currentPixelsPerYear, panX);
@@ -128,7 +119,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     });
 
     const placedEvents = [];
-    const BASE_Y = 60; // ハードコード値を使用
+    const BASE_Y = 60;
     const EVENT_WIDTH = 120;
     const EVENT_HEIGHT = 40;
     const MIN_GAP = 10;
@@ -301,7 +292,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     return [...new Set(allCurrentTags.filter((tag) => tag))];
   }, [newEvent.title, newEvent.description, newEvent.manualTags]);
 
-  // 年表作成
+  // 年表作成（修正版）
   const createTimeline = useCallback(() => {
     if (highlightedEvents.size === 0) return;
 
@@ -316,77 +307,27 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
       tags: topTags,
       events: filteredEvents,
       createdAt: new Date(),
-      eventCount: filteredEvents.length
+      eventCount: filteredEvents.length,
+      isVisible: true, // 作成時は表示状態
+      color: `hsl(${Math.random() * 360}, 60%, 50%)` // ランダムな色を割り当て
     };
 
-    setCreatedTimelines(prev => [newTimeline, ...prev]);
+    setCreatedTimelines(prev => [...prev, newTimeline]);
     
-    // 年表ビューに切り替え
-    setIsTransitioning(true);
-    setActiveTimeline(newTimeline);
-    
-    // 年表ビュー用の初期位置を計算
-    const years = filteredEvents.map(e => e.startDate.getFullYear());
-    const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    const padding = Math.max(10, (maxYear - minYear) * 0.1);
-    const adjustedMinYear = Math.floor(minYear - padding);
-    
-    // 初期パン位置（最初のイベントが見える位置）
-    const initialTimelinePanX = Math.max(0, (window.innerWidth - 300) / 2 - (minYear - adjustedMinYear) * timelineScale * 50);
-    setTimelinePanX(initialTimelinePanX);
-    
-    setTimeout(() => {
-      setViewMode('timeline');
-      setIsTransitioning(false);
-      // 検索をクリア
-      setSearchTerm('');
-      setHighlightedEvents(new Set());
-    }, 100);
-  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch, timelineScale]);
+    // 検索をクリア
+    setSearchTerm('');
+    setHighlightedEvents(new Set());
+  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch]);
 
-  // 年表表示
-  const viewTimeline = useCallback((timeline) => {
-    setIsTransitioning(true);
-    setActiveTimeline(timeline);
-    
-    // 既存の年表を表示する場合の位置計算
-    const years = timeline.events.map(e => e.startDate.getFullYear());
-    const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    const padding = Math.max(10, (maxYear - minYear) * 0.1);
-    const adjustedMinYear = Math.floor(minYear - padding);
-    
-    const initialTimelinePanX = Math.max(0, (window.innerWidth - 300) / 2 - (minYear - adjustedMinYear) * 2 * 50);
-    setTimelinePanX(initialTimelinePanX);
-    
-    setTimeout(() => {
-      setViewMode('timeline');
-      setIsTransitioning(false);
-    }, 100);
-  }, []);
-
-  // メインビューに戻る
-  const backToMainView = useCallback(() => {
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setViewMode('main');
-      setActiveTimeline(null);
-      setIsTransitioning(false);
-    }, 300);
-  }, []);
-
-  // 年表ビューを閉じる（年表削除）
-  const closeTimelineView = useCallback(() => {
-    if (activeTimeline && window.confirm('この年表を削除しますか？')) {
-      setCreatedTimelines(prev => prev.filter(t => t.id !== activeTimeline.id));
-    }
-    backToMainView();
-  }, [activeTimeline, backToMainView]);
-
-  const closeTimelineModal = useCallback(() => {
-    setIsTimelineModalOpen(false);
-    setSelectedTimeline(null);
+  // 年表の表示・非表示切り替え
+  const toggleTimelineVisibility = useCallback((timelineId) => {
+    setCreatedTimelines(prev => 
+      prev.map(timeline => 
+        timeline.id === timelineId 
+          ? { ...timeline, isVisible: !timeline.isVisible }
+          : timeline
+      )
+    );
   }, []);
 
   // 年表削除
@@ -396,7 +337,62 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     }
   }, []);
 
-  // マウス・ホイールイベント処理（修正版）
+  // 表示中の年表のイベント配置計算（新規）
+  const getTimelineEventsForDisplay = useCallback(() => {
+    const visibleTimelines = createdTimelines.filter(timeline => timeline.isVisible);
+    const timelineEvents = [];
+
+    visibleTimelines.forEach((timeline, timelineIndex) => {
+      timeline.events.forEach(event => {
+        const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+        
+        // 年表別のY座標オフセット
+        const timelineYOffset = 200 + timelineIndex * 80; // 各年表を80px間隔で配置
+        
+        timelineEvents.push({
+          ...event,
+          timelineId: timeline.id,
+          timelineName: timeline.name,
+          timelineColor: timeline.color,
+          displayX: eventX,
+          displayY: timelineYOffset,
+          timelineIndex
+        });
+      });
+    });
+
+    return timelineEvents;
+  }, [createdTimelines, currentPixelsPerYear, panX]);
+
+  // 表示中の年表の軸線生成（新規）
+  const getTimelineAxesForDisplay = useCallback(() => {
+    const visibleTimelines = createdTimelines.filter(timeline => timeline.isVisible);
+    
+    return visibleTimelines.map((timeline, timelineIndex) => {
+      const yPosition = 215 + timelineIndex * 80; // 各年表の軸位置
+      
+      // 年表の年代範囲を計算
+      const years = timeline.events.map(e => e.startDate.getFullYear());
+      const minYear = Math.min(...years);
+      const maxYear = Math.max(...years);
+      
+      const startX = getXFromYear(minYear, currentPixelsPerYear, panX);
+      const endX = getXFromYear(maxYear, currentPixelsPerYear, panX);
+      
+      return {
+        id: timeline.id,
+        name: timeline.name,
+        color: timeline.color,
+        yPosition,
+        startX: Math.max(-100, startX),
+        endX: Math.min(window.innerWidth + 100, endX),
+        minYear,
+        maxYear
+      };
+    });
+  }, [createdTimelines, currentPixelsPerYear, panX]);
+
+  // マウス・ホイールイベント処理
   const handleWheel = useCallback((e) => {
     if (isModalOpen) return;
 
@@ -515,16 +511,19 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   return {
     // 状態
     scale, panX, panY, timelineCardY, events, allTags, searchTerm, highlightedEvents,
-    createdTimelines, isHelpOpen, isModalOpen, isTimelineModalOpen, modalPosition,
-    editingEvent, newEvent, selectedTimeline, currentPixelsPerYear, viewMode, activeTimeline,
-    isTransitioning, timelineScale, timelinePanX,
+    isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
     
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
     saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
-    createTimeline, viewTimeline, backToMainView, closeTimelineView, closeTimelineModal, deleteTimeline,
-    adjustEventPositions, getTopTagsFromSearch, truncateTitle,
+    createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
     handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleCardMouseDown,
-    handleEventChange, setTimelineScale, setTimelinePanX,
+    handleEventChange,
+    
+    createdTimelines,
+    toggleTimelineVisibility,
+    deleteTimeline,
+    getTimelineEventsForDisplay,
+    getTimelineAxesForDisplay,
   };
 };

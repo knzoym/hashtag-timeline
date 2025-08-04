@@ -1,13 +1,14 @@
-// components/SearchPanel.js
 import React from "react";
+import { TimelineCardList } from "./TimelineCardList";
 
 export const SearchPanel = ({
   searchTerm,
   highlightedEvents,
-  createdTimelines,
+  timelines,
   onSearchChange,
   onCreateTimeline,
-  onViewTimeline,
+  onToggleTimeline,
+  onDeleteTimeline,
   getTopTagsFromSearch,
   styles,
 }) => {
@@ -49,32 +50,12 @@ export const SearchPanel = ({
       </button>
 
       {/* 作成済み年表一覧 */}
-      {createdTimelines.length > 0 && (
-        <div style={styles.timelineSection}>
-          <h3 style={styles.sectionTitle}>作成済み年表</h3>
-          <div style={styles.timelineList}>
-            {createdTimelines.slice(0, 3).map((timeline) => (
-              <div
-                key={timeline.id}
-                style={styles.timelineItem}
-                onClick={() => onViewTimeline(timeline)}
-              >
-                <div style={styles.timelineItemTitle}>
-                  {timeline.name}
-                </div>
-                <div style={styles.timelineItemInfo}>
-                  {timeline.eventCount}件 • {timeline.createdAt.toLocaleDateString()}
-                </div>
-              </div>
-            ))}
-            {createdTimelines.length > 3 && (
-              <div style={styles.timelineItemMore}>
-                +{createdTimelines.length - 3}件の年表
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <TimelineCardList
+        timelines={timelines}
+        onToggleTimeline={onToggleTimeline}
+        onDeleteTimeline={onDeleteTimeline}
+        styles={styles}
+      />
     </div>
   );
 };

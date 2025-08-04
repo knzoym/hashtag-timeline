@@ -131,45 +131,45 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     fontWeight: "500",
   },
   
-  // 年表一覧のスタイル
-  timelineSection: {
-    marginTop: "16px",
-  },
+//   // 年表一覧のスタイル
+//   timelineSection: {
+//     marginTop: "16px",
+//   },
   
-  timelineList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-  },
+//   timelineList: {
+//     display: "flex",
+//     flexDirection: "column",
+//     gap: "6px",
+//   },
   
-  timelineItem: {
-    padding: "8px",
-    backgroundColor: "#f3f4f6",
-    border: "1px solid #d1d5db",
-    borderRadius: "4px",
-    cursor: "pointer",
-    transition: "background-color 0.2s",
-  },
+//   timelineItem: {
+//     padding: "8px",
+//     backgroundColor: "#f3f4f6",
+//     border: "1px solid #d1d5db",
+//     borderRadius: "4px",
+//     cursor: "pointer",
+//     transition: "background-color 0.2s",
+//   },
   
-  timelineItemTitle: {
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: "2px",
-  },
+//   timelineItemTitle: {
+//     fontSize: "12px",
+//     fontWeight: "600",
+//     color: "#374151",
+//     marginBottom: "2px",
+//   },
   
-  timelineItemInfo: {
-    fontSize: "10px",
-    color: "#6b7280",
-  },
+//   timelineItemInfo: {
+//     fontSize: "10px",
+//     color: "#6b7280",
+//   },
   
-  timelineItemMore: {
-    padding: "6px 8px",
-    fontSize: "11px",
-    color: "#6b7280",
-    textAlign: "center",
-    fontStyle: "italic",
-  },
+//   timelineItemMore: {
+//     padding: "6px 8px",
+//     fontSize: "11px",
+//     color: "#6b7280",
+//     textAlign: "center",
+//     fontStyle: "italic",
+//   },
   
   // ドラッグ可能な年表カード
   timelineCard: {
@@ -206,4 +206,78 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     maxWidth: "250px",
     zIndex: 10,
   },
+
+  // 年表カードリスト用スタイル
+  timelineCardList: {
+    marginTop: "16px",
+  },
+  
+  cardContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  
+  timelineCard: {
+    padding: "8px",
+    border: "1px solid #e5e7eb",
+    borderRadius: "6px",
+    cursor: "pointer",
+    transition: "all 0.2s",
+    position: "relative"
+  },
+  
+  cardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "4px"
+  },
+  
+  cardTitle: {
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#374151",
+    flex: 1
+  },
+  
+  deleteButton: {
+    background: "none",
+    border: "none",
+    color: "#ef4444",
+    cursor: "pointer",
+    fontSize: "14px",
+    padding: "0",
+    width: "16px",
+    height: "16px",
+    marginLeft: "8px"
+  },
+  
+  cardInfo: {
+    fontSize: "10px",
+    color: "#6b7280",
+    marginBottom: "6px"
+  },
+  
+  cardTags: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "2px",
+    marginBottom: "4px"
+  },
+  
+  cardTag: {
+    padding: "1px 4px",
+    backgroundColor: "#f3f4f6",
+    color: "#374151",
+    fontSize: "9px",
+    borderRadius: "2px"
+  },
+  
+  visibilityIndicator: {
+    fontSize: "9px",
+    color: "#059669",
+    fontWeight: "500",
+    textAlign: "right"
+  }
 });
