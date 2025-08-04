@@ -1,0 +1,25 @@
+// constants/timelineConfig.js
+export const TIMELINE_CONFIG = {
+  START_YEAR: -5000,
+  END_YEAR: 5000,
+  BASE_PIXELS_PER_YEAR: 2,
+  DEFAULT_SCALE: 2.5,
+  DEFAULT_TARGET_YEAR: 2030,
+  
+  // イベント配置設定
+  EVENT_WIDTH: 120,
+  EVENT_HEIGHT: 40,
+  MIN_GAP: 10,
+  BASE_Y: 60,
+  MAX_LEVELS: 100,
+  
+  // ズーム設定
+  MIN_SCALE: 0.25,
+  MAX_SCALE: 500,
+  ZOOM_FACTOR: 0.1,
+  
+  // モーダル設定
+  MODAL_WIDTH: 320,
+  MODAL_MAX_HEIGHT: 480,
+  MODAL_MARGIN: 20,
+};
