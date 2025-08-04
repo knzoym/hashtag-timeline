@@ -1,5 +1,5 @@
 // HashtagTimeline.js (メインコンポーネント)
-import React, { useState, useRef, useCallback } from "react";
+import React, { useRef, useCallback } from "react";
 import { EventModal } from "../components/EventModal";
 import { TimelineModal } from "../components/TimelineModal";
 import { SearchPanel } from "../components/SearchPanel";
@@ -24,8 +24,6 @@ const HashtagTimeline = () => {
     panX,
     panY,
     timelineCardY,
-    events,
-    allTags,
     searchTerm,
     highlightedEvents,
     createdTimelines,
@@ -53,7 +51,6 @@ const HashtagTimeline = () => {
     deleteTimeline,
     adjustEventPositions,
     getTopTagsFromSearch,
-    getXFromYear,
     currentPixelsPerYear,
     truncateTitle,
     handleWheel,

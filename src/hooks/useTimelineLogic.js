@@ -9,6 +9,7 @@ import {
   getYearFromX,
   getXFromYear 
 } from "../utils/timelineUtils";
+import { useLocalStorage } from './useLocalStorage';
 
 export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY, isShiftPressed) => {
   // 基本状態
@@ -18,7 +19,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [timelineCardY, setTimelineCardY] = useState(100);
 
   // データ状態
-  const [events, setEvents] = useState(sampleEvents);
+  const [events, setEvents] = useLocalStorage('timeline-events', sampleEvents);
   const [allTags, setAllTags] = useState(initialTags);
 
   // 検索・フィルタリング状態
@@ -26,7 +27,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [highlightedEvents, setHighlightedEvents] = useState(new Set());
 
   // 年表管理状態
-  const [createdTimelines, setCreatedTimelines] = useState([]);
+  const [createdTimelines, setCreatedTimelines] = useLocalStorage('created-timelines', []);  
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [selectedTimeline, setSelectedTimeline] = useState(null);
 
@@ -177,34 +178,38 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
         });
 
         const rect = eventElement.getBoundingClientRect();
-        const timelineRect = timelineRef.current.getBoundingClientRect();
-        setModalPosition({
-          x: rect.left - timelineRect.left + rect.width / 2,
-          y: rect.top - timelineRect.top + rect.height,
-        });
+        const timelineRect = timelineRef.current?.getBoundingClientRect();
+        if (timelineRect) {
+          setModalPosition({
+            x: rect.left - timelineRect.left + rect.width / 2,
+            y: rect.top - timelineRect.top + rect.height,
+          });
+        }
         setIsModalOpen(true);
       }
       return;
     }
 
     // 新規イベント作成
-    const rect = timelineRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
+    if (timelineRef.current) {
+      const rect = timelineRef.current.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
 
-    const year = getYearFromX(clickX, currentPixelsPerYear, panX);
-    const clickDate = new Date(Math.round(year), 0, 1);
+      const year = getYearFromX(clickX, currentPixelsPerYear, panX);
+      const clickDate = new Date(Math.round(year), 0, 1);
 
-    setEditingEvent(null);
-    setNewEvent({
-      title: "",
-      description: "",
-      date: clickDate,
-      manualTags: [],
-    });
+      setEditingEvent(null);
+      setNewEvent({
+        title: "",
+        description: "",
+        date: clickDate,
+        manualTags: [],
+      });
 
-    setModalPosition({ x: clickX, y: clickY });
-    setIsModalOpen(true);
+      setModalPosition({ x: clickX, y: clickY });
+      setIsModalOpen(true);
+    }
   }, [events, currentPixelsPerYear, panX, timelineRef]);
 
   // イベント保存
@@ -276,8 +281,8 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const getAllCurrentTags = useCallback(() => {
     const extractedTags = extractTagsFromDescription(newEvent.description);
     const titleTag = newEvent.title.trim() ? [newEvent.title.trim()] : [];
-    const allTags = [...titleTag, ...extractedTags, ...newEvent.manualTags];
-    return [...new Set(allTags.filter((tag) => tag))];
+    const allCurrentTags = [...titleTag, ...extractedTags, ...newEvent.manualTags];
+    return [...new Set(allCurrentTags.filter((tag) => tag))];
   }, [newEvent.title, newEvent.description, newEvent.manualTags]);
 
   // 年表作成
@@ -320,11 +325,13 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     }
   }, []);
 
-  // マウス・ホイールイベント処理
+  // マウス・ホイールイベント処理（ref への依存を除去）
   const handleWheel = useCallback((e) => {
     if (isModalOpen) return;
 
     e.preventDefault();
+    if (!timelineRef.current) return;
+
     const rect = timelineRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const yearAtMouse = getYearFromX(mouseX, currentPixelsPerYear, panX);
@@ -344,16 +351,24 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
     setScale(newScale);
     setPanX(newPanX);
-  }, [scale, panX, currentPixelsPerYear, isModalOpen, timelineRef]);
+  }, [scale, panX, currentPixelsPerYear, isModalOpen]);
 
   const handleMouseDown = useCallback((e) => {
     if (isModalOpen) return;
     if (e.target.closest(".floating-panel") || e.target.closest(".timeline-card")) return;
 
-    isShiftPressed.current = e.shiftKey;
-    isDragging.current = true;
-    lastMouseX.current = e.clientX;
-    lastMouseY.current = e.clientY;
+    if (isShiftPressed.current !== undefined) {
+      isShiftPressed.current = e.shiftKey;
+    }
+    if (isDragging.current !== undefined) {
+      isDragging.current = true;
+    }
+    if (lastMouseX.current !== undefined) {
+      lastMouseX.current = e.clientX;
+    }
+    if (lastMouseY.current !== undefined) {
+      lastMouseY.current = e.clientY;
+    }
   }, [isModalOpen]);
 
   const handleMouseMove = useCallback((e) => {
@@ -384,14 +399,22 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   }, [panX, currentPixelsPerYear]);
 
   const handleMouseUp = useCallback(() => {
-    isDragging.current = false;
-    isCardDragging.current = false;
+    if (isDragging.current !== undefined) {
+      isDragging.current = false;
+    }
+    if (isCardDragging.current !== undefined) {
+      isCardDragging.current = false;
+    }
   }, []);
 
   const handleCardMouseDown = useCallback((e) => {
     e.stopPropagation();
-    isCardDragging.current = true;
-    lastMouseY.current = e.clientY;
+    if (isCardDragging.current !== undefined) {
+      isCardDragging.current = true;
+    }
+    if (lastMouseY.current !== undefined) {
+      lastMouseY.current = e.clientY;
+    }
   }, []);
 
   // キーボードイベント処理
@@ -430,6 +453,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     createTimeline, viewTimeline, closeTimelineModal, deleteTimeline,
     adjustEventPositions, getTopTagsFromSearch, getXFromYear, truncateTitle,
     handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleCardMouseDown,
-    handleEventChange, // setNewEventの代わり
+    handleEventChange,
   };
 };
