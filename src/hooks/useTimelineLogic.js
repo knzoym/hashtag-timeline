@@ -9,7 +9,6 @@ import {
   getYearFromX,
   getXFromYear 
 } from "../utils/timelineUtils";
-import { useLocalStorage } from './useLocalStorage';
 
 export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY, isShiftPressed) => {
   // 基本状態
@@ -19,7 +18,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [timelineCardY, setTimelineCardY] = useState(100);
 
   // データ状態
-  const [events, setEvents] = useLocalStorage('timeline-events', sampleEvents);
+  const [events, setEvents] = useState(sampleEvents);
   const [allTags, setAllTags] = useState(initialTags);
 
   // 検索・フィルタリング状態
@@ -27,9 +26,16 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [highlightedEvents, setHighlightedEvents] = useState(new Set());
 
   // 年表管理状態
-  const [createdTimelines, setCreatedTimelines] = useLocalStorage('created-timelines', []);  
+  const [createdTimelines, setCreatedTimelines] = useState([]);
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [selectedTimeline, setSelectedTimeline] = useState(null);
+  const [viewMode, setViewMode] = useState('main'); // 'main' | 'timeline'
+  const [activeTimeline, setActiveTimeline] = useState(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  
+  // 年表ビュー用の状態
+  const [timelineScale, setTimelineScale] = useState(2);
+  const [timelinePanX, setTimelinePanX] = useState(0);
 
   // UI状態
   const [isHelpOpen, setIsHelpOpen] = useState(true);
@@ -304,14 +310,69 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     };
 
     setCreatedTimelines(prev => [newTimeline, ...prev]);
-    alert(`「${timelineName}」を作成しました！（${filteredEvents.length}件のイベント）`);
-  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch]);
+    
+    // アニメーション付きで年表ビューに切り替え
+    setIsTransitioning(true);
+    setActiveTimeline(newTimeline);
+    
+    // 年表ビュー用の初期位置を計算
+    const years = filteredEvents.map(e => e.startDate.getFullYear());
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
+    const padding = Math.max(10, (maxYear - minYear) * 0.1);
+    const adjustedMinYear = Math.floor(minYear - padding);
+    
+    // 初期パン位置（最初のイベントが見える位置）
+    const initialTimelinePanX = Math.max(0, (window.innerWidth - 300) / 2 - (minYear - adjustedMinYear) * timelineScale * 50);
+    setTimelinePanX(initialTimelinePanX);
+    
+    setTimeout(() => {
+      setViewMode('timeline');
+      setIsTransitioning(false);
+      // 検索をクリア
+      setSearchTerm('');
+      setHighlightedEvents(new Set());
+    }, 100);
+  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch, timelineScale]);
 
   // 年表表示
   const viewTimeline = useCallback((timeline) => {
-    setSelectedTimeline(timeline);
-    setIsTimelineModalOpen(true);
+    setIsTransitioning(true);
+    setActiveTimeline(timeline);
+    
+    // 既存の年表を表示する場合の位置計算
+    const years = timeline.events.map(e => e.startDate.getFullYear());
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
+    const padding = Math.max(10, (maxYear - minYear) * 0.1);
+    const adjustedMinYear = Math.floor(minYear - padding);
+    
+    const initialTimelinePanX = Math.max(0, (window.innerWidth - 300) / 2 - (minYear - adjustedMinYear) * 2 * 50);
+    setTimelinePanX(initialTimelinePanX);
+    
+    setTimeout(() => {
+      setViewMode('timeline');
+      setIsTransitioning(false);
+    }, 100);
   }, []);
+
+  // メインビューに戻る
+  const backToMainView = useCallback(() => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setViewMode('main');
+      setActiveTimeline(null);
+      setIsTransitioning(false);
+    }, 300);
+  }, []);
+
+  // 年表ビューを閉じる（年表削除）
+  const closeTimelineView = useCallback(() => {
+    if (activeTimeline && window.confirm('この年表を削除しますか？')) {
+      setCreatedTimelines(prev => prev.filter(t => t.id !== activeTimeline.id));
+    }
+    backToMainView();
+  }, [activeTimeline, backToMainView]);
 
   const closeTimelineModal = useCallback(() => {
     setIsTimelineModalOpen(false);
@@ -445,12 +506,12 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     // 状態
     scale, panX, panY, timelineCardY, events, allTags, searchTerm, highlightedEvents,
     createdTimelines, isHelpOpen, isModalOpen, isTimelineModalOpen, modalPosition,
-    editingEvent, newEvent, selectedTimeline, currentPixelsPerYear,
+    editingEvent, newEvent, selectedTimeline, currentPixelsPerYear, viewMode, activeTimeline,
     
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
     saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
-    createTimeline, viewTimeline, closeTimelineModal, deleteTimeline,
+    createTimeline, viewTimeline, backToMainView, closeTimelineView, closeTimelineModal, deleteTimeline,
     adjustEventPositions, getTopTagsFromSearch, getXFromYear, truncateTitle,
     handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleCardMouseDown,
     handleEventChange,
