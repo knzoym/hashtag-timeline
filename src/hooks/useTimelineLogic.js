@@ -2,11 +2,11 @@
 import { useState, useCallback, useEffect } from "react";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { sampleEvents, initialTags } from "../utils/eventUtils";
-import { 
-  extractTagsFromDescription, 
+import {
+  extractTagsFromDescription,
   truncateTitle,
   getYearFromX,
-  getXFromYear 
+  getXFromYear
 } from "../utils/timelineUtils";
 
 export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY,) => {
@@ -20,7 +20,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
   const [panX, setPanX] = useState(() => calculateInitialPanX());
   const [panY, setPanY] = useState(0);
-  const [timelineCardY, setTimelineCardY] = useState(100);
 
   // データ状態
   const [events, setEvents] = useState(sampleEvents);
@@ -32,6 +31,8 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
   // 浮遊年表管理状態を修正
   const [Timelines, setCreatedTimelines] = useState([]);
+  const [draggingCardId, setDraggingCardId] = useState(null);
+  const [cardPositions, setCardPositions] = useState({});
 
   // UI状態
   const [isHelpOpen, setIsHelpOpen] = useState(true);
@@ -313,17 +314,21 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     };
 
     setCreatedTimelines(prev => [...prev, newTimeline]);
-    
+    setCardPositions(prev => ({
+        ...prev,
+        [newTimeline.id]: { x: 20, y: 200 + Timelines.length * 40 }
+    }));
+
     // 検索をクリア
     setSearchTerm('');
     setHighlightedEvents(new Set());
-  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch]);
+  }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch, Timelines.length]);
 
   // 年表の表示・非表示切り替え
   const toggleTimelineVisibility = useCallback((timelineId) => {
-    setCreatedTimelines(prev => 
-      prev.map(timeline => 
-        timeline.id === timelineId 
+    setCreatedTimelines(prev =>
+      prev.map(timeline =>
+        timeline.id === timelineId
           ? { ...timeline, isVisible: !timeline.isVisible }
           : timeline
       )
@@ -334,6 +339,11 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   const deleteTimeline = useCallback((timelineId) => {
     if (window.confirm('この年表を削除しますか？')) {
       setCreatedTimelines(prev => prev.filter(t => t.id !== timelineId));
+      setCardPositions(prev => {
+          const newPositions = {...prev};
+          delete newPositions[timelineId];
+          return newPositions;
+      });
     }
   }, []);
 
@@ -345,10 +355,10 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     visibleTimelines.forEach((timeline, timelineIndex) => {
       timeline.events.forEach(event => {
         const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
-        
+
         // 年表別のY座標オフセット
         const timelineYOffset = 200 + timelineIndex * 80; // 各年表を80px間隔で配置
-        
+
         timelineEvents.push({
           ...event,
           timelineId: timeline.id,
@@ -367,18 +377,21 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
   // 表示中の年表の軸線生成（新規）
   const getTimelineAxesForDisplay = useCallback(() => {
     const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
-    
+
     return visibleTimelines.map((timeline, timelineIndex) => {
       const yPosition = 215 + timelineIndex * 80; // 各年表の軸位置
-      
+
       // 年表の年代範囲を計算
+      if (timeline.events.length === 0) {
+        return null;
+      }
       const years = timeline.events.map(e => e.startDate.getFullYear());
       const minYear = Math.min(...years);
       const maxYear = Math.max(...years);
-      
+
       const startX = getXFromYear(minYear, currentPixelsPerYear, panX);
       const endX = getXFromYear(maxYear, currentPixelsPerYear, panX);
-      
+
       return {
         id: timeline.id,
         name: timeline.name,
@@ -389,7 +402,7 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
         minYear,
         maxYear
       };
-    });
+    }).filter(Boolean);
   }, [Timelines, currentPixelsPerYear, panX]);
 
   // マウス・ホイールイベント処理
@@ -451,31 +464,32 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
         lastMouseY.current = e.clientY;
     }
 
-    if (isCardDragging.current) {
+    if (isCardDragging.current && draggingCardId !== null) {
       const deltaY = e.clientY - lastMouseY.current;
-      setTimelineCardY((prev) => Math.max(80, Math.min(window.innerHeight - 100, prev + deltaY)));
+      setCardPositions(prev => ({
+          ...prev,
+          [draggingCardId]: {
+              ...(prev[draggingCardId] || { x: 20, y: 200 }),
+              y: Math.max(80, Math.min(window.innerHeight - 100, (prev[draggingCardId]?.y || 200) + deltaY))
+          }
+      }));
       lastMouseY.current = e.clientY;
     }
-  }, [panX, currentPixelsPerYear, isDragging, lastMouseX, lastMouseY, isCardDragging]);
+  }, [panX, currentPixelsPerYear, isDragging, lastMouseX, lastMouseY, isCardDragging, draggingCardId]);
 
   const handleMouseUp = useCallback(() => {
-    if (isDragging.current !== undefined) {
-      isDragging.current = false;
-    }
-    if (isCardDragging.current !== undefined) {
-      isCardDragging.current = false;
-    }
+    isDragging.current = false;
+    isCardDragging.current = false;
+    setDraggingCardId(null);
   }, [isDragging, isCardDragging]);
 
-  const handleCardMouseDown = useCallback((e) => {
-    e.stopPropagation();
-    if (isCardDragging.current !== undefined) {
+  const handleCardDragStart = useCallback((id, e) => {
+      e.stopPropagation();
       isCardDragging.current = true;
-    }
-    if (lastMouseY.current !== undefined) {
+      setDraggingCardId(id);
       lastMouseY.current = e.clientY;
-    }
   }, [isCardDragging, lastMouseY]);
+
 
   // キーボードイベント処理
   useEffect(() => {
@@ -503,17 +517,19 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
   return {
     // 状態
-    scale, panX, panY, timelineCardY, events, allTags, searchTerm, highlightedEvents,
+    scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
     isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
-    
+    draggingCardId,
+    cardPositions,
+    Timelines,
+
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
     saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
     createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
-    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp, handleCardMouseDown,
+    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
     handleEventChange,
-    
-    Timelines,
+    handleCardDragStart,
     toggleTimelineVisibility,
     deleteTimeline,
     getTimelineEventsForDisplay,
