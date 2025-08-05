@@ -339,61 +339,60 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
 
   // 表示中の年表のイベント配置計算（新規）
   const getTimelineEventsForDisplay = useCallback(() => {
-    const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
-    const timelineEvents = [];
+  const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
+  const timelineEvents = [];
 
-    visibleTimelines.forEach((timeline, timelineIndex) => {
-      timeline.events.forEach(event => {
-        const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+  visibleTimelines.forEach((timeline, timelineIndex) => {
+    timeline.events.forEach(event => {
+      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
 
-        // 年表別のY座標オフセット
-        const timelineYOffset = 200 + timelineIndex * 80; // 各年表を80px間隔で配置
+      // Apply panY offset to timeline Y position
+      const timelineYOffset = 200 + timelineIndex * 80 + panY;
 
-        timelineEvents.push({
-          ...event,
-          timelineId: timeline.id,
-          timelineName: timeline.name,
-          timelineColor: timeline.color,
-          displayX: eventX,
-          displayY: timelineYOffset,
-          timelineIndex
-        });
+      timelineEvents.push({
+        ...event,
+        timelineId: timeline.id,
+        timelineName: timeline.name,
+        timelineColor: timeline.color,
+        displayX: eventX,
+        displayY: timelineYOffset,
+        timelineIndex
       });
     });
+  });
 
-    return timelineEvents;
-  }, [Timelines, currentPixelsPerYear, panX]);
+  return timelineEvents;
+}, [Timelines, currentPixelsPerYear, panX, panY]);
 
   // 表示中の年表の軸線生成（新規）
   const getTimelineAxesForDisplay = useCallback(() => {
-    const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
+  const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
 
-    return visibleTimelines.map((timeline, timelineIndex) => {
-      const yPosition = 215 + timelineIndex * 80; // 各年表の軸位置
+  return visibleTimelines.map((timeline, timelineIndex) => {
+    const yPosition = 215 + timelineIndex * 80 + panY; // Apply panY offset
 
-      // 年表の年代範囲を計算
-      if (timeline.events.length === 0) {
-        return null;
-      }
-      const years = timeline.events.map(e => e.startDate.getFullYear());
-      const minYear = Math.min(...years);
-      const maxYear = Math.max(...years);
+    if (timeline.events.length === 0) {
+      return null;
+    }
+    const years = timeline.events.map(e => e.startDate.getFullYear());
+    const minYear = Math.min(...years);
+    const maxYear = Math.max(...years);
 
-      const startX = getXFromYear(minYear, currentPixelsPerYear, panX);
-      const endX = getXFromYear(maxYear, currentPixelsPerYear, panX);
+    const startX = getXFromYear(minYear, currentPixelsPerYear, panX);
+    const endX = getXFromYear(maxYear, currentPixelsPerYear, panX);
 
-      return {
-        id: timeline.id,
-        name: timeline.name,
-        color: timeline.color,
-        yPosition,
-        startX: Math.max(-100, startX),
-        endX: Math.min(window.innerWidth + 100, endX),
-        minYear,
-        maxYear
-      };
-    }).filter(Boolean);
-  }, [Timelines, currentPixelsPerYear, panX]);
+    return {
+      id: timeline.id,
+      name: timeline.name,
+      color: timeline.color,
+      yPosition,
+      startX: Math.max(-100, startX),
+      endX: Math.min(window.innerWidth + 100, endX),
+      minYear,
+      maxYear
+    };
+  }).filter(Boolean);
+}, [Timelines, currentPixelsPerYear, panX, panY]); 
 
   // マウス・ホイールイベント処理
   const handleWheel = useCallback((e) => {
@@ -485,19 +484,20 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
   }, []);
 
   return {
-    // 状態
-    scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
-    isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
-    Timelines,cardPositions,
+  // 状態
+  scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
+  isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
+  Timelines, cardPositions,
 
-    // 関数
-    setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
-    saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
-    createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
-    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
-    handleEventChange,
-    deleteTimeline,
-    getTimelineEventsForDisplay,
-    getTimelineAxesForDisplay,setCardPositions,
+  // 関数 (add the updated functions)
+  setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
+  saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
+  createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
+  handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
+  handleEventChange,
+  deleteTimeline,
+  getTimelineEventsForDisplay,
+  getTimelineAxesForDisplay,
+  setCardPositions,
   };
 };

@@ -197,7 +197,6 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     backgroundColor: "#f9fafb",
     border: "1px solid #e5e7eb",
     borderRadius: "8px",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
     cursor: "move",
     zIndex: 9,
   },

@@ -18,30 +18,58 @@ const HashtagTimeline = () => {
   // カスタムフックから必要な状態と関数を取得
   const {
     // 状態
-    scale, panX, panY, searchTerm, highlightedEvents,
-    isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent,
-    currentPixelsPerYear, cardPositions,
-    
+    scale,
+    panX,
+    panY,
+    searchTerm,
+    highlightedEvents,
+    isHelpOpen,
+    isModalOpen,
+    modalPosition,
+    editingEvent,
+    newEvent,
+    currentPixelsPerYear,
+    cardPositions,
+
     // 関数
-    setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
-    saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
-    createTimeline, adjustEventPositions, getTopTagsFromSearch,
-    truncateTitle, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
+    setIsHelpOpen,
+    resetToInitialPosition,
+    handleSearchChange,
+    handleDoubleClick,
+    saveEvent,
+    closeModal,
+    addManualTag,
+    removeManualTag,
+    getAllCurrentTags,
+    createTimeline,
+    adjustEventPositions,
+    getTopTagsFromSearch,
+    truncateTitle,
+    handleWheel,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
     handleEventChange,
-    
+
     Timelines,
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
     setCardPositions,
-  } = useTimelineLogic(timelineRef, isDragging, lastMouseX, lastMouseY, isShiftPressed);
+  } = useTimelineLogic(
+    timelineRef,
+    isDragging,
+    lastMouseX,
+    lastMouseY,
+    isShiftPressed
+  );
 
   // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
     const markers = [];
     const adjustedScale = scale / 2.5;
     let yearInterval;
-    
+
     if (adjustedScale > 12) yearInterval = 1;
     else if (adjustedScale > 6) yearInterval = 2;
     else if (adjustedScale > 2) yearInterval = 5;
@@ -53,7 +81,7 @@ const HashtagTimeline = () => {
     else yearInterval = 1000;
 
     for (let year = -5000; year <= 5000; year += yearInterval) {
-      const x = (year - (-5000)) * currentPixelsPerYear + panX;
+      const x = (year - -5000) * currentPixelsPerYear + panX;
       if (x > -100 && x < window.innerWidth + 100) {
         markers.push(
           <div
@@ -104,14 +132,12 @@ const HashtagTimeline = () => {
     <div style={styles.app}>
       {/* ヘッダー */}
       <div style={styles.header}>
-        <div style={styles.headerLeft}>
-            
+        <div style={styles.headerLeft}></div>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <h1 style={styles.title}>#ハッシュタグ年表</h1>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h1 style={styles.title}>#ハッシュタグ年表</h1>
-            </div>
         <div style={styles.headerRight}>
-          <button 
+          <button
             style={styles.resetButton}
             onClick={resetToInitialPosition}
             title="初期位置に戻す"
@@ -139,8 +165,8 @@ const HashtagTimeline = () => {
         {generateYearMarkers()}
 
         {/* イベントを追加ボタン */}
-        <div className="floating-panel" >
-            <button style={styles.addButton}>+ イベントを追加</button>
+        <div className="floating-panel">
+          <button style={styles.addButton}>+ イベントを追加</button>
         </div>
 
         {/* 検索パネル */}
@@ -172,25 +198,32 @@ const HashtagTimeline = () => {
                 userSelect: "none",
               }}
             >
-              <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
+              <div
+                style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
+              >
                 {event.startDate.getFullYear()}
               </div>
               <div
                 style={{
-                  padding: "4px 8px", 
-                  borderRadius: "4px", 
-                  color: "white", 
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  color: "white",
                   fontWeight: "500",
-                  fontSize: "11px", 
-                  minWidth: "60px", 
+                  fontSize: "11px",
+                  minWidth: "60px",
                   maxWidth: "120px",
-                  backgroundColor: isHighlighted ? "#10b981" : 
-                    event.id === 1 || event.id === 2 ? (event.id === 1 ? "#3b82f6" : "#ef4444") : "#6b7280",
+                  backgroundColor: isHighlighted
+                    ? "#10b981"
+                    : event.id === 1 || event.id === 2
+                    ? event.id === 1
+                      ? "#3b82f6"
+                      : "#ef4444"
+                    : "#6b7280",
                   border: isHighlighted ? "2px solid #059669" : "none",
-                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)", 
+                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                   lineHeight: "1.1",
-                  whiteSpace: "nowrap", 
-                  overflow: "hidden", 
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
                   textOverflow: "ellipsis",
                 }}
               >
@@ -206,6 +239,7 @@ const HashtagTimeline = () => {
             key={timeline.id}
             timeline={timeline}
             position={cardPositions[timeline.id] || { x: 20, y: 200 }}
+            panY={panY} // Pass panY prop
             onDeleteTimeline={deleteTimeline}
           />
         ))}
@@ -224,10 +258,10 @@ const HashtagTimeline = () => {
                 backgroundColor: axis.color,
                 opacity: 0.8,
                 zIndex: 2,
-                borderRadius: "1px"
+                borderRadius: "1px",
               }}
             />
-            
+
             {/* 年代範囲ラベル */}
             <div
               style={{
@@ -241,7 +275,7 @@ const HashtagTimeline = () => {
                 borderRadius: "2px",
                 border: `1px solid ${axis.color}`,
                 zIndex: 3,
-                whiteSpace: "nowrap"
+                whiteSpace: "nowrap",
               }}
             >
               {axis.minYear}年-{axis.maxYear}年
@@ -260,7 +294,7 @@ const HashtagTimeline = () => {
               transform: "translateX(-50%)",
               zIndex: 4,
               textAlign: "center",
-              userSelect: "none"
+              userSelect: "none",
             }}
           >
             {/* 接続線 */}
@@ -274,10 +308,10 @@ const HashtagTimeline = () => {
                 backgroundColor: event.timelineColor,
                 transform: "translateX(-50%)",
                 zIndex: 1,
-                opacity: 0.7
+                opacity: 0.7,
               }}
             />
-            
+
             {/* イベントカード */}
             <div
               style={{
@@ -294,22 +328,21 @@ const HashtagTimeline = () => {
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
-                border: "1px solid rgba(255,255,255,0.3)"
+                border: "1px solid rgba(255,255,255,0.3)",
               }}
               title={`${event.title} (${event.timelineName})`}
             >
-              {event.title.length > 8 
+              {event.title.length > 8
                 ? event.title.substring(0, 8) + "..."
-                : event.title
-              }
+                : event.title}
             </div>
-            
+
             {/* 年表示 */}
             <div
               style={{
                 fontSize: "8px",
                 color: "#666",
-                marginTop: "1px"
+                marginTop: "1px",
               }}
             >
               {event.startDate.getFullYear()}
@@ -321,12 +354,12 @@ const HashtagTimeline = () => {
         <div
           style={{
             position: "absolute",
-            left: (2025.6 - (-5000)) * currentPixelsPerYear + panX,
-            top: 0, 
-            height: "100%", 
-            borderLeft: "2px solid #f59e0b", 
+            left: (2025.6 - -5000) * currentPixelsPerYear + panX,
+            top: 0,
+            height: "100%",
+            borderLeft: "2px solid #f59e0b",
             pointerEvents: "none",
-            opacity: 0.8
+            opacity: 0.8,
           }}
         >
           <div
@@ -339,7 +372,7 @@ const HashtagTimeline = () => {
               backgroundColor: "rgba(255,255,255,0.9)",
               padding: "2px 6px",
               borderRadius: "3px",
-              fontWeight: "600"
+              fontWeight: "600",
             }}
           >
             現在 (2025)
@@ -347,7 +380,7 @@ const HashtagTimeline = () => {
         </div>
 
         {/* ヘルプボックス */}
-        <HelpBox 
+        <HelpBox
           isHelpOpen={isHelpOpen}
           setIsHelpOpen={setIsHelpOpen}
           highlightedEvents={highlightedEvents}

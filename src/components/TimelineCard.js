@@ -1,10 +1,9 @@
-// knzoym/hashtag-timelines-0803/hashtag-timelines-0803-6c2918e298262dcf0566350fe33b38edad9bea2d/src/components/TimelineCard.js
-// components/TimelineCard.js
 import React from "react";
 
 export const TimelineCard = ({
   timeline,
   position,
+  panY, // Add panY prop
   onDeleteTimeline,
 }) => {
   return (
@@ -12,20 +11,18 @@ export const TimelineCard = ({
       style={{
         position: "absolute",
         left: "20px",
-        top: position.y + "px",
+        top: (position.y + panY) + "px", // Apply panY offset
         width: "240px",
         padding: "12px",
         backgroundColor: "#f9fafb",
         border: "1px solid #e5e7eb",
         borderRadius: "8px",
-        boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
         cursor: "default",
         zIndex: 10,
         userSelect: "none",
-        transition: "all 0.2s ease",
       }}
     >
-      {/* ヘッダー */}
+      {/* Rest of the component remains the same */}
       <div style={{
         display: "flex",
         justifyContent: "space-between",
@@ -66,7 +63,6 @@ export const TimelineCard = ({
         </button>
       </div>
 
-      {/* 統計情報 */}
       <div style={{
         fontSize: "12px",
         color: "#6b7280",
@@ -75,7 +71,6 @@ export const TimelineCard = ({
         {timeline.eventCount}件のイベント • {timeline.createdAt.toLocaleDateString()}
       </div>
 
-      {/* 年代範囲 */}
       {timeline.events.length > 0 && (
         <div style={{
           fontSize: "11px",
@@ -87,7 +82,6 @@ export const TimelineCard = ({
         </div>
       )}
 
-      {/* タグ */}
       {timeline.tags.length > 0 && (
         <div style={{
           display: "flex",
