@@ -1,5 +1,4 @@
 import React from "react";
-import { TimelineCardList } from "./TimelineCardList";
 
 export const SearchPanel = ({
   searchTerm,
@@ -13,7 +12,7 @@ export const SearchPanel = ({
   styles,
 }) => {
   return (
-    <div className="floating-panel" style={styles.floatingPanel}>
+    <div className="floating-panel" style={styles.searchPanel}>
       {/* 検索入力 */}
       <input
         type="text"
@@ -23,7 +22,7 @@ export const SearchPanel = ({
         style={styles.searchInput}
       />
 
-      {/* 上位タグ表示 */}
+      {/* 上位タグ表示
       <div style={styles.tagSection}>
         <h3 style={styles.sectionTitle}>上位タグ</h3>
         <div style={styles.tagContainer}>
@@ -33,7 +32,7 @@ export const SearchPanel = ({
             </span>
           ))}
         </div>
-      </div>
+      </div> */}
 
       {/* 年表作成ボタン */}
       <button
@@ -49,13 +48,6 @@ export const SearchPanel = ({
         {highlightedEvents.size > 0 && `(${highlightedEvents.size})`}
       </button>
 
-      {/* 作成済み年表一覧 */}
-      <TimelineCardList
-        timelines={timelines}
-        onToggleTimeline={onToggleTimeline}
-        onDeleteTimeline={onDeleteTimeline}
-        styles={styles}
-      />
     </div>
   );
 };

@@ -5,6 +5,7 @@ import { SearchPanel } from "../components/SearchPanel";
 import { HelpBox } from "../components/HelpBox";
 import { useTimelineLogic } from "../hooks/useTimelineLogic";
 import { createTimelineStyles } from "../styles/timelineStyles";
+import { TimelineCardList } from "../components/TimelineCardList";
 
 const HashtagTimeline = () => {
   // メインの状態管理
@@ -29,7 +30,7 @@ const HashtagTimeline = () => {
     truncateTitle, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
     handleCardMouseDown, handleEventChange,
     
-    createdTimelines,
+    Timelines,
     toggleTimelineVisibility,
     deleteTimeline,
     getTimelineEventsForDisplay,
@@ -104,9 +105,12 @@ const HashtagTimeline = () => {
     <div style={styles.app}>
       {/* ヘッダー */}
       <div style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <h1 style={styles.title}>#ハッシュタグ年表</h1>
+        <div style={styles.headerLeft}>
+            
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <h1 style={styles.title}>#ハッシュタグ年表</h1>
+            </div>
         <div style={styles.headerRight}>
           <button 
             style={styles.resetButton}
@@ -115,7 +119,6 @@ const HashtagTimeline = () => {
           >
             🏠 初期位置
           </button>
-          <button style={styles.addButton}>+ イベントを追加</button>
           <span style={styles.zoomInfo}>
             ズーム: {(scale / 2.5).toFixed(1)}x
           </span>
@@ -136,11 +139,15 @@ const HashtagTimeline = () => {
         {/* 年マーカー */}
         {generateYearMarkers()}
 
+        {/* イベントを追加ボタン */}
+        <div className="floating-panel" >
+            <button style={styles.addButton}>+ イベントを追加</button>
+        </div>
+
         {/* 修正された検索パネル */}
         <SearchPanel
           searchTerm={searchTerm}
           highlightedEvents={highlightedEvents}
-          timelines={createdTimelines}
           onSearchChange={handleSearchChange}
           onCreateTimeline={createTimeline}
           onToggleTimeline={toggleTimelineVisibility}
@@ -194,6 +201,12 @@ const HashtagTimeline = () => {
             </div>
           );
         })}
+
+        {/* 年表カード */}
+        <TimelineCardList
+            timelines={Timelines}
+            styles={styles}
+        />
 
         {/* 年表軸線の描画（新規） */}
         {getTimelineAxesForDisplay().map((axis) => (

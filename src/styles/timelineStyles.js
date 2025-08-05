@@ -5,9 +5,10 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     height: "100vh",
     backgroundColor: "white",
     overflow: "hidden",
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
-  
+
   header: {
     position: "relative",
     backgroundColor: "#f5f3ed",
@@ -15,34 +16,31 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     height: "64px",
     display: "flex",
     alignItems: "center",
-    padding: "0 16px",
+    padding: "0 25px",
     boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
     zIndex: 15,
   },
-  
+
   title: {
     fontSize: "20px",
     fontWeight: "bold",
     color: "#374151",
   },
-  
+
+  headerLeft: {
+    marginRight: "auto",
+    display: "flex",
+    alignItems: "center",
+    gap: "24px",
+  },
+
   headerRight: {
     marginLeft: "auto",
     display: "flex",
     alignItems: "center",
     gap: "16px",
   },
-  
-  addButton: {
-    backgroundColor: "#e29548ff",
-    color: "white",
-    padding: "8px 16px",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontWeight: "500",
-  },
-  
+
   resetButton: {
     backgroundColor: "#6b7280",
     color: "white",
@@ -56,12 +54,12 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     alignItems: "center",
     gap: "4px",
   },
-  
+
   zoomInfo: {
     fontSize: "14px",
     color: "#6b7280",
   },
-  
+
   timeline: {
     width: "100vw",
     height: "calc(100vh - 64px)",
@@ -69,9 +67,9 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     backgroundColor: "white",
     cursor: isDragging ? "grabbing" : "grab",
   },
-  
-  // 浮遊する検索パネル
-  floatingPanel: {
+
+  // FAB検索パネル
+  searchPanel: {
     position: "absolute",
     top: "20px",
     left: "20px",
@@ -83,7 +81,25 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     zIndex: 10,
     padding: "16px",
   },
-  
+
+  // FABイベントを追加ボタン
+  addButton: {
+    position: "absolute",
+    top: "40px",
+    right: "25px",
+    backgroundColor: "#e29548ff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "8px",
+    color: "white",
+    padding: "8px 16px",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "500",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+    zIndex: 10,
+  },
+
   searchInput: {
     width: "100%",
     padding: "8px 12px",
@@ -93,24 +109,24 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     fontSize: "14px",
     boxSizing: "border-box",
   },
-  
+
   tagSection: {
     marginBottom: "16px",
   },
-  
+
   sectionTitle: {
     fontSize: "14px",
     fontWeight: "600",
     color: "#374151",
     marginBottom: "8px",
   },
-  
+
   tagContainer: {
     display: "flex",
     flexWrap: "wrap",
     gap: "4px",
   },
-  
+
   tag: {
     padding: "4px 8px",
     backgroundColor: "#c8eaeeff",
@@ -119,7 +135,7 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     border: "1px solid #319ca5ff",
     borderRadius: "4px",
   },
-  
+
   createButton: {
     width: "100%",
     backgroundColor: "#319ca5ff",
@@ -130,47 +146,47 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     cursor: "pointer",
     fontWeight: "500",
   },
-  
-//   // 年表一覧のスタイル
-//   timelineSection: {
-//     marginTop: "16px",
-//   },
-  
-//   timelineList: {
-//     display: "flex",
-//     flexDirection: "column",
-//     gap: "6px",
-//   },
-  
-//   timelineItem: {
-//     padding: "8px",
-//     backgroundColor: "#f3f4f6",
-//     border: "1px solid #d1d5db",
-//     borderRadius: "4px",
-//     cursor: "pointer",
-//     transition: "background-color 0.2s",
-//   },
-  
-//   timelineItemTitle: {
-//     fontSize: "12px",
-//     fontWeight: "600",
-//     color: "#374151",
-//     marginBottom: "2px",
-//   },
-  
-//   timelineItemInfo: {
-//     fontSize: "10px",
-//     color: "#6b7280",
-//   },
-  
-//   timelineItemMore: {
-//     padding: "6px 8px",
-//     fontSize: "11px",
-//     color: "#6b7280",
-//     textAlign: "center",
-//     fontStyle: "italic",
-//   },
-  
+
+  //   // 年表一覧のスタイル
+  //   timelineSection: {
+  //     marginTop: "16px",
+  //   },
+
+  //   timelineList: {
+  //     display: "flex",
+  //     flexDirection: "column",
+  //     gap: "6px",
+  //   },
+
+  //   timelineItem: {
+  //     padding: "8px",
+  //     backgroundColor: "#f3f4f6",
+  //     border: "1px solid #d1d5db",
+  //     borderRadius: "4px",
+  //     cursor: "pointer",
+  //     transition: "background-color 0.2s",
+  //   },
+
+  //   timelineItemTitle: {
+  //     fontSize: "12px",
+  //     fontWeight: "600",
+  //     color: "#374151",
+  //     marginBottom: "2px",
+  //   },
+
+  //   timelineItemInfo: {
+  //     fontSize: "10px",
+  //     color: "#6b7280",
+  //   },
+
+  //   timelineItemMore: {
+  //     padding: "6px 8px",
+  //     fontSize: "11px",
+  //     color: "#6b7280",
+  //     textAlign: "center",
+  //     fontStyle: "italic",
+  //   },
+
   // ドラッグ可能な年表カード
   timelineCard: {
     position: "absolute",
@@ -185,7 +201,7 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     cursor: "move",
     zIndex: 9,
   },
-  
+
   timelineTitle: {
     fontSize: "14px",
     fontWeight: "600",
@@ -193,7 +209,7 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     marginTop: "0px",
     userSelect: "none",
   },
-  
+
   helpBox: {
     position: "absolute",
     bottom: "16px",
@@ -211,36 +227,36 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
   timelineCardList: {
     marginTop: "16px",
   },
-  
+
   cardContainer: {
     display: "flex",
     flexDirection: "column",
     gap: "8px",
   },
-  
+
   timelineCard: {
     padding: "8px",
     border: "1px solid #e5e7eb",
     borderRadius: "6px",
     cursor: "pointer",
     transition: "all 0.2s",
-    position: "relative"
+    position: "relative",
   },
-  
+
   cardHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: "4px"
+    marginBottom: "4px",
   },
-  
+
   cardTitle: {
     fontSize: "12px",
     fontWeight: "600",
     color: "#374151",
-    flex: 1
+    flex: 1,
   },
-  
+
   deleteButton: {
     background: "none",
     border: "none",
@@ -250,34 +266,34 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     padding: "0",
     width: "16px",
     height: "16px",
-    marginLeft: "8px"
+    marginLeft: "8px",
   },
-  
+
   cardInfo: {
     fontSize: "10px",
     color: "#6b7280",
-    marginBottom: "6px"
+    marginBottom: "6px",
   },
-  
+
   cardTags: {
     display: "flex",
     flexWrap: "wrap",
     gap: "2px",
-    marginBottom: "4px"
+    marginBottom: "4px",
   },
-  
+
   cardTag: {
     padding: "1px 4px",
     backgroundColor: "#f3f4f6",
     color: "#374151",
     fontSize: "9px",
-    borderRadius: "2px"
+    borderRadius: "2px",
   },
-  
+
   visibilityIndicator: {
     fontSize: "9px",
     color: "#059669",
     fontWeight: "500",
-    textAlign: "right"
-  }
+    textAlign: "right",
+  },
 });
