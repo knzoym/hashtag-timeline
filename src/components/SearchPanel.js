@@ -6,9 +6,6 @@ export const SearchPanel = ({
   timelines,
   onSearchChange,
   onCreateTimeline,
-  onToggleTimeline,
-  onDeleteTimeline,
-  getTopTagsFromSearch,
   styles,
 }) => {
   return (

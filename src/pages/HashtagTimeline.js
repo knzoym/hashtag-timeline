@@ -31,7 +31,6 @@ const HashtagTimeline = () => {
     handleCardMouseDown, handleEventChange, handleCardDragStart,
     
     Timelines,
-    toggleTimelineVisibility,
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
@@ -150,8 +149,6 @@ const HashtagTimeline = () => {
           highlightedEvents={highlightedEvents}
           onSearchChange={handleSearchChange}
           onCreateTimeline={createTimeline}
-          onToggleTimeline={toggleTimelineVisibility}
-          onDeleteTimeline={deleteTimeline}
           getTopTagsFromSearch={getTopTagsFromSearch}
           styles={styles}
         />
@@ -208,7 +205,6 @@ const HashtagTimeline = () => {
             key={timeline.id}
             timeline={timeline}
             position={cardPositions[timeline.id] || { x: 20, y: 200 }}
-            onToggleTimeline={toggleTimelineVisibility}
             onDeleteTimeline={deleteTimeline}
             onCardDragStart={handleCardDragStart}
             isDragging={draggingCardId === timeline.id}

@@ -38,28 +38,16 @@ export const TimelineCard = ({
       }}
       onMouseDown={handleMouseDown}
     >
-      {/* ヘッダー */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        marginBottom: "8px"
-      }}>
-        <div style={{
-          fontSize: "14px",
-          fontWeight: "600",
-          color: "#374151",
-          flex: 1,
-          lineHeight: "1.2"
-        }}>
-          {timeline.name}
-        </div>
-        <button
+    {/* 年表削除ボタン */}
+    <button
           onClick={(e) => {
             e.stopPropagation();
             onDeleteTimeline(timeline.id);
           }}
           style={{
+            position: "absolute",
+            right: "10px",
+            top: "10px",
             background: "none",
             border: "none",
             color: "#ef4444",
@@ -77,15 +65,22 @@ export const TimelineCard = ({
         >
           ×
         </button>
-      </div>
-
-      {/* 統計情報 */}
+      {/* ヘッダー */}
       <div style={{
-        fontSize: "12px",
-        color: "#6b7280",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
         marginBottom: "8px"
       }}>
-        {timeline.eventCount}件のイベント • {timeline.createdAt.toLocaleDateString()}
+        <div style={{
+          fontSize: "14px",
+          fontWeight: "600",
+          color: "#374151",
+          flex: 1,
+          lineHeight: "1.2"
+        }}>
+          {timeline.name}({timeline.eventCount})
+        </div>
       </div>
 
       {/* 年代範囲 */}
@@ -106,7 +101,6 @@ export const TimelineCard = ({
           display: "flex",
           flexWrap: "wrap",
           gap: "4px",
-          marginBottom: "10px"
         }}>
           {timeline.tags.slice(0, 4).map((tag) => (
             <span
@@ -134,48 +128,6 @@ export const TimelineCard = ({
           )}
         </div>
       )}
-
-      {/* 表示切り替えボタン */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleTimeline(timeline.id);
-        }}
-        style={{
-          width: "100%",
-          padding: "6px 12px",
-          backgroundColor: timeline.isVisible ? "#0891b2" : "#6b7280",
-          color: "white",
-          border: "none",
-          borderRadius: "4px",
-          cursor: "pointer",
-          fontSize: "12px",
-          fontWeight: "500",
-          transition: "background-color 0.2s"
-        }}
-      >
-        {timeline.isVisible ? "非表示にする" : "表示する"}
-      </button>
-
-      {/* ドラッグハンドル */}
-      <div style={{
-        position: "absolute",
-        right: "8px",
-        top: "8px",
-        width: "16px",
-        height: "16px",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "2px",
-        cursor: "grab",
-        opacity: 0.5
-      }}>
-        <div style={{ width: "3px", height: "3px", backgroundColor: "#9ca3af", borderRadius: "50%" }} />
-        <div style={{ width: "3px", height: "3px", backgroundColor: "#9ca3af", borderRadius: "50%" }} />
-        <div style={{ width: "3px", height: "3px", backgroundColor: "#9ca3af", borderRadius: "50%" }} />
-      </div>
     </div>
   );
 };
