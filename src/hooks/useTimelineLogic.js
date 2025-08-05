@@ -312,11 +312,13 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
       color: `hsl(${Math.random() * 360}, 60%, 50%)` // ランダムな色を割り当て
     };
 
-    setCreatedTimelines(prev => [...prev, newTimeline]);
-    setCardPositions(prev => ({
-        ...prev,
-        [newTimeline.id]: { x: 20, y: 200 + Timelines.length * 100 }
-    }));
+    setCreatedTimelines(prevTimelines => {
+      setCardPositions(prevCardPositions => ({
+        ...prevCardPositions,
+        [newTimeline.id]: { x: 20, y: 200 + prevTimelines.length * 100 }
+      }));
+      return [...prevTimelines, newTimeline];
+    });
 
     // 検索をクリア
     setSearchTerm('');
@@ -486,7 +488,7 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
     // 状態
     scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
     isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
-    Timelines,
+    Timelines,cardPositions,
 
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
@@ -496,6 +498,6 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
     handleEventChange,
     deleteTimeline,
     getTimelineEventsForDisplay,
-    getTimelineAxesForDisplay,
+    getTimelineAxesForDisplay,setCardPositions,
   };
 };

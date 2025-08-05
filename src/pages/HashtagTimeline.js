@@ -33,6 +33,7 @@ const HashtagTimeline = () => {
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
+    setCardPositions,
   } = useTimelineLogic(timelineRef, isDragging, lastMouseX, lastMouseY, isShiftPressed);
 
   // 年表マーカー生成
