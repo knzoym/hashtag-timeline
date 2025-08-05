@@ -316,24 +316,13 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     setCreatedTimelines(prev => [...prev, newTimeline]);
     setCardPositions(prev => ({
         ...prev,
-        [newTimeline.id]: { x: 20, y: 200 + Timelines.length * 40 }
+        [newTimeline.id]: { x: 20, y: 200 + Timelines.length * 100 }
     }));
 
     // 検索をクリア
     setSearchTerm('');
     setHighlightedEvents(new Set());
   }, [highlightedEvents, events, searchTerm, getTopTagsFromSearch, Timelines.length]);
-
-  // 年表の表示・非表示切り替え
-  const toggleTimelineVisibility = useCallback((timelineId) => {
-    setCreatedTimelines(prev =>
-      prev.map(timeline =>
-        timeline.id === timelineId
-          ? { ...timeline, isVisible: !timeline.isVisible }
-          : timeline
-      )
-    );
-  }, []);
 
   // 年表削除
   const deleteTimeline = useCallback((timelineId) => {
@@ -530,7 +519,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
     handleEventChange,
     handleCardDragStart,
-    toggleTimelineVisibility,
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
