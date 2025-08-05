@@ -1,11 +1,11 @@
-// HashtagTimeline.js (修正版)
+// HashtagTimeline.js (TimelineCard統合版)
 import React, { useRef, useCallback } from "react";
 import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
 import { HelpBox } from "../components/HelpBox";
+import { TimelineCard } from "../components/TimelineCard";
 import { useTimelineLogic } from "../hooks/useTimelineLogic";
 import { createTimelineStyles } from "../styles/timelineStyles";
-import { TimelineCardList } from "../components/TimelineCardList";
 
 const HashtagTimeline = () => {
   // メインの状態管理
@@ -21,14 +21,14 @@ const HashtagTimeline = () => {
     // 状態
     scale, panX, panY, timelineCardY, searchTerm, highlightedEvents,
     isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent,
-    currentPixelsPerYear,
+    currentPixelsPerYear, draggingCardId, cardPositions,
     
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
     saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
     createTimeline, adjustEventPositions, getTopTagsFromSearch,
     truncateTitle, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
-    handleCardMouseDown, handleEventChange,
+    handleCardMouseDown, handleEventChange, handleCardDragStart,
     
     Timelines,
     toggleTimelineVisibility,
@@ -144,7 +144,7 @@ const HashtagTimeline = () => {
             <button style={styles.addButton}>+ イベントを追加</button>
         </div>
 
-        {/* 修正された検索パネル */}
+        {/* 検索パネル */}
         <SearchPanel
           searchTerm={searchTerm}
           highlightedEvents={highlightedEvents}
@@ -156,7 +156,7 @@ const HashtagTimeline = () => {
           styles={styles}
         />
 
-        {/* イベント表示 */}
+        {/* メインタイムラインのイベント表示 */}
         {adjustEventPositions().map((event) => {
           const isHighlighted = highlightedEvents.has(event.id);
           return (
@@ -203,50 +203,58 @@ const HashtagTimeline = () => {
         })}
 
         {/* 年表カード */}
-        <TimelineCardList
-            timelines={Timelines}
-            styles={styles}
-        />
+        {Timelines.map((timeline) => (
+          <TimelineCard
+            key={timeline.id}
+            timeline={timeline}
+            position={cardPositions[timeline.id] || { x: 20, y: 200 }}
+            onToggleTimeline={toggleTimelineVisibility}
+            onDeleteTimeline={deleteTimeline}
+            onCardDragStart={handleCardDragStart}
+            isDragging={draggingCardId === timeline.id}
+          />
+        ))}
 
-        {/* 年表軸線の描画（新規） */}
+        {/* 年表軸線の描画 */}
         {getTimelineAxesForDisplay().map((axis) => (
           <div key={`axis-${axis.id}`}>
-            {/* 年表名ラベル */}
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(20, axis.startX - 100),
-                top: axis.yPosition - 15,
-                fontSize: "12px",
-                fontWeight: "600",
-                color: axis.color,
-                backgroundColor: "rgba(255,255,255,0.9)",
-                padding: "2px 6px",
-                borderRadius: "3px",
-                border: `1px solid ${axis.color}`,
-                zIndex: 3
-              }}
-            >
-              {axis.name} ({axis.minYear}年-{axis.maxYear}年)
-            </div>
-            
             {/* 年表軸線 */}
             <div
               style={{
                 position: "absolute",
                 left: axis.startX,
                 top: axis.yPosition,
-                width: axis.endX - axis.startX,
+                width: Math.max(0, axis.endX - axis.startX),
                 height: "3px",
                 backgroundColor: axis.color,
-                opacity: 0.7,
-                zIndex: 2
+                opacity: 0.8,
+                zIndex: 2,
+                borderRadius: "1px"
               }}
             />
+            
+            {/* 年代範囲ラベル */}
+            <div
+              style={{
+                position: "absolute",
+                left: Math.max(20, axis.startX),
+                top: axis.yPosition + 8,
+                fontSize: "10px",
+                color: axis.color,
+                backgroundColor: "rgba(255,255,255,0.9)",
+                padding: "1px 4px",
+                borderRadius: "2px",
+                border: `1px solid ${axis.color}`,
+                zIndex: 3,
+                whiteSpace: "nowrap"
+              }}
+            >
+              {axis.minYear}年-{axis.maxYear}年
+            </div>
           </div>
         ))}
 
-        {/* 年表イベントの描画（新規） */}
+        {/* 年表イベントの描画 */}
         {getTimelineEventsForDisplay().map((event) => (
           <div
             key={`timeline-${event.timelineId}-event-${event.id}`}
@@ -265,12 +273,13 @@ const HashtagTimeline = () => {
               style={{
                 position: "absolute",
                 left: "50%",
-                top: "15px",
+                top: "20px",
                 width: "2px",
-                height: "15px",
+                height: "25px",
                 backgroundColor: event.timelineColor,
                 transform: "translateX(-50%)",
-                zIndex: 1
+                zIndex: 1,
+                opacity: 0.7
               }}
             />
             
@@ -320,10 +329,27 @@ const HashtagTimeline = () => {
             left: (2025.6 - (-5000)) * currentPixelsPerYear + panX,
             top: 0, 
             height: "100%", 
-            borderLeft: "1px solid #f6a656ff", 
+            borderLeft: "2px solid #f59e0b", 
             pointerEvents: "none",
+            opacity: 0.8
           }}
-        />
+        >
+          <div
+            style={{
+              position: "absolute",
+              left: "5px",
+              top: "20px",
+              fontSize: "12px",
+              color: "#f59e0b",
+              backgroundColor: "rgba(255,255,255,0.9)",
+              padding: "2px 6px",
+              borderRadius: "3px",
+              fontWeight: "600"
+            }}
+          >
+            現在 (2025)
+          </div>
+        </div>
 
         {/* ヘルプボックス */}
         <HelpBox 
