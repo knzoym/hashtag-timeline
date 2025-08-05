@@ -223,11 +223,6 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     zIndex: 10,
   },
 
-  // 年表カードリスト用スタイル
-  timelineCardList: {
-    marginTop: "16px",
-  },
-
   cardContainer: {
     display: "flex",
     flexDirection: "column",

@@ -9,7 +9,7 @@ import {
   getXFromYear
 } from "../utils/timelineUtils";
 
-export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY,) => {
+export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY,) => {
   const calculateInitialPanX = () => {
     const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
     const targetX = (2080 - (-5000)) * initialPixelsPerYear;
@@ -31,7 +31,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
 
   // 浮遊年表管理状態を修正
   const [Timelines, setCreatedTimelines] = useState([]);
-  const [draggingCardId, setDraggingCardId] = useState(null);
   const [cardPositions, setCardPositions] = useState({});
 
   // UI状態
@@ -452,33 +451,12 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
         lastMouseX.current = e.clientX;
         lastMouseY.current = e.clientY;
     }
+  }, [panX, currentPixelsPerYear, isDragging, lastMouseX, lastMouseY]);
 
-    if (isCardDragging.current && draggingCardId !== null) {
-      const deltaY = e.clientY - lastMouseY.current;
-      setCardPositions(prev => ({
-          ...prev,
-          [draggingCardId]: {
-              ...(prev[draggingCardId] || { x: 20, y: 200 }),
-              y: Math.max(80, Math.min(window.innerHeight - 100, (prev[draggingCardId]?.y || 200) + deltaY))
-          }
-      }));
-      lastMouseY.current = e.clientY;
-    }
-  }, [panX, currentPixelsPerYear, isDragging, lastMouseX, lastMouseY, isCardDragging, draggingCardId]);
 
   const handleMouseUp = useCallback(() => {
     isDragging.current = false;
-    isCardDragging.current = false;
-    setDraggingCardId(null);
-  }, [isDragging, isCardDragging]);
-
-  const handleCardDragStart = useCallback((id, e) => {
-      e.stopPropagation();
-      isCardDragging.current = true;
-      setDraggingCardId(id);
-      lastMouseY.current = e.clientY;
-  }, [isCardDragging, lastMouseY]);
-
+  }, [isDragging]);
 
   // キーボードイベント処理
   useEffect(() => {
@@ -508,8 +486,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     // 状態
     scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
     isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent, currentPixelsPerYear,
-    draggingCardId,
-    cardPositions,
     Timelines,
 
     // 関数
@@ -518,7 +494,6 @@ export const useTimelineLogic = (timelineRef, isDragging, isCardDragging, lastMo
     createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
     handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
     handleEventChange,
-    handleCardDragStart,
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,

@@ -11,7 +11,6 @@ const HashtagTimeline = () => {
   // メインの状態管理
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
-  const isCardDragging = useRef(false);
   const lastMouseX = useRef(0);
   const lastMouseY = useRef(0);
   const isShiftPressed = useRef(false);
@@ -19,22 +18,22 @@ const HashtagTimeline = () => {
   // カスタムフックから必要な状態と関数を取得
   const {
     // 状態
-    scale, panX, panY, timelineCardY, searchTerm, highlightedEvents,
+    scale, panX, panY, searchTerm, highlightedEvents,
     isHelpOpen, isModalOpen, modalPosition, editingEvent, newEvent,
-    currentPixelsPerYear, draggingCardId, cardPositions,
+    currentPixelsPerYear, cardPositions,
     
     // 関数
     setIsHelpOpen, resetToInitialPosition, handleSearchChange, handleDoubleClick,
     saveEvent, closeModal, addManualTag, removeManualTag, getAllCurrentTags,
     createTimeline, adjustEventPositions, getTopTagsFromSearch,
     truncateTitle, handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
-    handleCardMouseDown, handleEventChange, handleCardDragStart,
+    handleEventChange,
     
     Timelines,
     deleteTimeline,
     getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
-  } = useTimelineLogic(timelineRef, isDragging, isCardDragging, lastMouseX, lastMouseY, isShiftPressed);
+  } = useTimelineLogic(timelineRef, isDragging, lastMouseX, lastMouseY, isShiftPressed);
 
   // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
@@ -98,7 +97,7 @@ const HashtagTimeline = () => {
     return markers;
   }, [scale, currentPixelsPerYear, panX]);
 
-  const styles = createTimelineStyles(isDragging.current, timelineCardY);
+  const styles = createTimelineStyles(isDragging.current, 0);
 
   return (
     <div style={styles.app}>
@@ -149,6 +148,7 @@ const HashtagTimeline = () => {
           highlightedEvents={highlightedEvents}
           onSearchChange={handleSearchChange}
           onCreateTimeline={createTimeline}
+          onDeleteTimeline={deleteTimeline}
           getTopTagsFromSearch={getTopTagsFromSearch}
           styles={styles}
         />
@@ -206,8 +206,6 @@ const HashtagTimeline = () => {
             timeline={timeline}
             position={cardPositions[timeline.id] || { x: 20, y: 200 }}
             onDeleteTimeline={deleteTimeline}
-            onCardDragStart={handleCardDragStart}
-            isDragging={draggingCardId === timeline.id}
           />
         ))}
 
