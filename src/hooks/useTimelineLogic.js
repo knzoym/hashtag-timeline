@@ -112,54 +112,103 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
 
   // イベント配置調整
   const adjustEventPositions = useCallback(() => {
-    const sortedEvents = [...events].sort((a, b) => {
-      const aX = getXFromYear(a.startDate.getFullYear(), currentPixelsPerYear, panX);
-      const bX = getXFromYear(b.startDate.getFullYear(), currentPixelsPerYear, panX);
-      return aX - bX;
-    });
-
-    const placedEvents = [];
-    const BASE_Y = 60;
+    const allPositionedEvents = [];
     const EVENT_WIDTH = 120;
     const EVENT_HEIGHT = 40;
     const MIN_GAP = 10;
     const MAX_LEVELS = 100;
 
-    return sortedEvents.map((event) => {
+    // 年表イベントを先に配置する
+    const timelineEventIds = new Set();
+    const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
+
+    visibleTimelines.forEach((timeline, timelineIndex) => {
+      const axisY = 215 + timelineIndex * 80;
+      // 年号を除いたタイトル部分の高さは約20px、その中心Yを軸に合わせる
+      const TITLE_BOX_HEIGHT = 20;
+      const YEAR_LABEL_HEIGHT = 12;
+      const idealY = axisY - YEAR_LABEL_HEIGHT - (TITLE_BOX_HEIGHT / 2);
+
+      const sortedTimelineEvents = [...timeline.events].sort((a, b) => {
+        const aX = getXFromYear(a.startDate.getFullYear(), currentPixelsPerYear, panX);
+        const bX = getXFromYear(b.startDate.getFullYear(), currentPixelsPerYear, panX);
+        return aX - bX;
+      });
+
+      sortedTimelineEvents.forEach(event => {
+        timelineEventIds.add(event.id);
+        const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+        let finalY = idealY;
+        let level = 0;
+
+        while (level < MAX_LEVELS) {
+          let hasCollision = false;
+          for (const placedEvent of allPositionedEvents) {
+            if (
+              Math.abs(eventX - placedEvent.adjustedPosition.x) < EVENT_WIDTH + MIN_GAP &&
+              Math.abs(finalY - placedEvent.adjustedPosition.y) < EVENT_HEIGHT + MIN_GAP
+            ) {
+              hasCollision = true;
+              break;
+            }
+          }
+          if (!hasCollision) break;
+          
+          level++;
+          const offset = Math.ceil(level / 2) * (EVENT_HEIGHT + MIN_GAP);
+          finalY = idealY + (level % 2 === 1 ? -offset : offset);
+        }
+
+        allPositionedEvents.push({
+          ...event,
+          adjustedPosition: { x: eventX, y: finalY },
+          timelineColor: timeline.color,
+          axisY: axisY,
+          idealY: idealY,
+        });
+      });
+    });
+
+    // 年表に属さない残りのイベントを配置する
+    const mainTimelineEvents = events
+      .filter(event => !timelineEventIds.has(event.id))
+      .sort((a, b) => {
+        const aX = getXFromYear(a.startDate.getFullYear(), currentPixelsPerYear, panX);
+        const bX = getXFromYear(b.startDate.getFullYear(), currentPixelsPerYear, panX);
+        return aX - bX;
+      });
+
+    const BASE_Y = 60;
+    mainTimelineEvents.forEach(event => {
       const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
       let assignedY = BASE_Y;
       let level = 0;
 
       while (level < MAX_LEVELS) {
         let hasCollision = false;
-
-        for (const placedEvent of placedEvents) {
-          const placedX = placedEvent.adjustedPosition.x;
-          const placedY = placedEvent.adjustedPosition.y;
-
-          if (Math.abs(eventX - placedX) < EVENT_WIDTH + MIN_GAP) {
-            if (Math.abs(assignedY - placedY) < EVENT_HEIGHT + MIN_GAP) {
-              hasCollision = true;
-              break;
-            }
+        for (const placedEvent of allPositionedEvents) {
+          if (
+            Math.abs(eventX - placedEvent.adjustedPosition.x) < EVENT_WIDTH + MIN_GAP &&
+            Math.abs(assignedY - placedEvent.adjustedPosition.y) < EVENT_HEIGHT + MIN_GAP
+          ) {
+            hasCollision = true;
+            break;
           }
         }
-
         if (!hasCollision) break;
 
         level++;
         assignedY = BASE_Y + level * (EVENT_HEIGHT + MIN_GAP);
       }
 
-      const adjustedEvent = {
+      allPositionedEvents.push({
         ...event,
         adjustedPosition: { x: eventX, y: assignedY },
-      };
-
-      placedEvents.push(adjustedEvent);
-      return adjustedEvent;
+      });
     });
-  }, [events, currentPixelsPerYear, panX]);
+
+    return allPositionedEvents;
+  }, [events, Timelines, currentPixelsPerYear, panX]);
 
   // ダブルクリックでイベント作成・編集
   const handleDoubleClick = useCallback((e) => {
@@ -337,33 +386,6 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
     }
   }, []);
 
-  // 表示中の年表のイベント配置計算（新規）
-  const getTimelineEventsForDisplay = useCallback(() => {
-  const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
-  const timelineEvents = [];
-
-  visibleTimelines.forEach((timeline, timelineIndex) => {
-    timeline.events.forEach(event => {
-      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
-
-      // Apply panY offset to timeline Y position
-      const timelineYOffset = 200 + timelineIndex * 80 + panY;
-
-      timelineEvents.push({
-        ...event,
-        timelineId: timeline.id,
-        timelineName: timeline.name,
-        timelineColor: timeline.color,
-        displayX: eventX,
-        displayY: timelineYOffset,
-        timelineIndex
-      });
-    });
-  });
-
-  return timelineEvents;
-}, [Timelines, currentPixelsPerYear, panX, panY]);
-
   // 表示中の年表の軸線生成（新規）
   const getTimelineAxesForDisplay = useCallback(() => {
   const visibleTimelines = Timelines.filter(timeline => timeline.isVisible);
@@ -483,6 +505,34 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
     setNewEvent(updatedEvent);
   }, []);
 
+  // イベント追加ボタンからモーダルを開くための関数
+  const openNewEventModal = useCallback(() => {
+    if (timelineRef.current) {
+      const viewportWidth = window.innerWidth;
+      const timelineRect = timelineRef.current.getBoundingClientRect();
+      
+      // 画面の中心X座標を計算
+      const centerX = viewportWidth / 2;
+      // 画面の中心Y座標を計算 (ヘッダーの高さを考慮)
+      const centerY = (timelineRect.height / 2);
+
+      // 画面中心の年に対応する日付を取得
+      const year = getYearFromX(centerX, currentPixelsPerYear, panX);
+      const newDate = new Date(Math.round(year), 0, 1);
+
+      setEditingEvent(null);
+      setNewEvent({
+        title: "",
+        description: "",
+        date: newDate,
+        manualTags: [],
+      });
+
+      setModalPosition({ x: centerX, y: centerY });
+      setIsModalOpen(true);
+    }
+  }, [timelineRef, currentPixelsPerYear, panX]);
+
   return {
   // 状態
   scale, panX, panY, events, allTags, searchTerm, highlightedEvents,
@@ -495,9 +545,10 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
   createTimeline, adjustEventPositions, getTopTagsFromSearch, truncateTitle,
   handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
   handleEventChange,
+  openNewEventModal,
   deleteTimeline,
-  getTimelineEventsForDisplay,
   getTimelineAxesForDisplay,
   setCardPositions,
   };
 };
+

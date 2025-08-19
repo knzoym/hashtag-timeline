@@ -1,4 +1,4 @@
-// HashtagTimeline.js (TimelineCard統合版)
+// src/pages/HashtagTimeline.js
 import React, { useRef, useCallback } from "react";
 import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
@@ -50,6 +50,7 @@ const HashtagTimeline = () => {
     handleMouseMove,
     handleMouseUp,
     handleEventChange,
+    openNewEventModal,
 
     Timelines,
     deleteTimeline,
@@ -127,6 +128,8 @@ const HashtagTimeline = () => {
   }, [scale, currentPixelsPerYear, panX]);
 
   const styles = createTimelineStyles(isDragging.current, 0);
+  const timelineAxes = getTimelineAxesForDisplay();
+  const axesMap = new Map(timelineAxes.map(axis => [axis.id, axis]));
 
   return (
     <div style={styles.app}>
@@ -166,7 +169,7 @@ const HashtagTimeline = () => {
 
         {/* イベントを追加ボタン */}
         <div className="floating-panel">
-          <button style={styles.addButton}>+ イベントを追加</button>
+          <button style={styles.addButton} onClick={openNewEventModal}>+ イベントを追加</button>
         </div>
 
         {/* 検索パネル */}
@@ -183,6 +186,26 @@ const HashtagTimeline = () => {
         {/* メインタイムラインのイベント表示 */}
         {adjustEventPositions().map((event) => {
           const isHighlighted = highlightedEvents.has(event.id);
+          const hasMoved = event.axisY && event.adjustedPosition.y !== event.idealY;
+
+          // イベントが本来の位置からずれている場合、接続線のスタイルを計算
+          let lineStyle = {};
+          if (hasMoved) {
+            const eventTitleCenterY = event.adjustedPosition.y + 22; // titleの中心
+            const isAbove = eventTitleCenterY < event.axisY;
+            if (isAbove) {
+              lineStyle = {
+                top: '32px', // イベントの下から
+                height: `${event.axisY - (event.adjustedPosition.y + 32)}px`,
+              };
+            } else {
+              lineStyle = {
+                bottom: '32px', // イベントの上まで
+                height: `${event.adjustedPosition.y - event.axisY}px`,
+              };
+            }
+          }
+
           return (
             <div
               key={event.id}
@@ -193,11 +216,27 @@ const HashtagTimeline = () => {
                 top: event.adjustedPosition.y + panY + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
-                zIndex: isHighlighted ? 5 : 1,
+                zIndex: isHighlighted ? 5 : 2,
                 textAlign: "center",
                 userSelect: "none",
               }}
             >
+              {/* 年表イベントがずれている場合のみ、軸への接続線を描画 */}
+              {hasMoved && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    width: "2px",
+                    backgroundColor: event.timelineColor,
+                    transform: "translateX(-50%)",
+                    zIndex: -1,
+                    opacity: 0.7,
+                    ...lineStyle,
+                  }}
+                />
+              )}
+
               <div
                 style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
               >
@@ -234,119 +273,37 @@ const HashtagTimeline = () => {
         })}
 
         {/* 年表カード */}
-        {Timelines.map((timeline) => (
-          <TimelineCard
-            key={timeline.id}
-            timeline={timeline}
-            position={cardPositions[timeline.id] || { x: 20, y: 200 }}
-            panY={panY} // Pass panY prop
-            onDeleteTimeline={deleteTimeline}
-          />
-        ))}
+        {Timelines.map((timeline) => {
+          const axis = axesMap.get(timeline.id);
+          const xPosition = axis ? axis.startX : 20;
+          return (
+            <TimelineCard
+              key={timeline.id}
+              timeline={timeline}
+              position={{ x: xPosition, y: cardPositions[timeline.id]?.y || 200 }}
+              panY={panY} // Pass panY prop
+              onDeleteTimeline={deleteTimeline}
+            />
+          );
+        })}
 
         {/* 年表軸線の描画 */}
-        {getTimelineAxesForDisplay().map((axis) => (
+        {timelineAxes.map((axis) => (
           <div key={`axis-${axis.id}`}>
             {/* 年表軸線 */}
             <div
               style={{
                 position: "absolute",
-                left: axis.startX,
+                left: axis.startX - 100,
                 top: axis.yPosition,
-                width: Math.max(0, axis.endX - axis.startX),
+                width: (Math.max(0, axis.endX - axis.startX)) + 100,
                 height: "3px",
                 backgroundColor: axis.color,
                 opacity: 0.8,
-                zIndex: 2,
+                zIndex: 0,
                 borderRadius: "1px",
               }}
             />
-
-            {/* 年代範囲ラベル */}
-            <div
-              style={{
-                position: "absolute",
-                left: Math.max(20, axis.startX),
-                top: axis.yPosition + 8,
-                fontSize: "10px",
-                color: axis.color,
-                backgroundColor: "rgba(255,255,255,0.9)",
-                padding: "1px 4px",
-                borderRadius: "2px",
-                border: `1px solid ${axis.color}`,
-                zIndex: 3,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {axis.minYear}年-{axis.maxYear}年
-            </div>
-          </div>
-        ))}
-
-        {/* 年表イベントの描画 */}
-        {getTimelineEventsForDisplay().map((event) => (
-          <div
-            key={`timeline-${event.timelineId}-event-${event.id}`}
-            style={{
-              position: "absolute",
-              left: event.displayX,
-              top: event.displayY,
-              transform: "translateX(-50%)",
-              zIndex: 4,
-              textAlign: "center",
-              userSelect: "none",
-            }}
-          >
-            {/* 接続線 */}
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                top: "20px",
-                width: "2px",
-                height: "25px",
-                backgroundColor: event.timelineColor,
-                transform: "translateX(-50%)",
-                zIndex: 1,
-                opacity: 0.7,
-              }}
-            />
-
-            {/* イベントカード */}
-            <div
-              style={{
-                padding: "3px 6px",
-                borderRadius: "3px",
-                color: "white",
-                fontWeight: "500",
-                fontSize: "10px",
-                minWidth: "40px",
-                maxWidth: "80px",
-                backgroundColor: event.timelineColor,
-                boxShadow: "0 1px 3px rgba(0, 0, 0, 0.3)",
-                lineHeight: "1.1",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                border: "1px solid rgba(255,255,255,0.3)",
-              }}
-              title={`${event.title} (${event.timelineName})`}
-            >
-              {event.title.length > 8
-                ? event.title.substring(0, 8) + "..."
-                : event.title}
-            </div>
-
-            {/* 年表示 */}
-            <div
-              style={{
-                fontSize: "8px",
-                color: "#666",
-                marginTop: "1px",
-              }}
-            >
-              {event.startDate.getFullYear()}
-            </div>
           </div>
         ))}
 
