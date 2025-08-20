@@ -66,9 +66,10 @@ const HashtagTimeline = () => {
     deleteTimeline,
     getTimelineAxesForDisplay,
     setEditingEvent,
-  setNewEvent,
-  setModalPosition, 
-  setIsModalOpen,
+    setNewEvent,
+    setModalPosition,
+    setIsModalOpen,
+    events,
   } = useTimelineLogic(
     timelineRef,
     isDragging,
@@ -125,13 +126,22 @@ const HashtagTimeline = () => {
       y: window.innerHeight / 2,
     });
     setIsModalOpen(true);
-  }, []);
+  }, [setEditingEvent, setNewEvent, setModalPosition, setIsModalOpen]);
 
   // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
     const markers = [];
     const adjustedScale = scale / 2.5;
     let yearInterval;
+  
+    // 年表マーカー生成の後に追加
+console.log('Debug Info:', {
+  events: events.length,
+  timelines: Timelines.length,
+  advancedEventPositions,
+  scale,
+  currentPixelsPerYear
+});
 
     if (adjustedScale > 12) yearInterval = 1;
     else if (adjustedScale > 6) yearInterval = 2;
@@ -246,38 +256,10 @@ const HashtagTimeline = () => {
         />
 
         {/* 高度レイアウトによるイベント表示 */}
-        {/* Part 1: 年号を描画 (奥のレイヤー) */}
         {advancedEventPositions.allEvents.map((event) => {
-          if (event.isGroup) {
-            return null; // グループアイコンは描画済みなのでスキップ
-          }
-          
-          // 通常イベントの年号
-          return (
-            <div
-              key={`year-${event.id}`}
-              style={{
-                position: "absolute",
-                left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + "px",
-                transform: "translateX(-50%)",
-                zIndex: 2, // 年号のz-index
-                textAlign: "center",
-                pointerEvents: "none", // クリックイベントを透過させる
-              }}
-            >
-              <div
-                style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
-              >
-                {event.startDate.getFullYear()}
-              </div>
-            </div>
-          );
-        })}
+          const isHighlighted = highlightedEvents.has(event.id);
 
-        {/* Part 2: イベントタイトルとグループアイコンを描画 (手前のレイヤー) */}
-        {advancedEventPositions.allEvents.map((event) => {
-          // グループの場合
+          // グループの場合の処理
           if (event.isGroup) {
             return (
               <EventGroupIcon
@@ -288,11 +270,9 @@ const HashtagTimeline = () => {
                 timelineColor={event.timelineColor}
                 onHover={handleGroupHover}
                 onDoubleClick={handleDoubleClick}
-                zIndex={6}
               />
             );
           }
-          const isHighlighted = highlightedEvents.has(event.id);
 
           // 通常イベントの色計算
           let eventColors = { backgroundColor: '#6b7280', textColor: 'white' };
@@ -314,16 +294,38 @@ const HashtagTimeline = () => {
               data-event-id={event.id}
               style={{
                 position: "absolute",
-                // 年号の高さ(約12px) + マージン(2px)分だけ下にずらす
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + 14 + "px",
+                top: event.adjustedPosition.y + panY + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
-                zIndex: isHighlighted ? 5 : 4, // タイトルのz-index
+                zIndex: isHighlighted ? 5 : 2,
                 textAlign: "center",
                 userSelect: "none",
               }}
             >
+              {/* 接続線（必要な場合のみ描画） */}
+              {event.needsConnectionLine && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: "50%",
+                    width: "2px",
+                    backgroundColor: event.timelineColor,
+                    transform: "translateX(-50%)",
+                    zIndex: -1,
+                    opacity: 0.7,
+                    top: event.adjustedPosition.y < event.axisY ? '32px' : undefined,
+                    bottom: event.adjustedPosition.y > event.axisY ? '32px' : undefined,
+                    height: `${Math.abs(event.adjustedPosition.y - event.axisY)}px`,
+                  }}
+                />
+              )}
+
+              <div
+                style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
+              >
+                {event.startDate.getFullYear()}
+              </div>
               <div
                 style={{
                   padding: "4px 8px",
@@ -407,7 +409,7 @@ const HashtagTimeline = () => {
                 height: "3px",
                 backgroundColor: axis.color,
                 opacity: 0.8,
-                zIndex: 1,
+                zIndex: 0,
                 borderRadius: "1px",
               }}
             />

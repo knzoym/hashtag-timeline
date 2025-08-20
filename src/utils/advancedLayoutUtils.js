@@ -44,7 +44,7 @@ export class RowLaneLayoutManager {
   }
 
   canPlaceInLane(eventX, rowIndex, laneIndex) {
-    const laneY = this.getLaneY(this.getRowY(rowIndex), laneIndex);
+    // const laneY = this.getLaneY(this.getRowY(rowIndex), laneIndex);
     
     for (const placedEvent of this.placedEvents) {
       if (placedEvent.rowIndex === rowIndex && 
@@ -57,7 +57,7 @@ export class RowLaneLayoutManager {
   }
 
   findBestLane(eventX, rowIndex) {
-    const lanePreference = [1, 0, 2];
+    const lanePreference = [1, 0, 2]; // 2段目→1段目→3段目の順
     
     for (const laneIndex of lanePreference) {
       if (this.canPlaceInLane(eventX, rowIndex, laneIndex)) {
@@ -119,7 +119,7 @@ export class RowLaneLayoutManager {
             this.currentPixelsPerYear, 
             this.panX
           );
-          const groupY = this.getLaneY(rowY, 1);
+          const groupY = this.getLaneY(rowY, 2); // 3段目（index=2）に配置
           
           const eventGroup = new EventGroup(
             groupEvents,
@@ -128,17 +128,28 @@ export class RowLaneLayoutManager {
           );
           
           this.eventGroups.push(eventGroup);
-          layoutResults.push({
+          
+          const groupLayoutItem = {
             ...eventGroup.getMainEvent(),
             adjustedPosition: { x: groupX, y: groupY },
             timelineColor: timeline.color,
             axisY: rowY,
             idealY: groupY,
             rowIndex: timelineIndex,
-            laneIndex: 1,
+            laneIndex: 2,
             needsConnectionLine: false,
             isGroup: true,
             groupData: eventGroup
+          };
+          
+          layoutResults.push(groupLayoutItem);
+          
+          // グループも干渉チェック対象に追加
+          this.placedEvents.push({
+            adjustedPosition: { x: groupX, y: groupY },
+            rowIndex: timelineIndex,
+            laneIndex: 2,
+            isGroup: true
           });
         }
       });

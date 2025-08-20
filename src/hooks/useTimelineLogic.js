@@ -1,4 +1,4 @@
-// hooks/useTimelineLogic.js の完全版
+// hooks/useTimelineLogic.js の最適化版
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { sampleEvents, initialTags } from "../utils/eventUtils";
@@ -63,18 +63,18 @@ export const useTimelineLogic = (
   // 計算値
   const currentPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
 
-  // 高度な配置ロジックを使用した配置計算
+  // 高度な配置ロジック（pan移動では再計算しない最適化版）
   const advancedEventPositions = useMemo(() => {
     const layoutManager = new RowLaneLayoutManager(
       currentPixelsPerYear,
-      panX,
-      panY
+      0, // panXを0に固定
+      0  // panYを0に固定
     );
     const visibleTimelines = Timelines.filter((timeline) => timeline.isVisible);
 
     const layoutResult = layoutManager.executeLayout(events, visibleTimelines);
     return layoutResult;
-  }, [events, Timelines, currentPixelsPerYear, panX, panY]);
+  }, [events, Timelines, currentPixelsPerYear]); // panX, panYを依存配列から削除
 
   // 初期位置に戻す
   const resetToInitialPosition = useCallback(() => {

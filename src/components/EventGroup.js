@@ -37,21 +37,22 @@ export const EventGroupIcon = ({
       
       <div
         style={{
-          width: `${TIMELINE_CONFIG.GROUP_ICON_SIZE}px`,
-          height: `${TIMELINE_CONFIG.GROUP_ICON_SIZE}px`,
-          borderRadius: "50%",
+          width: "120px",  // EVENT_WIDTH と同じ
+          height: "20px",  // タイトル部分の高さ
+          borderRadius: "4px",  // 四角形
           backgroundColor: timelineColor,
           color: "white",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "12px",
-          fontWeight: "bold",
-          border: "2px solid rgba(255,255,255,0.8)",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+          fontSize: "11px",
+          fontWeight: "500",
+          border: "1px solid rgba(255,255,255,0.8)",
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+          padding: "4px 8px",
         }}
       >
-        {count}
+        {count}件
       </div>
     </div>
   );
