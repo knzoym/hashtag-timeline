@@ -1,130 +1,175 @@
 // src/utils/layoutWithGroups.js
 export function layoutWithGroups({
   events,
-  getEventX,      // (evId) => x1（panは入れない）
-  laneTop,        // (lane: 0|1|2) => y
-  laneHeight,     // laneの高さ(px)
+  getEventX,
+  laneTop,
+  laneHeight,
   minWidthPx = 60,
   groupPaddingPx = 8,
 }) {
-  const occ = [[], [], []]; // laneごとの占有矩形
+  // 全イベントをIDで簡単に検索できるようMapに変換
+  const allEventsById = new Map(events.filter(Boolean).map(e => [e.id, e]));
+
+  // 各レーンで占有されている矩形領域を管理
+  const occ = [[], [], []];
+
+  // 作成されたグループ情報を管理 (id => {id, x1, x2, ..., eventIds: Set})
   const groups = new Map();
+  
+  // 最終的に出力される全要素（イベント、グループ）の配置情報
   const out = [];
 
-  const overlapsX = (a, b) => !(a.x2 <= b.x1 || b.x2 <= a.x1);
+  // `out`配列に追加されたイベントをIDですぐに見つけられるようにするMap
+  const outEventMap = new Map();
 
+  // 水平方向の重なりをチェックする関数
+  const overlapsX = (a, b) => a.x1 < b.x2 && a.x2 > b.x1;
+
+  // イベントの矩形情報を作成する関数
   const makeRect = (ev, lane) => {
     const w = Math.max(ev.widthPx || minWidthPx, minWidthPx);
     const x1 = getEventX(ev.id);
     const x2 = x1 + w;
-    return { type: "event", id: ev.id, lane, x1, x2, y: laneTop(lane), height: laneHeight };
+    return { type: 'event', id: ev.id, lane, x1, x2, y: laneTop(lane), height: laneHeight };
   };
 
-  const tryPlace = (laneRects, rect) => {
+  // 指定されたレーンで衝突する矩形を探す関数
+  const findCollision = (laneRects, rect) => {
     for (const r of laneRects) {
-      if (!overlapsX(rect, r)) continue;
-      return r.type === "group" ? "collide-group" : "collide-event";
+      if (overlapsX(rect, r)) {
+        return r;
+      }
     }
-    laneRects.push(rect);
-    return "placed";
+    return null;
   };
 
-  const findOverlappingGroup = (lane2, rect) =>
-    lane2.find(r => r.type === "group" && overlapsX(r, rect));
+  // 既存のグループに新しいイベントを追加する関数
+  const attachToGroup = (groupId, newEvent) => {
+    const groupInfo = groups.get(groupId);
+    if (!groupInfo) return;
 
-  const attachToGroup = (lane2, rect, ev) => {
-    const gRect = findOverlappingGroup(lane2, rect);
-    if (!gRect) return false;
-    const g = groups.get(gRect.id);
-    g.x1 = Math.min(g.x1, rect.x1 - groupPaddingPx);
-    g.x2 = Math.max(g.x2, rect.x2 + groupPaddingPx);
-    gRect.x1 = g.x1;
-    gRect.x2 = g.x2;
-    g.eventIds.add(ev.id);
-    return true;
+    // 新しいイベントをグループに追加し、非表示として`out`配列に登録
+    groupInfo.eventIds.add(newEvent.id);
+    const hiddenEvent = { ...newEvent, hiddenByGroup: true };
+    out.push(hiddenEvent);
+    outEventMap.set(newEvent.id, hiddenEvent);
+
+    // グループの表示範囲を新しいイベントに合わせて広げる
+    const newEventRect = makeRect(newEvent, 2);
+    groupInfo.x1 = Math.min(groupInfo.x1, newEventRect.x1 - groupPaddingPx);
+    groupInfo.x2 = Math.max(groupInfo.x2, newEventRect.x2 + groupPaddingPx);
+
+    // `occ`配列内のグループ矩形情報も更新
+    const groupRectInOcc = occ[2].find(r => r.id === groupId);
+    if (groupRectInOcc) {
+      groupRectInOcc.x1 = groupInfo.x1;
+      groupRectInOcc.x2 = groupInfo.x2;
+    }
   };
 
-  const createGroup = (rect, ev) => {
-    const gid = `grp_${(rect.x1|0)}_${(rect.x2|0)}_${Math.random().toString(36).slice(2,6)}`;
-    const g = {
-      id: gid, lane: 2,
-      x1: rect.x1 - groupPaddingPx,
-      x2: rect.x2 + groupPaddingPx,
+  // 複数のイベントから新しいグループを作成する関数
+  const createGroup = (eventsToGroup) => {
+    if (!eventsToGroup || eventsToGroup.length === 0) return;
+
+    const idsToGroup = new Set(eventsToGroup.map(e => e.id));
+
+    // グループ化されるイベントの矩形を`occ[2]`から削除
+    occ[2] = occ[2].filter(r => r.type === 'group' || !idsToGroup.has(r.id));
+    
+    // `out`配列内の対象イベントを「非表示」に更新
+    idsToGroup.forEach(id => {
+      const outEvent = outEventMap.get(id);
+      if (outEvent) outEvent.hiddenByGroup = true;
+    });
+
+    // 新しいグループの情報を作成
+    const firstRect = makeRect(eventsToGroup[0], 2);
+    const gid = `grp_${(firstRect.x1 | 0)}_${Math.random().toString(36).slice(2, 6)}`;
+    const groupInfo = {
+      id: gid,
+      x1: firstRect.x1 - groupPaddingPx,
+      x2: firstRect.x2 + groupPaddingPx,
       y: laneTop(2),
       height: laneHeight,
-      eventIds: new Set([ev.id])
+      eventIds: idsToGroup,
     };
-    groups.set(gid, g);
-    occ[2].push({ type: "group", id: gid, lane: 2, x1: g.x1, x2: g.x2, y: g.y, height: g.height });
-    return g;
+
+    // 全てのイベントが収まるようにグループの範囲を計算
+    eventsToGroup.forEach(eventInGroup => {
+        const r = makeRect(eventInGroup, 2);
+        groupInfo.x1 = Math.min(groupInfo.x1, r.x1 - groupPaddingPx);
+        groupInfo.x2 = Math.max(groupInfo.x2, r.x2 + groupPaddingPx);
+    });
+    
+    groups.set(gid, groupInfo);
+    occ[2].push({ type: 'group', id: gid, ...groupInfo });
   };
 
-  const sorted = [...events].sort((a, b) => getEventX(a.id) - getEventX(b.id));
+  const sortedEvents = [...events].filter(Boolean).sort((a, b) => getEventX(a.id) - getEventX(b.id));
 
-  for (const ev of sorted) {
+  for (const ev of sortedEvents) {
     let placed = false;
-    for (const lane of [0,1,2]) {
-      const rect = makeRect(ev, lane);
-      const res = tryPlace(occ[lane], rect);
 
-      if (res === "placed") {
-        out.push({
-          id: ev.id,
-          startDate: ev.startDate,
-          title: ev.title,
-          adjustedPosition: { x: (rect.x1+rect.x2)/2, y: rect.y },
-          widthPx: rect.x2 - rect.x1,
-          timelineColor: ev.timelineColor,
-        });
+    // 1段目、2段目に配置を試みる
+    for (const lane of [0, 1]) {
+      const rect = makeRect(ev, lane);
+      if (!findCollision(occ[lane], rect)) {
+        occ[lane].push(rect);
+        const outEvent = { ...ev, adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y } };
+        out.push(outEvent);
+        outEventMap.set(ev.id, outEvent);
         placed = true;
         break;
       }
-      if (lane < 2) continue;
-
-      // lane=2：グループに吸収 or 新規作成。吸収されたイベントは非表示化
-      if (res === "collide-group") {
-        attachToGroup(occ[2], rect, ev);
-      } else {
-        if (!attachToGroup(occ[2], rect, ev)) createGroup(rect, ev);
-      }
-      out.push({
-        id: ev.id,
-        startDate: ev.startDate,
-        title: ev.title,
-        adjustedPosition: { x: (rect.x1+rect.x2)/2, y: rect.y },
-        widthPx: rect.x2 - rect.x1,
-        hiddenByGroup: true,
-        timelineColor: ev.timelineColor,
-      });
-      placed = true;
-      break;
     }
 
-    if (!placed) {
-      const rect = makeRect(ev, 2);
-      createGroup(rect, ev);
-      out.push({
-        id: ev.id,
-        startDate: ev.startDate,
-        title: ev.title,
-        adjustedPosition: { x: (rect.x1+rect.x2)/2, y: rect.y },
-        widthPx: rect.x2 - rect.x1,
-        hiddenByGroup: true,
-        timelineColor: ev.timelineColor,
-      });
+    if (placed) continue;
+
+    // 3段目（グループ化レーン）の処理
+    const rect = makeRect(ev, 2);
+    const collidedRect = findCollision(occ[2], rect);
+
+    if (!collidedRect) {
+      // 3段目に衝突なし -> そのまま配置
+      occ[2].push(rect);
+      const outEvent = { ...ev, adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y } };
+      out.push(outEvent);
+      outEventMap.set(ev.id, outEvent);
+    } else {
+      // 3段目で衝突あり
+      if (collidedRect.type === 'group') {
+        // 既存グループと衝突 -> グループに吸収
+        attachToGroup(collidedRect.id, ev);
+      } else {
+        // 他のイベントと衝突 -> 新しいグループを作成
+        const collidedEvent = allEventsById.get(collidedRect.id);
+        createGroup([collidedEvent, ev]);
+      }
     }
   }
 
-  for (const g of groups.values()) {
+  // 最終的に表示されるグループの要素を`out`配列に追加
+  for (const group of groups.values()) {
+    const groupEvents = [...group.eventIds].map(id => allEventsById.get(id));
+    const mainEvent = groupEvents[0]; // グループの代表イベント
+    
     out.push({
-      id: g.id,
-      startDate: new Date(0),
-      title: `+${g.eventIds.size}件`,
+      ...mainEvent,
+      id: group.id,
       isGroup: true,
-      adjustedPosition: { x: (g.x1+g.x2)/2, y: g.y },
-      widthPx: Math.max(g.x2 - g.x1, minWidthPx),
+      groupData: { // EventGroupコンポーネントが期待するデータを模倣
+        id: group.id,
+        events: groupEvents,
+        getDisplayCount: () => groupEvents.length,
+        getMainEvent: () => mainEvent,
+      },
+      title: `+${group.eventIds.size}件`,
+      adjustedPosition: { x: (group.x1 + group.x2) / 2, y: group.y },
     });
   }
 
-  return { allEvents: out };
+  return {
+    allEvents: out,
+    eventGroups: [...groups.values()].map(g => g.groupData), // GroupCardなどで使うために返す
+  };
 }

@@ -63,7 +63,6 @@ export const useTimelineLogic = (
 
   // 高度な配置ロジック（pan移動では再計算しない最適化版）
   const advancedEventPositions = useMemo(() => {
-    // 年→Xは pan を含めない（0固定）。あなたの util をそのまま使う
     const getEventX = (evId) => {
       const ev = events.find((e) => e && e.id === evId);
       if (!ev) return 0;
@@ -71,10 +70,12 @@ export const useTimelineLogic = (
         ev.startDate instanceof Date ? ev.startDate : new Date(ev.startDate);
       if (Number.isNaN(d.getTime())) return 0;
       const year = d.getFullYear();
+      // panX は描画時に加算するため、レイアウト計算時点では 0 を渡します
       return getXFromYear(year, currentPixelsPerYear, 0);
     };
-    // 3段のY位置（ベース行の3段）。見た目は既存の FIRST_ROW_Y を基準に
-    const LANE_HEIGHT = 24; // 必要なら微調整（イベントボックスの高さに合わせる）
+
+    // 3段のY座標を計算します
+    const LANE_HEIGHT = 24;
     const laneTop = (lane) => TIMELINE_CONFIG.FIRST_ROW_Y + lane * LANE_HEIGHT;
 
     return layoutWithGroups({
