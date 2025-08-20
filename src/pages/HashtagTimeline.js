@@ -204,12 +204,9 @@ const HashtagTimeline = () => {
   const timelineAxes = getTimelineAxesForDisplay();
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
-  // イベント表示の最適化
-  const visibleEvents = advancedEventPositions.allEvents
-  .filter(event => !event.hiddenByGroup)
-  .filter((event, index, array) => 
-    array.findIndex(e => e.id === event.id) === index
-  );
+  // 修正：重複除去ロジックを削除し、全てのイベントを表示
+  // 各年表で同じイベントが独立して表示されるようにする
+  const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
 
   return (
     <div style={styles.app}>
@@ -267,12 +264,12 @@ const HashtagTimeline = () => {
 
         {/* 高度レイアウトによるイベント表示 */}
         {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
-        {visibleEvents.map((event) => {
+        {visibleEvents.map((event, index) => {
           // グループの場合
           if (event.isGroup) {
             return (
               <EventGroupIcon
-                key={`group-${event.groupData.id}`}
+                key={`group-${event.groupData.id}-${index}`}
                 groupData={event.groupData}
                 position={{
                   x: event.adjustedPosition.x,
@@ -287,13 +284,18 @@ const HashtagTimeline = () => {
           }
 
           // 通常イベントの年号
+          // 年表内のイベントには timelineId を含めて一意のキーを生成
+          const uniqueKey = event.timelineId 
+            ? `year-${event.id}-${event.timelineId}-${index}`
+            : `year-${event.id}-main-${index}`;
+
           return (
             <div
-              key={`year-${event.id}`}
+              key={uniqueKey}
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY +8 + "px",
+                top: event.adjustedPosition.y + panY + 8 + "px",
                 transform: "translateX(-50%)",
                 zIndex: 2,
                 textAlign: "center",
@@ -310,7 +312,7 @@ const HashtagTimeline = () => {
         })}
 
         {/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
-        {visibleEvents.map((event) => {
+        {visibleEvents.map((event, index) => {
           if (event.isGroup) return null; // グループは描画済み
 
           const isHighlighted = highlightedEvents.has(event.id);
@@ -329,14 +331,19 @@ const HashtagTimeline = () => {
             };
           }
 
+          // 年表内のイベントには timelineId を含めて一意のキーを生成
+          const uniqueKey = event.timelineId 
+            ? `event-${event.id}-${event.timelineId}-${index}`
+            : `event-${event.id}-main-${index}`;
+
           return (
             <div
-              key={event.id}
+              key={uniqueKey}
               data-event-id={event.id}
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY +15 + "px",
+                top: event.adjustedPosition.y + panY + 15 + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
                 zIndex: isHighlighted ? 5 : 4,
