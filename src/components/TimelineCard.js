@@ -13,6 +13,7 @@ export const TimelineCard = ({
         position: "absolute",
         left: (position.x) - 220 + "px",
         top: (position.y + panY) + "px", // Apply panY offset
+        transform: "translateY(-50%)",
         width: "160px", 
         padding: "8px", 
         backgroundColor: "#f9fafb",

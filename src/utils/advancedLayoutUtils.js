@@ -30,7 +30,7 @@ export class RowLaneLayoutManager {
   }
 
   getRowY(timelineIndex) {
-    return TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+    return TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT - 25;
   }
 
   getLaneY(rowY, laneIndex) {
