@@ -141,15 +141,6 @@ const HashtagTimeline = () => {
     const adjustedScale = scale / 2.5;
     let yearInterval;
 
-    // 年表マーカー生成の後に追加
-    console.log("Debug Info:", {
-      events: events.length,
-      timelines: Timelines.length,
-      advancedEventPositions,
-      scale,
-      currentPixelsPerYear,
-    });
-
     if (adjustedScale > 12) yearInterval = 1;
     else if (adjustedScale > 6) yearInterval = 2;
     else if (adjustedScale > 2) yearInterval = 5;
@@ -210,6 +201,9 @@ const HashtagTimeline = () => {
   const timelineAxes = getTimelineAxesForDisplay();
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
+  // イベント表示の最適化
+  const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
+
   return (
     <div style={styles.app}>
       {/* ヘッダー */}
@@ -266,24 +260,21 @@ const HashtagTimeline = () => {
 
         {/* 高度レイアウトによるイベント表示 */}
         {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
-        {advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup).map((event) => {
+        {visibleEvents.map((event) => {
           // グループの場合
           if (event.isGroup) {
             return (
               <EventGroupIcon
                 key={`group-${event.groupData.id}`}
                 groupData={event.groupData}
-                // ← panX を反映してから渡す
                 position={{
-                  x: event.adjustedPosition.x + panX,
+                  x: event.adjustedPosition.x,
                   y: event.adjustedPosition.y,
                 }}
                 panY={panY}
-                timelineColor={event.timelineColor}
+                timelineColor={event.timelineColor || "#6b7280"}
                 onHover={handleGroupHover}
                 onDoubleClick={handleDoubleClick}
-                // （任意）重なり順を明示したい場合
-                // zIndex={3}
               />
             );
           }
@@ -294,10 +285,10 @@ const HashtagTimeline = () => {
               key={`year-${event.id}`}
               style={{
                 position: "absolute",
-                left: event.adjustedPosition.x + panX, // ← ここを修正
+                left: event.adjustedPosition.x,
                 top: event.adjustedPosition.y + panY + "px",
                 transform: "translateX(-50%)",
-                zIndex: 2, // 年号
+                zIndex: 2,
                 textAlign: "center",
                 pointerEvents: "none",
               }}
@@ -312,7 +303,7 @@ const HashtagTimeline = () => {
         })}
 
         {/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
-        {advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup).map((event) => {
+        {visibleEvents.map((event) => {
           if (event.isGroup) return null; // グループは描画済み
 
           const isHighlighted = highlightedEvents.has(event.id);
@@ -335,12 +326,11 @@ const HashtagTimeline = () => {
               data-event-id={event.id}
               style={{
                 position: "absolute",
-                left: event.adjustedPosition.x + panX, // ← ここを修正
-                // 年号の高さ(約12px)+マージン(2px) ≒ 14px だけ下げる
+                left: event.adjustedPosition.x,
                 top: event.adjustedPosition.y + panY + 14 + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
-                zIndex: isHighlighted ? 5 : 4, // タイトルは前面
+                zIndex: isHighlighted ? 5 : 4,
                 textAlign: "center",
                 userSelect: "none",
               }}
@@ -378,7 +368,7 @@ const HashtagTimeline = () => {
           <GroupTooltip
             groupData={hoveredGroup.data}
             position={{
-              x: hoveredGroup.data.position.x + panX,
+              x: hoveredGroup.data.position.x,
               y: hoveredGroup.data.position.y,
             }}
             panY={panY}

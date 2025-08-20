@@ -13,7 +13,7 @@ export function layoutWithGroups({
   // 各レーンで占有されている矩形領域を管理
   const occ = [[], [], []];
 
-  // 作成されたグループ情報を管理 (id => {id, x1, x2, ..., eventIds: Set})
+  // 作成されたグループ情報を管理
   const groups = new Map();
   
   // 最終的に出力される全要素（イベント、グループ）の配置情報
@@ -43,6 +43,23 @@ export function layoutWithGroups({
     return null;
   };
 
+  // EventGroupクラスの互換実装
+  class EventGroup {
+    constructor(events, position, groupId) {
+      this.events = events;
+      this.position = position;
+      this.id = groupId;
+    }
+
+    getDisplayCount() {
+      return this.events.length;
+    }
+
+    getMainEvent() {
+      return this.events[0];
+    }
+  }
+
   // 既存のグループに新しいイベントを追加する関数
   const attachToGroup = (groupId, newEvent) => {
     const groupInfo = groups.get(groupId);
@@ -50,6 +67,8 @@ export function layoutWithGroups({
 
     // 新しいイベントをグループに追加し、非表示として`out`配列に登録
     groupInfo.eventIds.add(newEvent.id);
+    groupInfo.eventGroup.events.push(newEvent);
+    
     const hiddenEvent = { ...newEvent, hiddenByGroup: true };
     out.push(hiddenEvent);
     outEventMap.set(newEvent.id, hiddenEvent);
@@ -85,6 +104,14 @@ export function layoutWithGroups({
     // 新しいグループの情報を作成
     const firstRect = makeRect(eventsToGroup[0], 2);
     const gid = `grp_${(firstRect.x1 | 0)}_${Math.random().toString(36).slice(2, 6)}`;
+    
+    // EventGroupインスタンスを作成
+    const eventGroup = new EventGroup(
+      [...eventsToGroup], 
+      { x: (firstRect.x1 + firstRect.x2) / 2, y: laneTop(2) },
+      gid
+    );
+
     const groupInfo = {
       id: gid,
       x1: firstRect.x1 - groupPaddingPx,
@@ -92,6 +119,7 @@ export function layoutWithGroups({
       y: laneTop(2),
       height: laneHeight,
       eventIds: idsToGroup,
+      eventGroup: eventGroup,
     };
 
     // 全てのイベントが収まるようにグループの範囲を計算
@@ -100,6 +128,9 @@ export function layoutWithGroups({
         groupInfo.x1 = Math.min(groupInfo.x1, r.x1 - groupPaddingPx);
         groupInfo.x2 = Math.max(groupInfo.x2, r.x2 + groupPaddingPx);
     });
+    
+    // EventGroupの位置を更新
+    eventGroup.position = { x: (groupInfo.x1 + groupInfo.x2) / 2, y: groupInfo.y };
     
     groups.set(gid, groupInfo);
     occ[2].push({ type: 'group', id: gid, ...groupInfo });
@@ -115,7 +146,11 @@ export function layoutWithGroups({
       const rect = makeRect(ev, lane);
       if (!findCollision(occ[lane], rect)) {
         occ[lane].push(rect);
-        const outEvent = { ...ev, adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y } };
+        const outEvent = { 
+          ...ev, 
+          adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y },
+          hiddenByGroup: false
+        };
         out.push(outEvent);
         outEventMap.set(ev.id, outEvent);
         placed = true;
@@ -132,7 +167,11 @@ export function layoutWithGroups({
     if (!collidedRect) {
       // 3段目に衝突なし -> そのまま配置
       occ[2].push(rect);
-      const outEvent = { ...ev, adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y } };
+      const outEvent = { 
+        ...ev, 
+        adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y },
+        hiddenByGroup: false
+      };
       out.push(outEvent);
       outEventMap.set(ev.id, outEvent);
     } else {
@@ -150,26 +189,22 @@ export function layoutWithGroups({
 
   // 最終的に表示されるグループの要素を`out`配列に追加
   for (const group of groups.values()) {
-    const groupEvents = [...group.eventIds].map(id => allEventsById.get(id));
-    const mainEvent = groupEvents[0]; // グループの代表イベント
+    const groupEvents = group.eventGroup.events;
+    const mainEvent = groupEvents[0];
     
     out.push({
       ...mainEvent,
       id: group.id,
       isGroup: true,
-      groupData: { // EventGroupコンポーネントが期待するデータを模倣
-        id: group.id,
-        events: groupEvents,
-        getDisplayCount: () => groupEvents.length,
-        getMainEvent: () => mainEvent,
-      },
+      groupData: group.eventGroup, // EventGroupインスタンスをそのまま渡す
       title: `+${group.eventIds.size}件`,
       adjustedPosition: { x: (group.x1 + group.x2) / 2, y: group.y },
+      hiddenByGroup: false
     });
   }
 
   return {
     allEvents: out,
-    eventGroups: [...groups.values()].map(g => g.groupData), // GroupCardなどで使うために返す
+    eventGroups: [...groups.values()].map(g => g.eventGroup),
   };
 }

@@ -1,4 +1,4 @@
-// hooks/useTimelineLogic.js の最適化版
+// hooks/useTimelineLogic.js の修正版
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { sampleEvents, initialTags } from "../utils/eventUtils";
@@ -61,32 +61,106 @@ export const useTimelineLogic = (
   // 計算値
   const currentPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
 
-  // 高度な配置ロジック（pan移動では再計算しない最適化版）
+  // 高度な配置ロジック（完全に分離版）
   const advancedEventPositions = useMemo(() => {
-    const getEventX = (evId) => {
-      const ev = events.find((e) => e && e.id === evId);
-      if (!ev) return 0;
-      const d =
-        ev.startDate instanceof Date ? ev.startDate : new Date(ev.startDate);
-      if (Number.isNaN(d.getTime())) return 0;
-      const year = d.getFullYear();
-      // panX は描画時に加算するため、レイアウト計算時点では 0 を渡します
-      return getXFromYear(year, currentPixelsPerYear, 0);
-    };
-
-    // 3段のY座標を計算します
-    const LANE_HEIGHT = 24;
-    const laneTop = (lane) => TIMELINE_CONFIG.FIRST_ROW_Y + lane * LANE_HEIGHT;
-
-    return layoutWithGroups({
-      events,
-      getEventX,
-      laneTop,
-      laneHeight: LANE_HEIGHT,
-      minWidthPx: 60,
-      groupPaddingPx: 8,
+    // 年表に含まれるイベントIDを収集
+    const timelineEventIds = new Set();
+    Timelines.forEach(timeline => {
+      timeline.events.forEach(event => {
+        timelineEventIds.add(event.id);
+      });
     });
-  }, [events, currentPixelsPerYear]);
+
+    // メインタイムラインのイベント（年表に含まれていないイベント）
+    const mainTimelineEvents = events.filter(event => !timelineEventIds.has(event.id));
+    
+    // メインタイムラインのイベントは単純配置（グループ化なし）
+    const mainEvents = [];
+    const occupiedPositions = new Map(); // Y位置ごとの占有X範囲を管理
+
+    console.log("Main timeline events:", mainTimelineEvents.length);
+
+    mainTimelineEvents.forEach(event => {
+      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
+      let level = 0;
+
+      // 重なりを避けるためのY位置調整
+      while (level < 20) {
+        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
+        const occupied = occupiedPositions.get(currentY) || [];
+        
+        // 現在のX位置が他のイベントと重ならないかチェック
+        const hasCollision = occupied.some(range => 
+          Math.abs(eventX - range.x) < (TIMELINE_CONFIG.EVENT_WIDTH + 20)
+        );
+
+        if (!hasCollision) {
+          eventY = currentY;
+          // 占有位置を記録
+          if (!occupiedPositions.has(currentY)) {
+            occupiedPositions.set(currentY, []);
+          }
+          occupiedPositions.get(currentY).push({ x: eventX });
+          break;
+        }
+        level++;
+      }
+
+      const placedEvent = {
+        ...event,
+        adjustedPosition: { x: eventX, y: eventY },
+        hiddenByGroup: false,
+        isGroup: false,
+        timelineColor: null
+      };
+      
+      mainEvents.push(placedEvent);
+    });
+
+    // 年表内のイベントレイアウト
+    const allTimelineEvents = [];
+    const allEventGroups = [];
+
+    Timelines.forEach((timeline, timelineIndex) => {
+      if (!timeline.isVisible || timeline.events.length === 0) return;
+
+      const LANE_HEIGHT = 24;
+      const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+      
+      const getEventX = (evId) => {
+        const ev = timeline.events.find(e => e.id === evId);
+        if (!ev) return 0;
+        return getXFromYear(ev.startDate.getFullYear(), currentPixelsPerYear, panX);
+      };
+
+      const laneTop = (lane) => baseY + lane * LANE_HEIGHT;
+
+      const result = layoutWithGroups({
+        events: timeline.events,
+        getEventX,
+        laneTop,
+        laneHeight: LANE_HEIGHT,
+        minWidthPx: 60,
+        groupPaddingPx: 8,
+      });
+
+      // 各イベントに年表の色を設定
+      const eventsWithColor = result.allEvents.map(event => ({
+        ...event,
+        timelineColor: timeline.color,
+        timelineId: timeline.id
+      }));
+
+      allTimelineEvents.push(...eventsWithColor);
+      allEventGroups.push(...result.eventGroups);
+    });
+
+    return {
+      allEvents: [...mainEvents, ...allTimelineEvents],
+      eventGroups: allEventGroups
+    };
+  }, [events, currentPixelsPerYear, panX, Timelines]);
 
   // 初期位置に戻す
   const resetToInitialPosition = useCallback(() => {
