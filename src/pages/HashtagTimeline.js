@@ -65,6 +65,34 @@ const HashtagTimeline = () => {
     isShiftPressed
   );
 
+  // 色の変換ユーティリティ関数を追加
+  const parseHslColor = (hslString) => {
+    const match = hslString.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+    if (match) {
+      return {
+        h: parseInt(match[1]),
+        s: parseInt(match[2]),
+        l: parseInt(match[3])
+      };
+    }
+    return null;
+  };
+
+  const createEventColors = (timelineColor) => {
+    const hsl = parseHslColor(timelineColor);
+    if (!hsl) {
+      return {
+        backgroundColor: '#f3f4f6',
+        textColor: '#374151'
+      };
+    }
+    
+    return {
+      backgroundColor: `hsl(${hsl.h}, ${Math.max(20, hsl.s - 30)}%, 95%)`,
+      textColor: `hsl(${hsl.h}, ${Math.min(100, hsl.s + 20)}%, 25%)`
+    };
+  };
+
   // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
     const markers = [];
@@ -187,20 +215,37 @@ const HashtagTimeline = () => {
         {adjustEventPositions().map((event) => {
           const isHighlighted = highlightedEvents.has(event.id);
           const hasMoved = event.axisY && event.adjustedPosition.y !== event.idealY;
+          
+          // 年表イベントの色を計算
+          let eventColors = { backgroundColor: '#6b7280', textColor: 'white' }; // デフォルト色
+          
+          if (event.timelineColor) {
+            // 年表に属するイベントの場合、年表の色から淡い背景色と濃い文字色を生成
+            eventColors = createEventColors(event.timelineColor);
+          } else if (isHighlighted) {
+            // ハイライト状態の場合
+            eventColors = { backgroundColor: '#10b981', textColor: 'white' };
+          } else if (event.id === 1 || event.id === 2) {
+            // 特別なイベント（明治維新、終戦）
+            eventColors = {
+              backgroundColor: event.id === 1 ? '#3b82f6' : '#ef4444',
+              textColor: 'white'
+            };
+          }
 
           // イベントが本来の位置からずれている場合、接続線のスタイルを計算
           let lineStyle = {};
           if (hasMoved) {
-            const eventTitleCenterY = event.adjustedPosition.y + 22; // titleの中心
+            const eventTitleCenterY = event.adjustedPosition.y + 22;
             const isAbove = eventTitleCenterY < event.axisY;
             if (isAbove) {
               lineStyle = {
-                top: '32px', // イベントの下から
+                top: '32px',
                 height: `${event.axisY - (event.adjustedPosition.y + 32)}px`,
               };
             } else {
               lineStyle = {
-                bottom: '32px', // イベントの上まで
+                bottom: '32px',
                 height: `${event.adjustedPosition.y - event.axisY}px`,
               };
             }
@@ -246,19 +291,14 @@ const HashtagTimeline = () => {
                 style={{
                   padding: "4px 8px",
                   borderRadius: "4px",
-                  color: "white",
+                  color: eventColors.textColor,
                   fontWeight: "500",
                   fontSize: "11px",
                   minWidth: "60px",
                   maxWidth: "120px",
-                  backgroundColor: isHighlighted
-                    ? "#10b981"
-                    : event.id === 1 || event.id === 2
-                    ? event.id === 1
-                      ? "#3b82f6"
-                      : "#ef4444"
-                    : "#6b7280",
-                  border: isHighlighted ? "2px solid #059669" : "none",
+                  backgroundColor: eventColors.backgroundColor,
+                  border: isHighlighted ? "2px solid #059669" : 
+                          event.timelineColor ? `1px solid ${event.timelineColor}` : "none",
                   boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
                   lineHeight: "1.1",
                   whiteSpace: "nowrap",
