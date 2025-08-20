@@ -8,7 +8,8 @@ export const EventGroupIcon = ({
   panY, 
   timelineColor,
   onHover,
-  onDoubleClick 
+  onDoubleClick,
+  onClick
 }) => {
   const count = groupData.getDisplayCount();
   
@@ -33,6 +34,7 @@ export const EventGroupIcon = ({
         textAlign: "center",
         userSelect: "none",
       }}
+      onClick={() => onClick && onClick(groupData.id, groupData)}
       onMouseEnter={() => onHover(groupData.id, groupData)}
       onMouseLeave={() => onHover(null, null)}
       onDoubleClick={onDoubleClick}
@@ -58,7 +60,7 @@ export const EventGroupIcon = ({
           padding: "4px 8px",
         }}
       >
-        {count}件
+        +{count}
       </div>
     </div>
   );
@@ -78,7 +80,9 @@ export const GroupTooltip = ({ groupData, position, panY }) => {
         padding: "8px 12px",
         borderRadius: "6px",
         fontSize: "12px",
-        maxWidth: "200px",
+        maxWidth: "250px",
+        maxHeight: "300px",
+        overflowY: "auto",
         zIndex: 100,
         pointerEvents: "none",
         boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
@@ -87,22 +91,17 @@ export const GroupTooltip = ({ groupData, position, panY }) => {
       <div style={{ fontWeight: "bold", marginBottom: "4px" }}>
         {groupData.getDisplayCount()}個のイベント
       </div>
-      {groupData.events.slice(0, 3).map((event, index) => (
-        <div key={event.id} style={{ fontSize: "11px", opacity: 0.9 }}>
-          • {event.title}
+      {groupData.events.map((event, index) => (
+        <div key={event.id} style={{ fontSize: "11px", opacity: 0.9, marginBottom: "2px" }}>
+          • {event.title} ({event.startDate.getFullYear()})
         </div>
       ))}
-      {groupData.events.length > 3 && (
-        <div style={{ fontSize: "11px", opacity: 0.7, fontStyle: "italic" }}>
-          他{groupData.events.length - 3}件...
-        </div>
-      )}
       <div style={{ 
         marginTop: "4px", 
         fontSize: "10px", 
         opacity: 0.7 
       }}>
-        ダブルクリックで詳細表示
+        クリックで固定表示
       </div>
     </div>
   );

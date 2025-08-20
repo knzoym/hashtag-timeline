@@ -24,9 +24,6 @@ const HashtagTimeline = () => {
 
   // カスタムフックから必要な状態と関数を取得
   const {
-
-    resetKey,
-
     // 基本状態
     scale,
     panX,
@@ -208,11 +205,7 @@ const HashtagTimeline = () => {
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
   // イベント表示の最適化
-  const visibleEvents = advancedEventPositions.allEvents
-  .filter(event => !event.hiddenByGroup)
-  .filter((event, index, array) => 
-    array.findIndex(e => e.id === event.id) === index
-  ); 
+  const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
 
   return (
     <div style={styles.app}>
@@ -239,7 +232,6 @@ const HashtagTimeline = () => {
       {/* メインタイムライン */}
       <div
         ref={timelineRef}
-        key={`timeline-${resetKey}`} 
         style={styles.timeline}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -293,11 +285,11 @@ const HashtagTimeline = () => {
           // 通常イベントの年号
           return (
             <div
-              key={`year-${event.id}-${scale}-${panX}-${panY}`}
+              key={`year-${event.id}`}
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y - 4 + panY + "px",
+                top: event.adjustedPosition.y + panY + "px",
                 transform: "translateX(-50%)",
                 zIndex: 2,
                 textAlign: "center",
@@ -335,7 +327,7 @@ const HashtagTimeline = () => {
 
           return (
             <div
-              key={`event-${event.id}-${scale}-${panX}-${panY}`}
+              key={event.id}
               data-event-id={event.id}
               style={{
                 position: "absolute",
@@ -420,7 +412,7 @@ const HashtagTimeline = () => {
           
           return (
             <TimelineCard
-              key={`timeline-${timeline.id}-${scale}-${panX}-${panY}`}
+              key={timeline.id}
               timeline={timeline}
               position={{ x: xPosition, y: centeredCardY }}
               panY={panY}

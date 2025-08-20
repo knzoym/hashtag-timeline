@@ -24,8 +24,6 @@ export const useTimelineLogic = (
     return window.innerWidth - targetX;
   };
 
-  const [resetKey, setResetKey] = useState(0);
-
   // 基本状態
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
   const [panX, setPanX] = useState(() => calculateInitialPanX());
@@ -92,7 +90,7 @@ export const useTimelineLogic = (
     Timelines.forEach((timeline, timelineIndex) => {
       if (!timeline.isVisible || timeline.events.length === 0) return;
 
-      const LANE_HEIGHT = 36;
+      const LANE_HEIGHT = 24;
       const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
       const axisY = baseY + LANE_HEIGHT; // 2段目（index=1）が軸線
       
@@ -527,7 +525,6 @@ export const useTimelineLogic = (
     // 検索をクリア
     setSearchTerm("");
     setHighlightedEvents(new Set());
-    setResetKey(prev => prev + 1); // リセット
   }, [
     highlightedEvents,
     events,
@@ -552,7 +549,6 @@ export const useTimelineLogic = (
         groupManager.closeAllGroups();
         setExpandedGroups(new Set());
       }
-      setResetKey(prev => prev + 1);
     },
     [groupManager]
   );
@@ -566,7 +562,7 @@ export const useTimelineLogic = (
         const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
         
         // ROW_HEIGHTの中央に軸線を配置
-        const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2 - 8;  // 12pxは調整値
+        const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
         const yPosition = axisY + panY;
 
         if (timeline.events.length === 0) {
@@ -776,7 +772,5 @@ export const useTimelineLogic = (
     setNewEvent,
     setModalPosition,
     setIsModalOpen,
-
-    resetKey,
   };
 };
