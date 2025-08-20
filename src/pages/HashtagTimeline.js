@@ -205,7 +205,11 @@ const HashtagTimeline = () => {
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
   // イベント表示の最適化
-  const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
+  const visibleEvents = advancedEventPositions.allEvents
+  .filter(event => !event.hiddenByGroup)
+  .filter((event, index, array) => 
+    array.findIndex(e => e.id === event.id) === index
+  );
 
   return (
     <div style={styles.app}>
@@ -289,7 +293,7 @@ const HashtagTimeline = () => {
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + "px",
+                top: event.adjustedPosition.y + panY +8 + "px",
                 transform: "translateX(-50%)",
                 zIndex: 2,
                 textAlign: "center",
@@ -332,7 +336,7 @@ const HashtagTimeline = () => {
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + 7 + "px",
+                top: event.adjustedPosition.y + panY +15 + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
                 zIndex: isHighlighted ? 5 : 4,

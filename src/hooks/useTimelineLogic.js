@@ -90,7 +90,7 @@ export const useTimelineLogic = (
     Timelines.forEach((timeline, timelineIndex) => {
       if (!timeline.isVisible || timeline.events.length === 0) return;
 
-      const LANE_HEIGHT = 24;
+      const LANE_HEIGHT = 36;
       const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
       const axisY = baseY + LANE_HEIGHT; // 2段目（index=1）が軸線
       

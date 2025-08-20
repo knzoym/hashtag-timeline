@@ -27,7 +27,7 @@ export const EventGroupIcon = ({
       style={{
         position: "absolute",
         left: position.x,
-        top: position.y + panY - 7 + "px",
+        top: position.y + panY -7 + "px",
         transform: "translateX(-50%)",
         cursor: "pointer",
         zIndex: 3,
