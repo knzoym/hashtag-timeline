@@ -8,10 +8,8 @@ import {
   getYearFromX,
   getXFromYear,
 } from "../utils/timelineUtils";
-import {
-  RowLaneLayoutManager,
-  GroupExpansionManager,
-} from "../utils/advancedLayoutUtils";
+import { GroupExpansionManager } from "../utils/advancedLayoutUtils";
+import { layoutWithGroups } from "../utils/layoutWithGroups";
 
 export const useTimelineLogic = (
   timelineRef,
@@ -65,16 +63,29 @@ export const useTimelineLogic = (
 
   // 高度な配置ロジック（pan移動では再計算しない最適化版）
   const advancedEventPositions = useMemo(() => {
-    const layoutManager = new RowLaneLayoutManager(
-      currentPixelsPerYear,
-      0, // panXを0に固定
-      0  // panYを0に固定
-    );
-    const visibleTimelines = Timelines.filter((timeline) => timeline.isVisible);
+    // 年→Xは pan を含めない（0固定）。あなたの util をそのまま使う
+    const getEventX = (evId) => {
+      const ev = events.find((e) => e && e.id === evId);
+      if (!ev) return 0;
+      const d =
+        ev.startDate instanceof Date ? ev.startDate : new Date(ev.startDate);
+      if (Number.isNaN(d.getTime())) return 0;
+      const year = d.getFullYear();
+      return getXFromYear(year, currentPixelsPerYear, 0);
+    };
+    // 3段のY位置（ベース行の3段）。見た目は既存の FIRST_ROW_Y を基準に
+    const LANE_HEIGHT = 24; // 必要なら微調整（イベントボックスの高さに合わせる）
+    const laneTop = (lane) => TIMELINE_CONFIG.FIRST_ROW_Y + lane * LANE_HEIGHT;
 
-    const layoutResult = layoutManager.executeLayout(events, visibleTimelines);
-    return layoutResult;
-  }, [events, Timelines, currentPixelsPerYear]); // panX, panYを依存配列から削除
+    return layoutWithGroups({
+      events,
+      getEventX,
+      laneTop,
+      laneHeight: LANE_HEIGHT,
+      minWidthPx: 60,
+      groupPaddingPx: 8,
+    });
+  }, [events, currentPixelsPerYear]);
 
   // 初期位置に戻す
   const resetToInitialPosition = useCallback(() => {

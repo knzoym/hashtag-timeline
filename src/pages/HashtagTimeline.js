@@ -256,106 +256,118 @@ console.log('Debug Info:', {
         />
 
         {/* 高度レイアウトによるイベント表示 */}
-        {advancedEventPositions.allEvents.map((event) => {
-          const isHighlighted = highlightedEvents.has(event.id);
+        {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
+{advancedEventPositions.allEvents.map((event) => {
+  // グループの場合
+  if (event.isGroup) {
+    return (
+      <EventGroupIcon
+        key={`group-${event.groupData.id}`}
+        groupData={event.groupData}
+        // ← panX を反映してから渡す
+        position={{ 
+          x: event.adjustedPosition.x + panX, 
+          y: event.adjustedPosition.y 
+        }}
+        panY={panY}
+        timelineColor={event.timelineColor}
+        onHover={handleGroupHover}
+        onDoubleClick={handleDoubleClick}
+        // （任意）重なり順を明示したい場合
+        // zIndex={3}
+      />
+    );
+  }
 
-          // グループの場合の処理
-          if (event.isGroup) {
-            return (
-              <EventGroupIcon
-                key={`group-${event.groupData.id}`}
-                groupData={event.groupData}
-                position={event.adjustedPosition}
-                panY={panY}
-                timelineColor={event.timelineColor}
-                onHover={handleGroupHover}
-                onDoubleClick={handleDoubleClick}
-              />
-            );
-          }
+  // 通常イベントの年号
+  return (
+    <div
+      key={`year-${event.id}`}
+      style={{
+        position: "absolute",
+        left: event.adjustedPosition.x + panX,     // ← ここを修正
+        top: event.adjustedPosition.y + panY + "px",
+        transform: "translateX(-50%)",
+        zIndex: 2, // 年号
+        textAlign: "center",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
+        {event.startDate.getFullYear()}
+      </div>
+    </div>
+  );
+})}
 
-          // 通常イベントの色計算
-          let eventColors = { backgroundColor: '#6b7280', textColor: 'white' };
-          
-          if (event.timelineColor) {
-            eventColors = createEventColors(event.timelineColor);
-          } else if (isHighlighted) {
-            eventColors = { backgroundColor: '#10b981', textColor: 'white' };
-          } else if (event.id === 1 || event.id === 2) {
-            eventColors = {
-              backgroundColor: event.id === 1 ? '#3b82f6' : '#ef4444',
-              textColor: 'white'
-            };
-          }
+{/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
+{advancedEventPositions.allEvents.map((event) => {
+  if (event.isGroup) return null; // グループは描画済み
 
-          return (
-            <div
-              key={event.id}
-              data-event-id={event.id}
-              style={{
-                position: "absolute",
-                left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + "px",
-                transform: "translateX(-50%)",
-                cursor: "pointer",
-                zIndex: isHighlighted ? 5 : 2,
-                textAlign: "center",
-                userSelect: "none",
-              }}
-            >
-              {/* 接続線（必要な場合のみ描画） */}
-              {event.needsConnectionLine && (
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "50%",
-                    width: "2px",
-                    backgroundColor: event.timelineColor,
-                    transform: "translateX(-50%)",
-                    zIndex: -1,
-                    opacity: 0.7,
-                    top: event.adjustedPosition.y < event.axisY ? '32px' : undefined,
-                    bottom: event.adjustedPosition.y > event.axisY ? '32px' : undefined,
-                    height: `${Math.abs(event.adjustedPosition.y - event.axisY)}px`,
-                  }}
-                />
-              )}
+  const isHighlighted = highlightedEvents.has(event.id);
 
-              <div
-                style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
-              >
-                {event.startDate.getFullYear()}
-              </div>
-              <div
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  color: eventColors.textColor,
-                  fontWeight: "500",
-                  fontSize: "11px",
-                  minWidth: "60px",
-                  maxWidth: "120px",
-                  backgroundColor: eventColors.backgroundColor,
-                  border: isHighlighted ? "2px solid #059669" : 
-                          event.timelineColor ? `1px solid ${event.timelineColor}` : "none",
-                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                  lineHeight: "1.1",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {truncateTitle(event.title)}
-              </div>
-            </div>
-          );
-        })}
+  let eventColors = { backgroundColor: '#6b7280', textColor: 'white' };
+  if (event.timelineColor) {
+    eventColors = createEventColors(event.timelineColor);
+  } else if (isHighlighted) {
+    eventColors = { backgroundColor: '#10b981', textColor: 'white' };
+  } else if (event.id === 1 || event.id === 2) {
+    eventColors = {
+      backgroundColor: event.id === 1 ? '#3b82f6' : '#ef4444',
+      textColor: 'white'
+    };
+  }
+
+  return (
+    <div
+      key={event.id}
+      data-event-id={event.id}
+      style={{
+        position: "absolute",
+        left: event.adjustedPosition.x + panX,        // ← ここを修正
+        // 年号の高さ(約12px)+マージン(2px) ≒ 14px だけ下げる
+        top: event.adjustedPosition.y + panY + 14 + "px",
+        transform: "translateX(-50%)",
+        cursor: "pointer",
+        zIndex: isHighlighted ? 5 : 4, // タイトルは前面
+        textAlign: "center",
+        userSelect: "none",
+      }}
+    >
+      <div
+        style={{
+          padding: "4px 8px",
+          borderRadius: "4px",
+          color: eventColors.textColor,
+          fontWeight: "500",
+          fontSize: "11px",
+          minWidth: "60px",
+          maxWidth: "120px",
+          backgroundColor: eventColors.backgroundColor,
+          border: isHighlighted
+            ? "2px solid #059669"
+            : event.timelineColor
+              ? `1px solid ${event.timelineColor}`
+              : "none",
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+          lineHeight: "1.1",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {truncateTitle(event.title)}
+      </div>
+    </div>
+  );
+})}
+
 
         {/* グループツールチップ */}
         {hoveredGroup && (
           <GroupTooltip
             groupData={hoveredGroup.data}
-            position={hoveredGroup.data.position}
+            position={{ x: hoveredGroup.data.position.x + panX, y: hoveredGroup.data.position.y }}
             panY={panY}
           />
         )}

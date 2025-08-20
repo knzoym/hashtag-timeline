@@ -37,8 +37,8 @@ export const EventGroupIcon = ({
       
       <div
         style={{
-          width: "120px",  // EVENT_WIDTH と同じ
-          height: "20px",  // タイトル部分の高さ
+          width: "30px",
+          height: "14px",  // タイトル部分の高さ
           borderRadius: "4px",  // 四角形
           backgroundColor: timelineColor,
           color: "white",
