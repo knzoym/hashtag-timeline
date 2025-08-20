@@ -364,7 +364,7 @@ export const useTimelineLogic = (timelineRef, isDragging, lastMouseX, lastMouseY
     setCreatedTimelines(prevTimelines => {
       setCardPositions(prevCardPositions => ({
         ...prevCardPositions,
-        [newTimeline.id]: { x: 20, y: 200 + prevTimelines.length * 100 }
+        [newTimeline.id]: { x: 20, y: 200 + prevTimelines.length *80 }
       }));
       return [...prevTimelines, newTimeline];
     });
