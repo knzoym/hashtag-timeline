@@ -4,8 +4,11 @@ import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
 import { HelpBox } from "../components/HelpBox";
 import { TimelineCard } from "../components/TimelineCard";
+import { EventGroupIcon, GroupTooltip, GroupCard } from "../components/EventGroup";
 import { useTimelineLogic } from "../hooks/useTimelineLogic";
 import { createTimelineStyles } from "../styles/timelineStyles";
+import { extractTagsFromDescription } from "../utils/timelineUtils";
+import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 
 const HashtagTimeline = () => {
   // メインの状態管理
@@ -17,7 +20,7 @@ const HashtagTimeline = () => {
 
   // カスタムフックから必要な状態と関数を取得
   const {
-    // 状態
+    // 基本状態
     scale,
     panX,
     panY,
@@ -31,6 +34,12 @@ const HashtagTimeline = () => {
     currentPixelsPerYear,
     cardPositions,
 
+    // 高度レイアウト関連
+    advancedEventPositions,
+    expandedGroups,
+    hoveredGroup,
+    groupManager,
+
     // 関数
     setIsHelpOpen,
     resetToInitialPosition,
@@ -42,7 +51,6 @@ const HashtagTimeline = () => {
     removeManualTag,
     getAllCurrentTags,
     createTimeline,
-    adjustEventPositions,
     getTopTagsFromSearch,
     truncateTitle,
     handleWheel,
@@ -51,12 +59,16 @@ const HashtagTimeline = () => {
     handleMouseUp,
     handleEventChange,
     openNewEventModal,
+    toggleEventGroup,
+    handleGroupHover,
 
     Timelines,
     deleteTimeline,
-    getTimelineEventsForDisplay,
     getTimelineAxesForDisplay,
-    setCardPositions,
+    setEditingEvent,
+  setNewEvent,
+  setModalPosition, 
+  setIsModalOpen,
   } = useTimelineLogic(
     timelineRef,
     isDragging,
@@ -65,7 +77,7 @@ const HashtagTimeline = () => {
     isShiftPressed
   );
 
-  // 色の変換ユーティリティ関数を追加
+  // 色の変換ユーティリティ関数
   const parseHslColor = (hslString) => {
     const match = hslString.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
     if (match) {
@@ -92,6 +104,28 @@ const HashtagTimeline = () => {
       textColor: `hsl(${hsl.h}, ${Math.min(100, hsl.s + 20)}%, 25%)`
     };
   };
+
+  // グループカードでのイベントダブルクリック処理
+  const handleGroupEventDoubleClick = useCallback((event) => {
+    setEditingEvent(event);
+    setNewEvent({
+      title: event.title,
+      description: event.description,
+      date: event.startDate,
+      manualTags: event.tags.filter(
+        (tag) =>
+          tag !== event.title &&
+          !extractTagsFromDescription(event.description).includes(tag)
+      ),
+    });
+
+    // モーダル位置を画面中央に設定
+    setModalPosition({
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+    });
+    setIsModalOpen(true);
+  }, []);
 
   // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
@@ -211,44 +245,37 @@ const HashtagTimeline = () => {
           styles={styles}
         />
 
-        {/* メインタイムラインのイベント表示 */}
-        {adjustEventPositions().map((event) => {
+        {/* 高度レイアウトによるイベント表示 */}
+        {advancedEventPositions.allEvents.map((event) => {
           const isHighlighted = highlightedEvents.has(event.id);
-          const hasMoved = event.axisY && event.adjustedPosition.y !== event.idealY;
-          
-          // 年表イベントの色を計算
-          let eventColors = { backgroundColor: '#6b7280', textColor: 'white' }; // デフォルト色
+
+          // グループの場合の処理
+          if (event.isGroup) {
+            return (
+              <EventGroupIcon
+                key={`group-${event.groupData.id}`}
+                groupData={event.groupData}
+                position={event.adjustedPosition}
+                panY={panY}
+                timelineColor={event.timelineColor}
+                onHover={handleGroupHover}
+                onDoubleClick={handleDoubleClick}
+              />
+            );
+          }
+
+          // 通常イベントの色計算
+          let eventColors = { backgroundColor: '#6b7280', textColor: 'white' };
           
           if (event.timelineColor) {
-            // 年表に属するイベントの場合、年表の色から淡い背景色と濃い文字色を生成
             eventColors = createEventColors(event.timelineColor);
           } else if (isHighlighted) {
-            // ハイライト状態の場合
             eventColors = { backgroundColor: '#10b981', textColor: 'white' };
           } else if (event.id === 1 || event.id === 2) {
-            // 特別なイベント（明治維新、終戦）
             eventColors = {
               backgroundColor: event.id === 1 ? '#3b82f6' : '#ef4444',
               textColor: 'white'
             };
-          }
-
-          // イベントが本来の位置からずれている場合、接続線のスタイルを計算
-          let lineStyle = {};
-          if (hasMoved) {
-            const eventTitleCenterY = event.adjustedPosition.y + 22;
-            const isAbove = eventTitleCenterY < event.axisY;
-            if (isAbove) {
-              lineStyle = {
-                top: '32px',
-                height: `${event.axisY - (event.adjustedPosition.y + 32)}px`,
-              };
-            } else {
-              lineStyle = {
-                bottom: '32px',
-                height: `${event.adjustedPosition.y - event.axisY}px`,
-              };
-            }
           }
 
           return (
@@ -266,8 +293,8 @@ const HashtagTimeline = () => {
                 userSelect: "none",
               }}
             >
-              {/* 年表イベントがずれている場合のみ、軸への接続線を描画 */}
-              {hasMoved && (
+              {/* 接続線（必要な場合のみ描画） */}
+              {event.needsConnectionLine && (
                 <div
                   style={{
                     position: "absolute",
@@ -277,7 +304,9 @@ const HashtagTimeline = () => {
                     transform: "translateX(-50%)",
                     zIndex: -1,
                     opacity: 0.7,
-                    ...lineStyle,
+                    top: event.adjustedPosition.y < event.axisY ? '32px' : undefined,
+                    bottom: event.adjustedPosition.y > event.axisY ? '32px' : undefined,
+                    height: `${Math.abs(event.adjustedPosition.y - event.axisY)}px`,
                   }}
                 />
               )}
@@ -312,16 +341,47 @@ const HashtagTimeline = () => {
           );
         })}
 
+        {/* グループツールチップ */}
+        {hoveredGroup && (
+          <GroupTooltip
+            groupData={hoveredGroup.data}
+            position={hoveredGroup.data.position}
+            panY={panY}
+          />
+        )}
+
+        {/* 展開されたグループカード */}
+        {Array.from(expandedGroups).map(groupId => {
+          const groupCard = groupManager.getGroupCard(groupId);
+          const groupData = advancedEventPositions.eventGroups.find(g => g.id === groupId);
+          
+          if (!groupCard || !groupData) return null;
+
+          return (
+            <GroupCard
+              key={`card-${groupId}`}
+              groupData={groupData}
+              position={groupCard.position}
+              panY={panY}
+              panX={panX}
+              timelineColor={groupData.events[0]?.timelineColor || '#6b7280'}
+              onEventDoubleClick={handleGroupEventDoubleClick}
+              onClose={() => toggleEventGroup(groupId, groupCard.position)}
+            />
+          );
+        })}
+
         {/* 年表カード */}
-        {Timelines.map((timeline) => {
+        {Timelines.map((timeline, index) => {
           const axis = axesMap.get(timeline.id);
           const xPosition = axis ? axis.startX : 20;
+          const yPosition = cardPositions[timeline.id]?.y || (TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT);
           return (
             <TimelineCard
               key={timeline.id}
               timeline={timeline}
-              position={{ x: xPosition, y: cardPositions[timeline.id]?.y || 200 }}
-              panY={panY} // Pass panY prop
+              position={{ x: xPosition, y: yPosition }}
+              panY={panY}
               onDeleteTimeline={deleteTimeline}
             />
           );
@@ -330,7 +390,6 @@ const HashtagTimeline = () => {
         {/* 年表軸線の描画 */}
         {timelineAxes.map((axis) => (
           <div key={`axis-${axis.id}`}>
-            {/* 年表軸線 */}
             <div
               style={{
                 position: "absolute",
