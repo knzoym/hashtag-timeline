@@ -1,4 +1,4 @@
-// hooks/useTimelineLogic.js の修正版
+// hooks/useTimelineLogic.js の改善版
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { sampleEvents, initialTags } from "../utils/eventUtils";
@@ -23,6 +23,8 @@ export const useTimelineLogic = (
     const targetX = (2080 - -5000) * initialPixelsPerYear;
     return window.innerWidth - targetX;
   };
+
+  const [resetKey, setResetKey] = useState(0);
 
   // 基本状態
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
@@ -61,7 +63,16 @@ export const useTimelineLogic = (
   // 計算値
   const currentPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
 
-  // 高度な配置ロジック（完全に分離版）
+  // テキスト幅を計算する関数
+  const calculateTextWidth = useCallback((text, fontSize = 11) => {
+    // 簡易的な文字幅計算（実際のブラウザレンダリングとほぼ同じ）
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    context.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+    return context.measureText(text).width;
+  }, []);
+
+  // 改善された配置ロジック
   const advancedEventPositions = useMemo(() => {
     // 年表に含まれるイベントIDを収集
     const timelineEventIds = new Set();
@@ -71,62 +82,19 @@ export const useTimelineLogic = (
       });
     });
 
-    // メインタイムラインのイベント（年表に含まれていないイベント）
-    const mainTimelineEvents = events.filter(event => !timelineEventIds.has(event.id));
-    
-    // メインタイムラインのイベントは単純配置（グループ化なし）
-    const mainEvents = [];
-    const occupiedPositions = new Map(); // Y位置ごとの占有X範囲を管理
+    // 年表の占有領域を記録（メインタイムラインとの干渉を避けるため）
+    const timelineOccupiedRegions = [];
 
-    console.log("Main timeline events:", mainTimelineEvents.length);
-
-    mainTimelineEvents.forEach(event => {
-      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
-      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
-      let level = 0;
-
-      // 重なりを避けるためのY位置調整
-      while (level < 20) {
-        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
-        const occupied = occupiedPositions.get(currentY) || [];
-        
-        // 現在のX位置が他のイベントと重ならないかチェック
-        const hasCollision = occupied.some(range => 
-          Math.abs(eventX - range.x) < (TIMELINE_CONFIG.EVENT_WIDTH + 20)
-        );
-
-        if (!hasCollision) {
-          eventY = currentY;
-          // 占有位置を記録
-          if (!occupiedPositions.has(currentY)) {
-            occupiedPositions.set(currentY, []);
-          }
-          occupiedPositions.get(currentY).push({ x: eventX });
-          break;
-        }
-        level++;
-      }
-
-      const placedEvent = {
-        ...event,
-        adjustedPosition: { x: eventX, y: eventY },
-        hiddenByGroup: false,
-        isGroup: false,
-        timelineColor: null
-      };
-      
-      mainEvents.push(placedEvent);
-    });
-
-    // 年表内のイベントレイアウト
+    // 年表内イベントレイアウト（先に処理して占有領域を確定）
     const allTimelineEvents = [];
     const allEventGroups = [];
 
     Timelines.forEach((timeline, timelineIndex) => {
       if (!timeline.isVisible || timeline.events.length === 0) return;
 
-      const LANE_HEIGHT = 24;
+      const LANE_HEIGHT = 36;
       const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+      const axisY = baseY + LANE_HEIGHT; // 2段目（index=1）が軸線
       
       const getEventX = (evId) => {
         const ev = timeline.events.find(e => e.id === evId);
@@ -134,8 +102,15 @@ export const useTimelineLogic = (
         return getXFromYear(ev.startDate.getFullYear(), currentPixelsPerYear, panX);
       };
 
-      const laneTop = (lane) => baseY + lane * LANE_HEIGHT;
+      const laneTop = (lane) => {
+        // 軸線を中心とした配置
+        if (lane === 0) return axisY - LANE_HEIGHT; // 1段目：軸線の上
+        if (lane === 1) return axisY; // 2段目：軸線上
+        if (lane === 2) return axisY + LANE_HEIGHT; // 3段目：軸線の下
+        return axisY + lane * LANE_HEIGHT;
+      };
 
+      // 改善されたlayoutWithGroupsを使用
       const result = layoutWithGroups({
         events: timeline.events,
         getEventX,
@@ -143,24 +118,105 @@ export const useTimelineLogic = (
         laneHeight: LANE_HEIGHT,
         minWidthPx: 60,
         groupPaddingPx: 8,
+        calculateTextWidth, // テキスト幅計算関数を渡す
       });
 
-      // 各イベントに年表の色を設定
-      const eventsWithColor = result.allEvents.map(event => ({
-        ...event,
-        timelineColor: timeline.color,
-        timelineId: timeline.id
-      }));
+      // 各イベントに年表の色を設定し、占有領域を記録
+      const eventsWithColor = result.allEvents.map(event => {
+        const eventWithColor = {
+          ...event,
+          timelineColor: timeline.color,
+          timelineId: timeline.id
+        };
+
+        // 占有領域を記録（メインタイムラインとの干渉回避用）
+        if (!event.hiddenByGroup) {
+          const textWidth = calculateTextWidth(truncateTitle(event.title));
+          const eventWidth = Math.max(60, textWidth + 16); // padding考慮
+          timelineOccupiedRegions.push({
+            x1: event.adjustedPosition.x - eventWidth / 2,
+            x2: event.adjustedPosition.x + eventWidth / 2,
+            y1: event.adjustedPosition.y - 10,
+            y2: event.adjustedPosition.y + 50, // イベント高さ + マージン
+          });
+        }
+
+        return eventWithColor;
+      });
 
       allTimelineEvents.push(...eventsWithColor);
       allEventGroups.push(...result.eventGroups);
+    });
+
+    // メインタイムラインのイベント（改善された干渉回避）
+    const mainTimelineEvents = events.filter(event => !timelineEventIds.has(event.id));
+    const mainEvents = [];
+    const occupiedPositions = new Map();
+
+    // 年表との干渉をチェックする関数
+    const checkTimelineCollision = (x, y, width) => {
+      const eventRegion = {
+        x1: x - width / 2,
+        x2: x + width / 2,
+        y1: y - 10,
+        y2: y + 50,
+      };
+
+      return timelineOccupiedRegions.some(region => 
+        eventRegion.x1 < region.x2 && 
+        eventRegion.x2 > region.x1 && 
+        eventRegion.y1 < region.y2 && 
+        eventRegion.y2 > region.y1
+      );
+    };
+
+    mainTimelineEvents.forEach(event => {
+      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+      const textWidth = calculateTextWidth(truncateTitle(event.title));
+      const eventWidth = Math.max(60, textWidth + 16);
+      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
+      let level = 0;
+
+      // 重なりを避けるためのY位置調整（年表との干渉も考慮）
+      while (level < 30) {
+        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
+        const occupied = occupiedPositions.get(currentY) || [];
+        
+        // 他のメインイベントとの重なりチェック
+        const hasMainCollision = occupied.some(range => 
+          Math.abs(eventX - range.x) < (eventWidth + range.width) / 2 + 10
+        );
+
+        // 年表との重なりチェック
+        const hasTimelineCollision = checkTimelineCollision(eventX, currentY, eventWidth);
+
+        if (!hasMainCollision && !hasTimelineCollision) {
+          eventY = currentY;
+          // 占有位置を記録
+          if (!occupiedPositions.has(currentY)) {
+            occupiedPositions.set(currentY, []);
+          }
+          occupiedPositions.get(currentY).push({ x: eventX, width: eventWidth });
+          break;
+        }
+        level++;
+      }
+
+      mainEvents.push({
+        ...event,
+        adjustedPosition: { x: eventX, y: eventY },
+        hiddenByGroup: false,
+        isGroup: false,
+        timelineColor: null,
+        calculatedWidth: eventWidth
+      });
     });
 
     return {
       allEvents: [...mainEvents, ...allTimelineEvents],
       eventGroups: allEventGroups
     };
-  }, [events, currentPixelsPerYear, panX, Timelines]);
+  }, [events, currentPixelsPerYear, panX, Timelines, calculateTextWidth]);
 
   // 初期位置に戻す
   const resetToInitialPosition = useCallback(() => {
@@ -471,6 +527,7 @@ export const useTimelineLogic = (
     // 検索をクリア
     setSearchTerm("");
     setHighlightedEvents(new Set());
+    setResetKey(prev => prev + 1); // リセット
   }, [
     highlightedEvents,
     events,
@@ -495,20 +552,22 @@ export const useTimelineLogic = (
         groupManager.closeAllGroups();
         setExpandedGroups(new Set());
       }
+      setResetKey(prev => prev + 1);
     },
     [groupManager]
   );
 
-  // 表示中の年表の軸線生成
+  // 表示中の年表の軸線生成（軸線位置を修正）
   const getTimelineAxesForDisplay = useCallback(() => {
     const visibleTimelines = Timelines.filter((timeline) => timeline.isVisible);
 
     return visibleTimelines
       .map((timeline, timelineIndex) => {
-        const yPosition =
-          TIMELINE_CONFIG.FIRST_ROW_Y +
-          timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT +
-          panY;
+        const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+        
+        // ROW_HEIGHTの中央に軸線を配置
+        const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2 - 8;  // 12pxは調整値
+        const yPosition = axisY + panY;
 
         if (timeline.events.length === 0) {
           return null;
@@ -710,9 +769,14 @@ export const useTimelineLogic = (
     toggleEventGroup,
     handleGroupHover,
 
+    // ユーティリティ関数
+    calculateTextWidth,
+
     setEditingEvent,
     setNewEvent,
     setModalPosition,
     setIsModalOpen,
+
+    resetKey,
   };
 };

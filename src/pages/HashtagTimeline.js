@@ -24,6 +24,9 @@ const HashtagTimeline = () => {
 
   // カスタムフックから必要な状態と関数を取得
   const {
+
+    resetKey,
+
     // 基本状態
     scale,
     panX,
@@ -69,6 +72,9 @@ const HashtagTimeline = () => {
     Timelines,
     deleteTimeline,
     getTimelineAxesForDisplay,
+    // ユーティリティ関数
+    calculateTextWidth,
+
     setEditingEvent,
     setNewEvent,
     setModalPosition,
@@ -202,7 +208,11 @@ const HashtagTimeline = () => {
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
   // イベント表示の最適化
-  const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
+  const visibleEvents = advancedEventPositions.allEvents
+  .filter(event => !event.hiddenByGroup)
+  .filter((event, index, array) => 
+    array.findIndex(e => e.id === event.id) === index
+  ); 
 
   return (
     <div style={styles.app}>
@@ -229,6 +239,7 @@ const HashtagTimeline = () => {
       {/* メインタイムライン */}
       <div
         ref={timelineRef}
+        key={`timeline-${resetKey}`} 
         style={styles.timeline}
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -282,11 +293,11 @@ const HashtagTimeline = () => {
           // 通常イベントの年号
           return (
             <div
-              key={`year-${event.id}`}
+              key={`year-${event.id}-${scale}-${panX}-${panY}`}
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + "px",
+                top: event.adjustedPosition.y - 4 + panY + "px",
                 transform: "translateX(-50%)",
                 zIndex: 2,
                 textAlign: "center",
@@ -307,6 +318,8 @@ const HashtagTimeline = () => {
           if (event.isGroup) return null; // グループは描画済み
 
           const isHighlighted = highlightedEvents.has(event.id);
+          const truncatedTitle = truncateTitle(event.title);
+          const eventWidth = event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
 
           let eventColors = { backgroundColor: "#6b7280", textColor: "white" };
           if (event.timelineColor) {
@@ -322,12 +335,12 @@ const HashtagTimeline = () => {
 
           return (
             <div
-              key={event.id}
+              key={`event-${event.id}-${scale}-${panX}-${panY}`}
               data-event-id={event.id}
               style={{
                 position: "absolute",
                 left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + 14 + "px",
+                top: event.adjustedPosition.y + panY + 7 + "px",
                 transform: "translateX(-50%)",
                 cursor: "pointer",
                 zIndex: isHighlighted ? 5 : 4,
@@ -342,8 +355,7 @@ const HashtagTimeline = () => {
                   color: eventColors.textColor,
                   fontWeight: "500",
                   fontSize: "11px",
-                  minWidth: "60px",
-                  maxWidth: "120px",
+                  width: `${Math.max(60, eventWidth)}px`,
                   backgroundColor: eventColors.backgroundColor,
                   border: isHighlighted
                     ? "2px solid #059669"
@@ -357,7 +369,7 @@ const HashtagTimeline = () => {
                   textOverflow: "ellipsis",
                 }}
               >
-                {truncateTitle(event.title)}
+                {truncatedTitle}
               </div>
             </div>
           );
@@ -402,14 +414,15 @@ const HashtagTimeline = () => {
         {Timelines.map((timeline, index) => {
           const axis = axesMap.get(timeline.id);
           const xPosition = axis ? axis.startX : 20;
-          const yPosition =
-            cardPositions[timeline.id]?.y ||
+          const baseCardY = cardPositions[timeline.id]?.y ||
             TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
+          const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
+          
           return (
             <TimelineCard
-              key={timeline.id}
+              key={`timeline-${timeline.id}-${scale}-${panX}-${panY}`}
               timeline={timeline}
-              position={{ x: xPosition, y: yPosition }}
+              position={{ x: xPosition, y: centeredCardY }}
               panY={panY}
               onDeleteTimeline={deleteTimeline}
             />

@@ -12,6 +12,12 @@ export const EventGroupIcon = ({
 }) => {
   const count = groupData.getDisplayCount();
   
+  // グループ内イベントの年数範囲を取得
+  const years = groupData.events.map(event => event.startDate.getFullYear()).sort((a, b) => a - b);
+  const minYear = years[0];
+  const maxYear = years[years.length - 1];
+  const yearDisplay = minYear === maxYear ? `${minYear}` : `${minYear}-${maxYear}`;
+  
   return (
     <div
       data-event-id={groupData.getMainEvent().id}
@@ -20,7 +26,7 @@ export const EventGroupIcon = ({
       style={{
         position: "absolute",
         left: position.x,
-        top: position.y + panY + "px",
+        top: position.y + panY - 7 + "px",
         transform: "translateX(-50%)",
         cursor: "pointer",
         zIndex: 3,
@@ -32,7 +38,7 @@ export const EventGroupIcon = ({
       onDoubleClick={onDoubleClick}
     >
       <div style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}>
-        {groupData.getMainEvent().startDate.getFullYear()}
+        {yearDisplay}
       </div>
       
       <div

@@ -8,7 +8,7 @@ export const TIMELINE_CONFIG = {
   MODAL_MARGIN: 20,
 
   // 行・段システム設定
-  ROW_HEIGHT: 80,        
+  ROW_HEIGHT: 120,        
   LANE_HEIGHT: 25,       
   LANES_PER_ROW: 3,      
   

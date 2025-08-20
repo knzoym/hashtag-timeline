@@ -6,6 +6,7 @@ export function layoutWithGroups({
   laneHeight,
   minWidthPx = 60,
   groupPaddingPx = 8,
+  calculateTextWidth, // 新しく追加
 }) {
   // 全イベントをIDで簡単に検索できるようMapに変換
   const allEventsById = new Map(events.filter(Boolean).map(e => [e.id, e]));
@@ -22,15 +23,24 @@ export function layoutWithGroups({
   // `out`配列に追加されたイベントをIDですぐに見つけられるようにするMap
   const outEventMap = new Map();
 
-  // 水平方向の重なりをチェックする関数
+  // イベントの実際の幅を計算する関数
+  const getEventWidth = (event) => {
+    if (calculateTextWidth && event.title) {
+      const textWidth = calculateTextWidth(event.title.length > 12 ? event.title.substring(0, 12) + "..." : event.title);
+      return Math.max(minWidthPx, textWidth + 16); // padding考慮
+    }
+    return minWidthPx;
+  };
+
+  // 水平方向の重なりをチェックする関数（テキスト幅考慮）
   const overlapsX = (a, b) => a.x1 < b.x2 && a.x2 > b.x1;
 
   // イベントの矩形情報を作成する関数
   const makeRect = (ev, lane) => {
-    const w = Math.max(ev.widthPx || minWidthPx, minWidthPx);
-    const x1 = getEventX(ev.id);
-    const x2 = x1 + w;
-    return { type: 'event', id: ev.id, lane, x1, x2, y: laneTop(lane), height: laneHeight };
+    const w = getEventWidth(ev);
+    const x1 = getEventX(ev.id) - w / 2;
+    const x2 = getEventX(ev.id) + w / 2;
+    return { type: 'event', id: ev.id, lane, x1, x2, y: laneTop(lane), height: laneHeight, width: w };
   };
 
   // 指定されたレーンで衝突する矩形を探す関数
@@ -141,15 +151,16 @@ export function layoutWithGroups({
   for (const ev of sortedEvents) {
     let placed = false;
 
-    // 1段目、2段目に配置を試みる
-    for (const lane of [0, 1]) {
+    // 2段目→1段目→3段目の順で配置を試みる（2段目が軸線上なので優先）
+    for (const lane of [1, 0, 2]) {
       const rect = makeRect(ev, lane);
       if (!findCollision(occ[lane], rect)) {
         occ[lane].push(rect);
         const outEvent = { 
           ...ev, 
-          adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y },
-          hiddenByGroup: false
+          adjustedPosition: { x: getEventX(ev.id), y: rect.y },
+          hiddenByGroup: false,
+          calculatedWidth: rect.width
         };
         out.push(outEvent);
         outEventMap.set(ev.id, outEvent);
@@ -160,22 +171,13 @@ export function layoutWithGroups({
 
     if (placed) continue;
 
-    // 3段目（グループ化レーン）の処理
+    // 全ての段で配置できない場合のみグループ化
+    // ここでは既に3段目も試行済みなので、3段目での衝突処理を行う
     const rect = makeRect(ev, 2);
     const collidedRect = findCollision(occ[2], rect);
 
-    if (!collidedRect) {
-      // 3段目に衝突なし -> そのまま配置
-      occ[2].push(rect);
-      const outEvent = { 
-        ...ev, 
-        adjustedPosition: { x: (rect.x1 + rect.x2) / 2, y: rect.y },
-        hiddenByGroup: false
-      };
-      out.push(outEvent);
-      outEventMap.set(ev.id, outEvent);
-    } else {
-      // 3段目で衝突あり
+    if (collidedRect) {
+      // 3段目で衝突あり → グループ化
       if (collidedRect.type === 'group') {
         // 既存グループと衝突 -> グループに吸収
         attachToGroup(collidedRect.id, ev);
@@ -197,7 +199,7 @@ export function layoutWithGroups({
       id: group.id,
       isGroup: true,
       groupData: group.eventGroup, // EventGroupインスタンスをそのまま渡す
-      title: `+${group.eventIds.size}件`,
+      title: `${group.eventIds.size}件`,
       adjustedPosition: { x: (group.x1 + group.x2) / 2, y: group.y },
       hiddenByGroup: false
     });
