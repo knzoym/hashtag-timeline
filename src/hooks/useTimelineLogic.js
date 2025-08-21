@@ -216,6 +216,35 @@ export const useTimelineLogic = (
     };
   }, [events, currentPixelsPerYear, panX, Timelines, calculateTextWidth]);
 
+  // イベント更新（テーブルビュー用）
+  const updateEvent = useCallback((updatedEvent) => {
+    setEvents(prevEvents => 
+      prevEvents.map(event => 
+        event.id === updatedEvent.id ? updatedEvent : event
+      )
+    );
+
+    // タグリストも更新
+    const newTags = [...new Set([
+      ...allTags,
+      ...updatedEvent.tags.filter(tag => !allTags.includes(tag))
+    ])];
+    setAllTags(newTags);
+  }, [allTags]);
+
+  // イベント削除（テーブルビュー用）
+  const deleteEvent = useCallback((eventId) => {
+    setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
+    
+    // 年表からも削除
+    setCreatedTimelines(prevTimelines => 
+      prevTimelines.map(timeline => ({
+        ...timeline,
+        events: timeline.events.filter(event => event.id !== eventId)
+      }))
+    );
+  }, []);
+
   // 初期位置に戻す
   const resetToInitialPosition = useCallback(() => {
     setScale(TIMELINE_CONFIG.DEFAULT_SCALE);
@@ -765,6 +794,10 @@ export const useTimelineLogic = (
     toggleEventGroup,
     handleGroupHover,
 
+    // テーブルビュー用関数
+    updateEvent,
+    deleteEvent,
+
     // ユーティリティ関数
     calculateTextWidth,
 
@@ -772,5 +805,6 @@ export const useTimelineLogic = (
     setNewEvent,
     setModalPosition,
     setIsModalOpen,
+    setEvents,
   };
 };

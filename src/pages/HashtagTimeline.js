@@ -1,9 +1,10 @@
 // src/pages/HashtagTimeline.js
-import React, { useRef, useCallback } from "react";
+import React, { useRef, useCallback, useState } from "react";
 import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
 import { HelpBox } from "../components/HelpBox";
 import { TimelineCard } from "../components/TimelineCard";
+import TableView from "../components/TableView";
 import {
   EventGroupIcon,
   GroupTooltip,
@@ -15,6 +16,9 @@ import { extractTagsFromDescription } from "../utils/timelineUtils";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 
 const HashtagTimeline = () => {
+  // ビュー切り替え状態
+  const [currentView, setCurrentView] = useState('timeline'); // 'timeline' or 'table'
+
   // メインの状態管理
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
@@ -69,6 +73,11 @@ const HashtagTimeline = () => {
     Timelines,
     deleteTimeline,
     getTimelineAxesForDisplay,
+    
+    // テーブルビュー用関数
+    updateEvent,
+    deleteEvent,
+
     // ユーティリティ関数
     calculateTextWidth,
 
@@ -84,6 +93,13 @@ const HashtagTimeline = () => {
     lastMouseY,
     isShiftPressed
   );
+
+  // テーブルビュー用のイベント削除ハンドラー
+  const handleTableEventDelete = useCallback((eventId) => {
+    if (window.confirm('このイベントを削除しますか？')) {
+      deleteEvent(eventId);
+    }
+  }, [deleteEvent]);
 
   // 色の変換ユーティリティ関数
   const parseHslColor = (hslString) => {
@@ -204,290 +220,326 @@ const HashtagTimeline = () => {
   const timelineAxes = getTimelineAxesForDisplay();
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
-  // 修正：重複除去ロジックを削除し、全てのイベントを表示
-  // 各年表で同じイベントが独立して表示されるようにする
+  // 表示用のイベント
   const visibleEvents = advancedEventPositions.allEvents.filter(event => !event.hiddenByGroup);
 
   return (
     <div style={styles.app}>
       {/* ヘッダー */}
       <div style={styles.header}>
-        <div style={styles.headerLeft}></div>
+        <div style={styles.headerLeft}>
+          {/* ビュー切り替えボタン */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={() => setCurrentView('timeline')}
+              style={{
+                ...styles.resetButton,
+                backgroundColor: currentView === 'timeline' ? '#3b82f6' : '#6b7280',
+              }}
+            >
+              📊 年表ビュー
+            </button>
+            <button
+              onClick={() => setCurrentView('table')}
+              style={{
+                ...styles.resetButton,
+                backgroundColor: currentView === 'table' ? '#3b82f6' : '#6b7280',
+              }}
+            >
+              📋 テーブルビュー
+            </button>
+          </div>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
           <h1 style={styles.title}>#ハッシュタグ年表</h1>
         </div>
         <div style={styles.headerRight}>
-          <button
-            style={styles.resetButton}
-            onClick={resetToInitialPosition}
-            title="初期位置に戻す"
-          >
-            🏠 初期位置
-          </button>
-          <span style={styles.zoomInfo}>
-            ズーム: {(scale / 2.5).toFixed(1)}x
-          </span>
+          {currentView === 'timeline' && (
+            <>
+              <button
+                style={styles.resetButton}
+                onClick={resetToInitialPosition}
+                title="初期位置に戻す"
+              >
+                🏠 初期位置
+              </button>
+              <span style={styles.zoomInfo}>
+                ズーム: {(scale / 2.5).toFixed(1)}x
+              </span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* メインタイムライン */}
-      <div
-        ref={timelineRef}
-        style={styles.timeline}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onDoubleClick={handleDoubleClick}
-      >
-        {/* 年マーカー */}
-        {generateYearMarkers()}
-
-        {/* イベントを追加ボタン */}
-        <div className="floating-panel">
-          <button style={styles.addButton} onClick={openNewEventModal}>
-            + イベントを追加
-          </button>
-        </div>
-
-        {/* 検索パネル */}
-        <SearchPanel
-          searchTerm={searchTerm}
+      {/* メインコンテンツ */}
+      {currentView === 'table' ? (
+        // テーブルビュー
+        <TableView
+          events={events}
+          timelines={Timelines}
           highlightedEvents={highlightedEvents}
-          onSearchChange={handleSearchChange}
-          onCreateTimeline={createTimeline}
-          onDeleteTimeline={deleteTimeline}
-          getTopTagsFromSearch={getTopTagsFromSearch}
-          styles={styles}
+          onEventUpdate={updateEvent}
+          onEventDelete={handleTableEventDelete}
+          searchTerm={searchTerm}
         />
+      ) : (
+        // 年表ビュー（既存のコード）
+        <div
+          ref={timelineRef}
+          style={styles.timeline}
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onDoubleClick={handleDoubleClick}
+        >
+          {/* 年マーカー */}
+          {generateYearMarkers()}
 
-        {/* 高度レイアウトによるイベント表示 */}
-        {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
-        {visibleEvents.map((event, index) => {
-          // グループの場合
-          if (event.isGroup) {
+          {/* イベントを追加ボタン */}
+          <div className="floating-panel">
+            <button style={styles.addButton} onClick={openNewEventModal}>
+              + イベントを追加
+            </button>
+          </div>
+
+          {/* 検索パネル */}
+          <SearchPanel
+            searchTerm={searchTerm}
+            highlightedEvents={highlightedEvents}
+            onSearchChange={handleSearchChange}
+            onCreateTimeline={createTimeline}
+            onDeleteTimeline={deleteTimeline}
+            getTopTagsFromSearch={getTopTagsFromSearch}
+            styles={styles}
+          />
+
+          {/* 高度レイアウトによるイベント表示 */}
+          {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
+          {visibleEvents.map((event, index) => {
+            // グループの場合
+            if (event.isGroup) {
+              return (
+                <EventGroupIcon
+                  key={`group-${event.groupData.id}-${index}`}
+                  groupData={event.groupData}
+                  position={{
+                    x: event.adjustedPosition.x,
+                    y: event.adjustedPosition.y,
+                  }}
+                  panY={panY}
+                  timelineColor={event.timelineColor || "#6b7280"}
+                  onHover={handleGroupHover}
+                  onDoubleClick={handleDoubleClick}
+                />
+              );
+            }
+
+            // 通常イベントの年号
+            const uniqueKey = event.timelineId 
+              ? `year-${event.id}-${event.timelineId}-${index}`
+              : `year-${event.id}-main-${index}`;
+
             return (
-              <EventGroupIcon
-                key={`group-${event.groupData.id}-${index}`}
-                groupData={event.groupData}
-                position={{
-                  x: event.adjustedPosition.x,
-                  y: event.adjustedPosition.y,
+              <div
+                key={uniqueKey}
+                style={{
+                  position: "absolute",
+                  left: event.adjustedPosition.x,
+                  top: event.adjustedPosition.y + panY + 8 + "px",
+                  transform: "translateX(-50%)",
+                  zIndex: 2,
+                  textAlign: "center",
+                  pointerEvents: "none",
                 }}
+              >
+                <div
+                  style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
+                >
+                  {event.startDate.getFullYear()}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
+          {visibleEvents.map((event, index) => {
+            if (event.isGroup) return null; // グループは描画済み
+
+            const isHighlighted = highlightedEvents.has(event.id);
+            const truncatedTitle = truncateTitle(event.title);
+            const eventWidth = event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
+
+            let eventColors = { backgroundColor: "#6b7280", textColor: "white" };
+            if (event.timelineColor) {
+              eventColors = createEventColors(event.timelineColor);
+            } else if (isHighlighted) {
+              eventColors = { backgroundColor: "#10b981", textColor: "white" };
+            } else if (event.id === 1 || event.id === 2) {
+              eventColors = {
+                backgroundColor: event.id === 1 ? "#3b82f6" : "#ef4444",
+                textColor: "white",
+              };
+            }
+
+            const uniqueKey = event.timelineId 
+              ? `event-${event.id}-${event.timelineId}-${index}`
+              : `event-${event.id}-main-${index}`;
+
+            return (
+              <div
+                key={uniqueKey}
+                data-event-id={event.id}
+                style={{
+                  position: "absolute",
+                  left: event.adjustedPosition.x,
+                  top: event.adjustedPosition.y + panY + 15 + "px",
+                  transform: "translateX(-50%)",
+                  cursor: "pointer",
+                  zIndex: isHighlighted ? 5 : 4,
+                  textAlign: "center",
+                  userSelect: "none",
+                }}
+              >
+                <div
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                    color: eventColors.textColor,
+                    fontWeight: "500",
+                    fontSize: "11px",
+                    width: `${Math.max(60, eventWidth)}px`,
+                    backgroundColor: eventColors.backgroundColor,
+                    border: isHighlighted
+                      ? "2px solid #059669"
+                      : event.timelineColor
+                      ? `1px solid ${event.timelineColor}`
+                      : "none",
+                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    lineHeight: "1.1",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {truncatedTitle}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* グループツールチップ */}
+          {hoveredGroup && (
+            <GroupTooltip
+              groupData={hoveredGroup.data}
+              position={{
+                x: hoveredGroup.data.position.x,
+                y: hoveredGroup.data.position.y,
+              }}
+              panY={panY}
+            />
+          )}
+
+          {/* 展開されたグループカード */}
+          {Array.from(expandedGroups).map((groupId) => {
+            const groupCard = groupManager.getGroupCard(groupId);
+            const groupData = advancedEventPositions.eventGroups.find(
+              (g) => g.id === groupId
+            );
+
+            if (!groupCard || !groupData) return null;
+
+            return (
+              <GroupCard
+                key={`card-${groupId}`}
+                groupData={groupData}
+                position={groupCard.position}
                 panY={panY}
-                timelineColor={event.timelineColor || "#6b7280"}
-                onHover={handleGroupHover}
-                onDoubleClick={handleDoubleClick}
+                panX={panX}
+                timelineColor={groupData.events[0]?.timelineColor || "#6b7280"}
+                onEventDoubleClick={handleGroupEventDoubleClick}
+                onClose={() => toggleEventGroup(groupId, groupCard.position)}
               />
             );
-          }
+          })}
 
-          // 通常イベントの年号
-          // 年表内のイベントには timelineId を含めて一意のキーを生成
-          const uniqueKey = event.timelineId 
-            ? `year-${event.id}-${event.timelineId}-${index}`
-            : `year-${event.id}-main-${index}`;
+          {/* 年表カード */}
+          {Timelines.map((timeline, index) => {
+            const axis = axesMap.get(timeline.id);
+            const xPosition = axis ? axis.startX : 20;
+            const baseCardY = cardPositions[timeline.id]?.y ||
+              TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
+            const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
+            
+            return (
+              <TimelineCard
+                key={timeline.id}
+                timeline={timeline}
+                position={{ x: xPosition, y: centeredCardY }}
+                panY={panY}
+                onDeleteTimeline={deleteTimeline}
+              />
+            );
+          })}
 
-          return (
-            <div
-              key={uniqueKey}
-              style={{
-                position: "absolute",
-                left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + 8 + "px",
-                transform: "translateX(-50%)",
-                zIndex: 2,
-                textAlign: "center",
-                pointerEvents: "none",
-              }}
-            >
-              <div
-                style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
-              >
-                {event.startDate.getFullYear()}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
-        {visibleEvents.map((event, index) => {
-          if (event.isGroup) return null; // グループは描画済み
-
-          const isHighlighted = highlightedEvents.has(event.id);
-          const truncatedTitle = truncateTitle(event.title);
-          const eventWidth = event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
-
-          let eventColors = { backgroundColor: "#6b7280", textColor: "white" };
-          if (event.timelineColor) {
-            eventColors = createEventColors(event.timelineColor);
-          } else if (isHighlighted) {
-            eventColors = { backgroundColor: "#10b981", textColor: "white" };
-          } else if (event.id === 1 || event.id === 2) {
-            eventColors = {
-              backgroundColor: event.id === 1 ? "#3b82f6" : "#ef4444",
-              textColor: "white",
-            };
-          }
-
-          // 年表内のイベントには timelineId を含めて一意のキーを生成
-          const uniqueKey = event.timelineId 
-            ? `event-${event.id}-${event.timelineId}-${index}`
-            : `event-${event.id}-main-${index}`;
-
-          return (
-            <div
-              key={uniqueKey}
-              data-event-id={event.id}
-              style={{
-                position: "absolute",
-                left: event.adjustedPosition.x,
-                top: event.adjustedPosition.y + panY + 15 + "px",
-                transform: "translateX(-50%)",
-                cursor: "pointer",
-                zIndex: isHighlighted ? 5 : 4,
-                textAlign: "center",
-                userSelect: "none",
-              }}
-            >
+          {/* 年表軸線の描画 */}
+          {timelineAxes.map((axis) => (
+            <div key={`axis-${axis.id}`}>
               <div
                 style={{
-                  padding: "4px 8px",
-                  borderRadius: "4px",
-                  color: eventColors.textColor,
-                  fontWeight: "500",
-                  fontSize: "11px",
-                  width: `${Math.max(60, eventWidth)}px`,
-                  backgroundColor: eventColors.backgroundColor,
-                  border: isHighlighted
-                    ? "2px solid #059669"
-                    : event.timelineColor
-                    ? `1px solid ${event.timelineColor}`
-                    : "none",
-                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                  lineHeight: "1.1",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  position: "absolute",
+                  left: axis.startX - 100,
+                  top: axis.yPosition,
+                  width: Math.max(0, axis.endX - axis.startX) + 100,
+                  height: "3px",
+                  backgroundColor: axis.color,
+                  opacity: 0.8,
+                  zIndex: 0,
+                  borderRadius: "1px",
                 }}
-              >
-                {truncatedTitle}
-              </div>
+              />
             </div>
-          );
-        })}
+          ))}
 
-        {/* グループツールチップ */}
-        {hoveredGroup && (
-          <GroupTooltip
-            groupData={hoveredGroup.data}
-            position={{
-              x: hoveredGroup.data.position.x,
-              y: hoveredGroup.data.position.y,
-            }}
-            panY={panY}
-          />
-        )}
-
-        {/* 展開されたグループカード */}
-        {Array.from(expandedGroups).map((groupId) => {
-          const groupCard = groupManager.getGroupCard(groupId);
-          const groupData = advancedEventPositions.eventGroups.find(
-            (g) => g.id === groupId
-          );
-
-          if (!groupCard || !groupData) return null;
-
-          return (
-            <GroupCard
-              key={`card-${groupId}`}
-              groupData={groupData}
-              position={groupCard.position}
-              panY={panY}
-              panX={panX}
-              timelineColor={groupData.events[0]?.timelineColor || "#6b7280"}
-              onEventDoubleClick={handleGroupEventDoubleClick}
-              onClose={() => toggleEventGroup(groupId, groupCard.position)}
-            />
-          );
-        })}
-
-        {/* 年表カード */}
-        {Timelines.map((timeline, index) => {
-          const axis = axesMap.get(timeline.id);
-          const xPosition = axis ? axis.startX : 20;
-          const baseCardY = cardPositions[timeline.id]?.y ||
-            TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
-          const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
-          
-          return (
-            <TimelineCard
-              key={timeline.id}
-              timeline={timeline}
-              position={{ x: xPosition, y: centeredCardY }}
-              panY={panY}
-              onDeleteTimeline={deleteTimeline}
-            />
-          );
-        })}
-
-        {/* 年表軸線の描画 */}
-        {timelineAxes.map((axis) => (
-          <div key={`axis-${axis.id}`}>
-            <div
-              style={{
-                position: "absolute",
-                left: axis.startX - 100,
-                top: axis.yPosition,
-                width: Math.max(0, axis.endX - axis.startX) + 100,
-                height: "3px",
-                backgroundColor: axis.color,
-                opacity: 0.8,
-                zIndex: 0,
-                borderRadius: "1px",
-              }}
-            />
-          </div>
-        ))}
-
-        {/* 現在ライン */}
-        <div
-          style={{
-            position: "absolute",
-            left: (2025.6 - -5000) * currentPixelsPerYear + panX,
-            top: 0,
-            height: "100%",
-            borderLeft: "2px solid #f59e0b",
-            pointerEvents: "none",
-            opacity: 0.8,
-          }}
-        >
+          {/* 現在ライン */}
           <div
             style={{
               position: "absolute",
-              left: "5px",
-              top: "20px",
-              fontSize: "12px",
-              color: "#f59e0b",
-              backgroundColor: "rgba(255,255,255,0.9)",
-              padding: "2px 6px",
-              borderRadius: "3px",
-              fontWeight: "600",
+              left: (2025.6 - -5000) * currentPixelsPerYear + panX,
+              top: 0,
+              height: "100%",
+              borderLeft: "2px solid #f59e0b",
+              pointerEvents: "none",
+              opacity: 0.8,
             }}
           >
-            現在 (2025)
+            <div
+              style={{
+                position: "absolute",
+                left: "5px",
+                top: "20px",
+                fontSize: "12px",
+                color: "#f59e0b",
+                backgroundColor: "rgba(255,255,255,0.9)",
+                padding: "2px 6px",
+                borderRadius: "3px",
+                fontWeight: "600",
+              }}
+            >
+              現在 (2025)
+            </div>
           </div>
-        </div>
 
-        {/* ヘルプボックス */}
-        <HelpBox
-          isHelpOpen={isHelpOpen}
-          setIsHelpOpen={setIsHelpOpen}
-          highlightedEvents={highlightedEvents}
-          styles={styles}
-        />
-      </div>
+          {/* ヘルプボックス */}
+          <HelpBox
+            isHelpOpen={isHelpOpen}
+            setIsHelpOpen={setIsHelpOpen}
+            highlightedEvents={highlightedEvents}
+            styles={styles}
+          />
+        </div>
+      )}
 
       {/* モーダル */}
       <EventModal
