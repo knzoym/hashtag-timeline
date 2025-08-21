@@ -27,24 +27,23 @@ const TableView = ({
       // 年表のイベントも含める場合
       if (showTimelineEvents) {
         timelines.forEach(timeline => {
+          // 元々のイベント
           timeline.events.forEach(tlEvent => {
-            // 重複チェック（既にメインイベントに含まれていない場合のみ追加）
             if (!eventsToShow.find(e => e.id === tlEvent.id)) {
               eventsToShow.push({
                 ...tlEvent,
                 timelineInfo: [{
                   name: timeline.name,
-                  color: timeline.color
+                  color: timeline.color,
+                  isTemporary: false
                 }]
               });
             } else {
-              // 既存イベントに年表情報を追加（重複を避ける）
               const existingEvent = eventsToShow.find(e => e.id === tlEvent.id);
               if (!existingEvent.timelineInfo) {
                 existingEvent.timelineInfo = [];
               }
               
-              // 重複チェック - 同じ年表名は追加しない
               const alreadyHasTimeline = existingEvent.timelineInfo.some(
                 info => info.name === timeline.name
               );
@@ -52,7 +51,40 @@ const TableView = ({
               if (!alreadyHasTimeline) {
                 existingEvent.timelineInfo.push({
                   name: timeline.name,
-                  color: timeline.color
+                  color: timeline.color,
+                  isTemporary: false
+                });
+              }
+            }
+          });
+
+          // 仮登録されたイベント
+          const temporaryEvents = timeline.temporaryEvents || [];
+          temporaryEvents.forEach(tlEvent => {
+            if (!eventsToShow.find(e => e.id === tlEvent.id)) {
+              eventsToShow.push({
+                ...tlEvent,
+                timelineInfo: [{
+                  name: timeline.name,
+                  color: timeline.color,
+                  isTemporary: true
+                }]
+              });
+            } else {
+              const existingEvent = eventsToShow.find(e => e.id === tlEvent.id);
+              if (!existingEvent.timelineInfo) {
+                existingEvent.timelineInfo = [];
+              }
+              
+              const alreadyHasTimeline = existingEvent.timelineInfo.some(
+                info => info.name === timeline.name
+              );
+              
+              if (!alreadyHasTimeline) {
+                existingEvent.timelineInfo.push({
+                  name: timeline.name,
+                  color: timeline.color,
+                  isTemporary: true
                 });
               }
             }
@@ -217,12 +249,13 @@ const TableView = ({
               fontSize: '10px',
               padding: '2px 6px',
               borderRadius: '10px',
-              backgroundColor: info.color,
-              color: 'white',
+              backgroundColor: info.isTemporary ? 'transparent' : info.color,
+              color: info.isTemporary ? info.color : 'white',
+              border: info.isTemporary ? `1px dashed ${info.color}` : 'none',
               whiteSpace: 'nowrap'
             }}
           >
-            {info.name}
+            {info.name} {/* 仮登録も通常も年表名のみ表示 */}
           </span>
         ))}
       </div>
