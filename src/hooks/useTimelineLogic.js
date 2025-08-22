@@ -717,13 +717,6 @@ export const useTimelineLogic = (
     // 年表への自動追加チェック
     setCreatedTimelines((prevTimelines) =>
       prevTimelines.map((timeline) => {
-        // このイベントが既に年表に含まれているかチェック
-        const alreadyInTimeline =
-          timeline.events.some((e) => e.id === savedEvent.id) ||
-          (timeline.temporaryEvents || []).some((e) => e.id === savedEvent.id);
-
-        if (alreadyInTimeline) return timeline;
-
         // 年表のタグとイベントのタグが一致するかチェック
         const hasMatchingTag = timeline.tags.some((timelineTag) =>
           eventTags.some(
@@ -734,12 +727,45 @@ export const useTimelineLogic = (
         );
 
         if (hasMatchingTag) {
-          // 仮登録リストに追加
-          const temporaryEvents = timeline.temporaryEvents || [];
-          return {
-            ...timeline,
-            temporaryEvents: [...temporaryEvents, savedEvent],
-          };
+          // タグマッチした場合は本登録 (events配列に追加)
+          const alreadyInEvents = timeline.events.some(
+            (e) => e.id === savedEvent.id
+          );
+          const inTemporary = (timeline.temporaryEvents || []).some(
+            (e) => e.id === savedEvent.id
+          );
+          const inRemoved = (timeline.removedEvents || []).some(
+            (e) => e.id === savedEvent.id
+          );
+
+          if (!alreadyInEvents && !inTemporary && !inRemoved) {
+            // 新規で本登録
+            return {
+              ...timeline,
+              events: [...timeline.events, savedEvent],
+              eventCount: timeline.events.length + 1,
+            };
+          } else if (inTemporary) {
+            // 仮登録から本登録に昇格
+            return {
+              ...timeline,
+              events: [...timeline.events, savedEvent],
+              temporaryEvents: (timeline.temporaryEvents || []).filter(
+                (e) => e.id !== savedEvent.id
+              ),
+              eventCount: timeline.events.length + 1,
+            };
+          } else if (inRemoved) {
+            // 仮削除から本登録に復帰
+            return {
+              ...timeline,
+              events: [...timeline.events, savedEvent],
+              removedEvents: (timeline.removedEvents || []).filter(
+                (e) => e.id !== savedEvent.id
+              ),
+              eventCount: timeline.events.length + 1,
+            };
+          }
         }
 
         return timeline;
