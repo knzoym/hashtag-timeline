@@ -19,7 +19,7 @@ import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 
 const HashtagTimeline = () => {
   // ビュー切り替え状態
-  const [currentView, setCurrentView] = useState('timeline'); // 'timeline' or 'table'
+  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' or 'table'
 
   // メインの状態管理
   const timelineRef = useRef(null);
@@ -75,7 +75,7 @@ const HashtagTimeline = () => {
     Timelines,
     deleteTimeline,
     getTimelineAxesForDisplay,
-    
+
     // テーブルビュー用関数
     updateEvent,
     deleteEvent,
@@ -90,7 +90,6 @@ const HashtagTimeline = () => {
     events,
 
     // ドラッグ&ドロップ関連
-    eventPositions,
     timelinePositions,
     moveEvent,
     moveTimeline,
@@ -117,7 +116,7 @@ const HashtagTimeline = () => {
     handleMouseMove: handleDragMouseMove,
     handleMouseUp: handleDragMouseUp,
     cancelDrag,
-    isDragging: isDragActive
+    isDragging: isDragActive,
   } = useDragDrop(
     moveEvent,
     moveTimeline,
@@ -126,11 +125,14 @@ const HashtagTimeline = () => {
   );
 
   // テーブルビュー用のイベント削除ハンドラー
-  const handleTableEventDelete = useCallback((eventId) => {
-    if (window.confirm('このイベントを削除しますか？')) {
-      deleteEvent(eventId);
-    }
-  }, [deleteEvent]);
+  const handleTableEventDelete = useCallback(
+    (eventId) => {
+      if (window.confirm("このイベントを削除しますか？")) {
+        deleteEvent(eventId);
+      }
+    },
+    [deleteEvent]
+  );
 
   // 色の変換ユーティリティ関数
   const parseHslColor = (hslString) => {
@@ -251,22 +253,10 @@ const HashtagTimeline = () => {
   const timelineAxes = getTimelineAxesForDisplay();
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
-  // 表示用のイベント（ドラッグ&ドロップでの位置調整を反映）
-  const visibleEvents = advancedEventPositions.allEvents
-    .filter(event => !event.hiddenByGroup)
-    .map(event => {
-      const customPosition = eventPositions.get(event.id);
-      if (customPosition) {
-        return {
-          ...event,
-          adjustedPosition: {
-            ...event.adjustedPosition,
-            y: customPosition.y
-          }
-        };
-      }
-      return event;
-    });
+  // 表示用のイベント（シンプルに全て表示）
+  const visibleEvents = advancedEventPositions.allEvents.filter(
+    (event) => !event.hiddenByGroup
+  );
 
   // ドラッグ中のマウス移動処理
   useEffect(() => {
@@ -277,33 +267,40 @@ const HashtagTimeline = () => {
 
       const handleGlobalMouseUp = (e) => {
         const currentTimelineAxes = getTimelineAxesForDisplay();
-        const currentEventPositions = visibleEvents.map(event => ({
+        const currentEventPositions = visibleEvents.map((event) => ({
           id: event.id,
           x: event.adjustedPosition.x,
           y: event.adjustedPosition.y,
-          timelineId: event.timelineId // 年表IDを含める
+          timelineId: event.timelineId,
         }));
-        
+
         handleDragMouseUp(e, currentTimelineAxes, currentEventPositions);
       };
 
       const handleKeyDown = (e) => {
-        if (e.key === 'Escape') {
+        if (e.key === "Escape") {
           cancelDrag();
         }
       };
 
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-      document.addEventListener('keydown', handleKeyDown);
+      document.addEventListener("mousemove", handleGlobalMouseMove);
+      document.addEventListener("mouseup", handleGlobalMouseUp);
+      document.addEventListener("keydown", handleKeyDown);
 
       return () => {
-        document.removeEventListener('mousemove', handleGlobalMouseMove);
-        document.removeEventListener('mouseup', handleGlobalMouseUp);
-        document.removeEventListener('keydown', handleKeyDown);
+        document.removeEventListener("mousemove", handleGlobalMouseMove);
+        document.removeEventListener("mouseup", handleGlobalMouseUp);
+        document.removeEventListener("keydown", handleKeyDown);
       };
     }
-  }, [isDragActive, handleDragMouseMove, handleDragMouseUp, cancelDrag, getTimelineAxesForDisplay, visibleEvents]);
+  }, [
+    isDragActive,
+    handleDragMouseMove,
+    handleDragMouseUp,
+    cancelDrag,
+    getTimelineAxesForDisplay,
+    visibleEvents,
+  ]);
 
   return (
     <div style={styles.app}>
@@ -311,24 +308,26 @@ const HashtagTimeline = () => {
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           {/* ビュー切り替えボタン */}
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: "flex", gap: "8px" }}>
             <button
-              onClick={() => setCurrentView('timeline')}
+              onClick={() => setCurrentView("timeline")}
               style={{
                 ...styles.resetButton,
-                backgroundColor: currentView === 'timeline' ? '#3b82f6' : '#6b7280',
+                backgroundColor:
+                  currentView === "timeline" ? "#3b82f6" : "#6b7280",
               }}
             >
-              📊 年表ビュー
+              年表ビュー
             </button>
             <button
-              onClick={() => setCurrentView('table')}
+              onClick={() => setCurrentView("table")}
               style={{
                 ...styles.resetButton,
-                backgroundColor: currentView === 'table' ? '#3b82f6' : '#6b7280',
+                backgroundColor:
+                  currentView === "table" ? "#3b82f6" : "#6b7280",
               }}
             >
-              📋 テーブルビュー
+              テーブルビュー
             </button>
           </div>
         </div>
@@ -336,14 +335,14 @@ const HashtagTimeline = () => {
           <h1 style={styles.title}>#ハッシュタグ年表</h1>
         </div>
         <div style={styles.headerRight}>
-          {currentView === 'timeline' && (
+          {currentView === "timeline" && (
             <>
               <button
                 style={styles.resetButton}
                 onClick={resetToInitialPosition}
                 title="初期位置に戻す"
               >
-                🏠 初期位置
+                初期位置
               </button>
               <span style={styles.zoomInfo}>
                 ズーム: {(scale / 2.5).toFixed(1)}x
@@ -354,7 +353,7 @@ const HashtagTimeline = () => {
       </div>
 
       {/* メインコンテンツ */}
-      {currentView === 'table' ? (
+      {currentView === "table" ? (
         // テーブルビュー
         <TableView
           events={events}
@@ -365,7 +364,7 @@ const HashtagTimeline = () => {
           searchTerm={searchTerm}
         />
       ) : (
-        // 年表ビュー（既存のコード）
+        // 年表ビュー
         <div
           ref={timelineRef}
           style={styles.timeline}
@@ -397,10 +396,8 @@ const HashtagTimeline = () => {
             styles={styles}
           />
 
-          {/* 高度レイアウトによるイベント表示 */}
-          {/* Part 1: 年号とグループアイコンを描画 (奥のレイヤー) */}
+          {/* Part 1: 年号とグループアイコンを描画 */}
           {visibleEvents.map((event, index) => {
-            // グループの場合
             if (event.isGroup) {
               return (
                 <EventGroupIcon
@@ -418,8 +415,7 @@ const HashtagTimeline = () => {
               );
             }
 
-            // 通常イベントの年号
-            const uniqueKey = event.timelineId 
+            const uniqueKey = event.timelineId
               ? `year-${event.id}-${event.timelineId}-${index}`
               : `year-${event.id}-main-${index}`;
 
@@ -437,7 +433,11 @@ const HashtagTimeline = () => {
                 }}
               >
                 <div
-                  style={{ fontSize: "10px", color: "#666", marginBottom: "2px" }}
+                  style={{
+                    fontSize: "10px",
+                    color: "#666",
+                    marginBottom: "2px",
+                  }}
                 >
                   {event.startDate.getFullYear()}
                 </div>
@@ -445,17 +445,21 @@ const HashtagTimeline = () => {
             );
           })}
 
-          {/* Part 2: イベントタイトルを描画 (手前のレイヤー) */}
+          {/* Part 2: イベントタイトルを描画 */}
           {visibleEvents.map((event, index) => {
-            if (event.isGroup) return null; // グループは描画済み
+            if (event.isGroup) return null;
 
             const isHighlighted = highlightedEvents.has(event.id);
             const truncatedTitle = truncateTitle(event.title);
-            const eventWidth = event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
+            const eventWidth =
+              event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
 
-            let eventColors = { backgroundColor: "#6b7280", textColor: "white" };
-            if (event.timelineColor) {
-              // 仮登録も通常の年表イベントも同じ色スタイル
+            let eventColors = {
+              backgroundColor: "#6b7280",
+              textColor: "white",
+            };
+
+            if (event.timelineColor && !event.isRemoved) {
               eventColors = createEventColors(event.timelineColor);
             } else if (isHighlighted) {
               eventColors = { backgroundColor: "#10b981", textColor: "white" };
@@ -466,7 +470,7 @@ const HashtagTimeline = () => {
               };
             }
 
-            const uniqueKey = event.timelineId 
+            const uniqueKey = event.timelineId
               ? `event-${event.id}-${event.timelineId}-${index}`
               : `event-${event.id}-main-${index}`;
 
@@ -479,21 +483,25 @@ const HashtagTimeline = () => {
                   left: event.adjustedPosition.x,
                   top: event.adjustedPosition.y + panY + 15 + "px",
                   transform: "translateX(-50%)",
-                  cursor: isDragActive && dragState.draggedItem?.id === event.id 
-                    ? "ns-resize" 
-                    : "ns-resize", // 常に縦方向リサイズカーソルを表示
+                  cursor: "ns-resize",
                   zIndex: isHighlighted ? 5 : 4,
                   textAlign: "center",
                   userSelect: "none",
-                  opacity: isDragActive && dragState.draggedItem?.id === event.id ? 0.7 : 1,
+                  opacity:
+                    isDragActive && dragState.draggedItem?.id === event.id
+                      ? 0.7
+                      : 1,
                 }}
                 onMouseDown={(e) => {
-                  // イベントの伝播を停止してタイムラインのパンを防ぐ
                   e.stopPropagation();
-                  
-                  // 長押しでドラッグ開始、通常クリックは既存の処理
-                  if (e.detail === 1) { // シングルクリック
-                    handleDragMouseDown(e, 'event', event);
+                  if (e.detail === 1) {
+                    const dragItem = {
+                      ...event,
+                      timelineId: event.timelineId || null,
+                      timelineName: event.timelineName || null,
+                      isTemporary: event.isTemporary || false,
+                    };
+                    handleDragMouseDown(e, "event", dragItem);
                   }
                 }}
               >
@@ -509,8 +517,8 @@ const HashtagTimeline = () => {
                     border: isHighlighted
                       ? "2px solid #059669"
                       : event.isTemporary
-                      ? `2px dashed ${event.timelineColor}` // 仮登録は点線のみ
-                      : event.timelineColor
+                      ? `2px dashed ${event.timelineColor}`
+                      : event.timelineColor && !event.isRemoved
                       ? `1px solid ${event.timelineColor}`
                       : "none",
                     boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
@@ -565,14 +573,16 @@ const HashtagTimeline = () => {
           {Timelines.map((timeline, index) => {
             const axis = axesMap.get(timeline.id);
             const xPosition = axis ? axis.startX : 20;
-            const baseCardY = cardPositions[timeline.id]?.y ||
+            const baseCardY =
+              cardPositions[timeline.id]?.y ||
               TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
             const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
-            
-            // ドラッグ&ドロップでの位置調整を反映
+
             const customTimelinePosition = timelinePositions.get(timeline.id);
-            const finalCardY = customTimelinePosition ? customTimelinePosition.y : centeredCardY;
-            
+            const finalCardY = customTimelinePosition
+              ? customTimelinePosition.y
+              : centeredCardY;
+
             return (
               <TimelineCard
                 key={timeline.id}
@@ -581,11 +591,15 @@ const HashtagTimeline = () => {
                 panY={panY}
                 onDeleteTimeline={deleteTimeline}
                 onDoubleClick={() => openTimelineModal(timeline)}
-                onMouseDown={(e) => handleDragMouseDown(e, 'timeline', { 
-                  ...timeline, 
-                  yPosition: finalCardY 
-                })}
-                isDragging={isDragActive && dragState.draggedItem?.id === timeline.id}
+                onMouseDown={(e) =>
+                  handleDragMouseDown(e, "timeline", {
+                    ...timeline,
+                    yPosition: finalCardY,
+                  })
+                }
+                isDragging={
+                  isDragActive && dragState.draggedItem?.id === timeline.id
+                }
               />
             );
           })}
@@ -606,17 +620,16 @@ const HashtagTimeline = () => {
                   borderRadius: "1px",
                 }}
               />
-              
-              {/* ドラッグ中のドロップゾーン表示 */}
-              {isDragActive && dragState.dragType === 'event' && (
+
+              {isDragActive && dragState.dragType === "event" && (
                 <div
                   style={{
                     position: "absolute",
                     left: 0,
-                    top: axis.yPosition - 60, // ドロップ判定と同じ範囲
+                    top: axis.yPosition - 60,
                     width: "100%",
-                    height: "120px", // ±60px = 120px
-                    backgroundColor: `${axis.color}15`, // 年表色の薄い背景
+                    height: "120px",
+                    backgroundColor: `${axis.color}15`,
                     border: `2px dashed ${axis.color}`,
                     borderRadius: "8px",
                     zIndex: 1,
@@ -630,16 +643,18 @@ const HashtagTimeline = () => {
                     opacity: 0.8,
                   }}
                 >
-                  <div style={{
-                    backgroundColor: 'white',
-                    padding: '6px 12px',
-                    borderRadius: '16px',
-                    border: `1px solid ${axis.color}`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }}>
-                    📊 {axis.name} に仮登録
+                  <div
+                    style={{
+                      backgroundColor: "white",
+                      padding: "6px 12px",
+                      borderRadius: "16px",
+                      border: `1px solid ${axis.color}`,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                    }}
+                  >
+                    {axis.name} に仮登録
                   </div>
                 </div>
               )}
@@ -698,7 +713,6 @@ const HashtagTimeline = () => {
       {/* ドラッグ中のプレビュー */}
       {isDragActive && dragState.draggedItem && (
         <>
-          {/* シンプルな縦方向ガイドライン */}
           <div
             style={{
               position: "fixed",
@@ -712,8 +726,7 @@ const HashtagTimeline = () => {
               pointerEvents: "none",
             }}
           />
-          
-          {/* シンプルなドラッグプレビュー */}
+
           <div
             style={{
               position: "fixed",
@@ -723,12 +736,19 @@ const HashtagTimeline = () => {
               pointerEvents: "none",
               opacity: 0.9,
               backgroundColor: (() => {
-                // 年表エリアに近い場合は年表色に変更（ドロップ判定と同じ範囲）
-                const nearTimeline = timelineAxes.find(axis => {
-                  const screenY = axis.yPosition + panY; // panYを考慮
-                  const distance = Math.abs(dragState.currentPosition.y - screenY);
-                  return distance < 60; // ドロップ判定と同じ
+                const headerHeight = 64;
+                const nearTimeline = timelineAxes.find((axis) => {
+                  const adjustedAxisY = axis.yPosition + headerHeight;
+                  const distance = Math.abs(
+                    dragState.currentPosition.y - adjustedAxisY
+                  );
+                  return distance < 60;
                 });
+
+                if (dragState.draggedItem.timelineId && !nearTimeline) {
+                  return "#ef4444";
+                }
+
                 return nearTimeline ? nearTimeline.color : "#3b82f6";
               })(),
               color: "white",
@@ -742,13 +762,21 @@ const HashtagTimeline = () => {
             }}
           >
             {(() => {
-              const nearTimeline = timelineAxes.find(axis => {
-                const screenY = axis.yPosition + panY; // panYを考慮
-                const distance = Math.abs(dragState.currentPosition.y - screenY);
-                return distance < 60; // ドロップ判定と同じ
+              const headerHeight = 64;
+              const nearTimeline = timelineAxes.find((axis) => {
+                const adjustedAxisY = axis.yPosition + headerHeight;
+                const distance = Math.abs(
+                  dragState.currentPosition.y - adjustedAxisY
+                );
+                return distance < 60;
               });
-              return nearTimeline 
-                ? `→ ${nearTimeline.name}` 
+
+              if (dragState.draggedItem.timelineId && !nearTimeline) {
+                return `✕ ${dragState.draggedItem.timelineName}から削除`;
+              }
+
+              return nearTimeline
+                ? `→ ${nearTimeline.name}`
                 : dragState.draggedItem.title;
             })()}
           </div>

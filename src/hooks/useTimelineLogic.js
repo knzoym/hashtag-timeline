@@ -24,6 +24,8 @@ export const useTimelineLogic = (
     return window.innerWidth - targetX;
   };
 
+  const [eventPositions, setEventPositions] = useState(new Map());
+
   // 基本状態
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
   const [panX, setPanX] = useState(() => calculateInitialPanX());
@@ -59,12 +61,12 @@ export const useTimelineLogic = (
   const [hoveredGroup, setHoveredGroup] = useState(null);
 
   // ドラッグ&ドロップ状態
-  const [eventPositions, setEventPositions] = useState(new Map());
   const [timelinePositions, setTimelinePositions] = useState(new Map());
-  
+
   // 年表モーダル状態
   const [timelineModalOpen, setTimelineModalOpen] = useState(false);
-  const [selectedTimelineForModal, setSelectedTimelineForModal] = useState(null);
+  const [selectedTimelineForModal, setSelectedTimelineForModal] =
+    useState(null);
 
   // 計算値
   const currentPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
@@ -72,11 +74,16 @@ export const useTimelineLogic = (
   // テキスト幅を計算する関数
   const calculateTextWidth = useCallback((text, fontSize = 11) => {
     // 簡易的な文字幅計算（実際のブラウザレンダリングとほぼ同じ）
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
     context.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
     return context.measureText(text).width;
   }, []);
+
+  // スケール変更時にツールチップをクリア
+  useEffect(() => {
+    setHoveredGroup(null);
+  }, [scale, panX, panY]);
 
   // 改善された配置ロジック
   const advancedEventPositions = useMemo(() => {
@@ -84,28 +91,28 @@ export const useTimelineLogic = (
     const timelineEventIds = new Set();
     const temporaryEventIds = new Set(); // 仮登録されたイベント
     const eventTimelineMap = new Map(); // イベントID → 年表情報のマッピング
-    
-    Timelines.forEach(timeline => {
+
+    Timelines.forEach((timeline) => {
       // 元々の検索結果イベント
-      timeline.events.forEach(event => {
+      timeline.events.forEach((event) => {
         timelineEventIds.add(event.id);
         eventTimelineMap.set(event.id, {
           timelineId: timeline.id,
           timelineName: timeline.name,
           timelineColor: timeline.color,
-          isTemporary: false
+          isTemporary: false,
         });
       });
-      
+
       // 仮登録されたイベント
       const temporaryEvents = timeline.temporaryEvents || [];
-      temporaryEvents.forEach(event => {
+      temporaryEvents.forEach((event) => {
         temporaryEventIds.add(event.id);
         eventTimelineMap.set(event.id, {
           timelineId: timeline.id,
           timelineName: timeline.name,
           timelineColor: timeline.color,
-          isTemporary: true
+          isTemporary: true,
         });
       });
     });
@@ -117,27 +124,40 @@ export const useTimelineLogic = (
     const processedTimelineEvents = [];
     const allEventGroups = [];
 
-    // 年表内イベントレイアウト（先に処理して占有領域を確定）
-    const allTimelineEvents = [];
-
     Timelines.forEach((timeline, timelineIndex) => {
       if (!timeline.isVisible) return;
 
       // 元々のイベントと仮登録イベントを統合
       const originalEvents = timeline.events || [];
       const temporaryEvents = timeline.temporaryEvents || [];
-      const allTimelineEventsForThisTimeline = [...originalEvents, ...temporaryEvents];
+      const removedEvents = timeline.removedEvents || [];
+
+      // 仮削除されたイベントを除外
+      const filteredOriginalEvents = originalEvents.filter(
+        (event) => !removedEvents.some((removed) => removed.id === event.id)
+      );
+
+      const allTimelineEventsForThisTimeline = [
+        ...filteredOriginalEvents,
+        ...temporaryEvents,
+      ];
 
       if (allTimelineEventsForThisTimeline.length === 0) return;
 
       const LANE_HEIGHT = 36;
-      const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+      const baseY =
+        TIMELINE_CONFIG.FIRST_ROW_Y +
+        timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
       const axisY = baseY + LANE_HEIGHT; // 2段目（index=1）が軸線
-      
+
       const getEventX = (evId) => {
-        const ev = allTimelineEventsForThisTimeline.find(e => e.id === evId);
+        const ev = allTimelineEventsForThisTimeline.find((e) => e.id === evId);
         if (!ev) return 0;
-        return getXFromYear(ev.startDate.getFullYear(), currentPixelsPerYear, panX);
+        return getXFromYear(
+          ev.startDate.getFullYear(),
+          currentPixelsPerYear,
+          panX
+        );
       };
 
       const laneTop = (lane) => {
@@ -160,16 +180,18 @@ export const useTimelineLogic = (
       });
 
       // 各イベントに年表の色を設定し、占有領域を記録
-      const eventsWithColor = result.allEvents.map(event => {
+      const eventsWithColor = result.allEvents.map((event) => {
         // 仮登録かどうかを判定
-        const isTemporary = temporaryEvents.some(temp => temp.id === event.id);
-        
+        const isTemporary = temporaryEvents.some(
+          (temp) => temp.id === event.id
+        );
+
         const eventWithColor = {
           ...event,
           timelineColor: timeline.color,
           timelineId: timeline.id,
           timelineName: timeline.name,
-          isTemporary: isTemporary
+          isTemporary: isTemporary,
         };
 
         // 占有領域を記録（メインタイムラインとの干渉回避用）
@@ -192,8 +214,9 @@ export const useTimelineLogic = (
     });
 
     // メインタイムラインのイベント（改善された干渉回避）
-    const mainTimelineEvents = events.filter(event => 
-      !timelineEventIds.has(event.id) && !temporaryEventIds.has(event.id)
+    const mainTimelineEvents = events.filter(
+      (event) =>
+        !timelineEventIds.has(event.id) && !temporaryEventIds.has(event.id)
     );
     const mainEvents = [];
     const occupiedPositions = new Map();
@@ -207,17 +230,22 @@ export const useTimelineLogic = (
         y2: y + 50,
       };
 
-      return timelineOccupiedRegions.some(region => 
-        eventRegion.x1 < region.x2 && 
-        eventRegion.x2 > region.x1 && 
-        eventRegion.y1 < region.y2 && 
-        eventRegion.y2 > region.y1
+      return timelineOccupiedRegions.some(
+        (region) =>
+          eventRegion.x1 < region.x2 &&
+          eventRegion.x2 > region.x1 &&
+          eventRegion.y1 < region.y2 &&
+          eventRegion.y2 > region.y1
       );
     };
 
     // メインタイムラインのイベント処理
-    mainTimelineEvents.forEach(event => {
-      const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
+    mainTimelineEvents.forEach((event) => {
+      const eventX = getXFromYear(
+        event.startDate.getFullYear(),
+        currentPixelsPerYear,
+        panX
+      );
       const textWidth = calculateTextWidth(truncateTitle(event.title));
       const eventWidth = Math.max(60, textWidth + 16);
       let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
@@ -225,16 +253,23 @@ export const useTimelineLogic = (
 
       // 重なりを避けるためのY位置調整（年表との干渉も考慮）
       while (level < 30) {
-        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
+        const currentY =
+          TIMELINE_CONFIG.MAIN_TIMELINE_Y +
+          level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
         const occupied = occupiedPositions.get(currentY) || [];
-        
+
         // 他のメインイベントとの重なりチェック
-        const hasMainCollision = occupied.some(range => 
-          Math.abs(eventX - range.x) < (eventWidth + range.width) / 2 + 10
+        const hasMainCollision = occupied.some(
+          (range) =>
+            Math.abs(eventX - range.x) < (eventWidth + range.width) / 2 + 10
         );
 
         // 年表との重なりチェック
-        const hasTimelineCollision = checkTimelineCollision(eventX, currentY, eventWidth);
+        const hasTimelineCollision = checkTimelineCollision(
+          eventX,
+          currentY,
+          eventWidth
+        );
 
         if (!hasMainCollision && !hasTimelineCollision) {
           eventY = currentY;
@@ -242,7 +277,9 @@ export const useTimelineLogic = (
           if (!occupiedPositions.has(currentY)) {
             occupiedPositions.set(currentY, []);
           }
-          occupiedPositions.get(currentY).push({ x: eventX, width: eventWidth });
+          occupiedPositions
+            .get(currentY)
+            .push({ x: eventX, width: eventWidth });
           break;
         }
         level++;
@@ -254,87 +291,109 @@ export const useTimelineLogic = (
         hiddenByGroup: false,
         isGroup: false,
         timelineColor: null,
-        calculatedWidth: eventWidth
+        calculatedWidth: eventWidth,
       });
     });
 
-    // 仮登録されたイベントをメインタイムラインに追加
-    const temporaryEvents = [];
-    temporaryEventIds.forEach(eventId => {
-      const event = events.find(e => e.id === eventId);
-      if (event) {
-        const timelineInfo = eventTimelineMap.get(eventId);
-        const eventX = getXFromYear(event.startDate.getFullYear(), currentPixelsPerYear, panX);
-        const textWidth = calculateTextWidth(truncateTitle(event.title));
-        const eventWidth = Math.max(60, textWidth + 16);
-        let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
-        let level = 0;
-
-        // 他のイベントとの重なりを避ける
-        while (level < 30) {
-          const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
-          const occupied = occupiedPositions.get(currentY) || [];
-          
-          const hasCollision = occupied.some(range => 
-            Math.abs(eventX - range.x) < (eventWidth + range.width) / 2 + 10
+    // 仮削除されたイベントをメインタイムラインに追加
+    const removedEventsForMain = [];
+    Timelines.forEach((timeline) => {
+      const removedEvents = timeline.removedEvents || [];
+      removedEvents.forEach((event) => {
+        if (!removedEventsForMain.find((e) => e.id === event.id)) {
+          const eventX = getXFromYear(
+            event.startDate.getFullYear(),
+            currentPixelsPerYear,
+            panX
           );
+          const textWidth = calculateTextWidth(truncateTitle(event.title));
+          const eventWidth = Math.max(60, textWidth + 16);
+          let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
+          let level = 0;
 
-          if (!hasCollision) {
-            eventY = currentY;
-            if (!occupiedPositions.has(currentY)) {
-              occupiedPositions.set(currentY, []);
+          // 他のイベントとの重なりを避ける
+          while (level < 30) {
+            const currentY =
+              TIMELINE_CONFIG.MAIN_TIMELINE_Y +
+              level * (TIMELINE_CONFIG.EVENT_HEIGHT + 10);
+            const occupied = occupiedPositions.get(currentY) || [];
+
+            const hasCollision = occupied.some(
+              (range) =>
+                Math.abs(eventX - range.x) < (eventWidth + range.width) / 2 + 10
+            );
+
+            if (!hasCollision) {
+              eventY = currentY;
+              if (!occupiedPositions.has(currentY)) {
+                occupiedPositions.set(currentY, []);
+              }
+              occupiedPositions
+                .get(currentY)
+                .push({ x: eventX, width: eventWidth });
+              break;
             }
-            occupiedPositions.get(currentY).push({ x: eventX, width: eventWidth });
-            break;
+            level++;
           }
-          level++;
-        }
 
-        temporaryEvents.push({
-          ...event,
-          adjustedPosition: { x: eventX, y: eventY },
-          hiddenByGroup: false,
-          isGroup: false,
-          timelineColor: timelineInfo.timelineColor,
-          timelineId: timelineInfo.timelineId,
-          timelineName: timelineInfo.timelineName,
-          isTemporary: true,
-          calculatedWidth: eventWidth
-        });
-      }
+          removedEventsForMain.push({
+            ...event,
+            adjustedPosition: { x: eventX, y: eventY },
+            hiddenByGroup: false,
+            isGroup: false,
+            timelineColor: timeline.color,
+            timelineId: timeline.id,
+            timelineName: timeline.name,
+            isRemoved: true, // 仮削除フラグ
+            isTemporary: false, // 仮削除は仮登録ではない
+            calculatedWidth: eventWidth,
+          });
+        }
+      });
     });
 
     return {
-      allEvents: [...mainEvents, ...temporaryEvents, ...allTimelineEvents],
-      eventGroups: allEventGroups
+      allEvents: [
+        ...mainEvents,
+        ...removedEventsForMain,
+        ...processedTimelineEvents,
+      ],
+      eventGroups: allEventGroups,
     };
   }, [events, currentPixelsPerYear, panX, Timelines, calculateTextWidth]);
 
   // イベント更新（テーブルビュー用）
-  const updateEvent = useCallback((updatedEvent) => {
-    setEvents(prevEvents => 
-      prevEvents.map(event => 
-        event.id === updatedEvent.id ? updatedEvent : event
-      )
-    );
+  const updateEvent = useCallback(
+    (updatedEvent) => {
+      setEvents((prevEvents) =>
+        prevEvents.map((event) =>
+          event.id === updatedEvent.id ? updatedEvent : event
+        )
+      );
 
-    // タグリストも更新
-    const newTags = [...new Set([
-      ...allTags,
-      ...updatedEvent.tags.filter(tag => !allTags.includes(tag))
-    ])];
-    setAllTags(newTags);
-  }, [allTags]);
+      // タグリストも更新
+      const newTags = [
+        ...new Set([
+          ...allTags,
+          ...updatedEvent.tags.filter((tag) => !allTags.includes(tag)),
+        ]),
+      ];
+      setAllTags(newTags);
+    },
+    [allTags]
+  );
 
   // イベント削除（テーブルビュー用）
   const deleteEvent = useCallback((eventId) => {
-    setEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
-    
+    setEvents((prevEvents) =>
+      prevEvents.filter((event) => event.id !== eventId)
+    );
+
     // 年表からも削除
-    setCreatedTimelines(prevTimelines => 
-      prevTimelines.map(timeline => ({
+    setCreatedTimelines((prevTimelines) =>
+      prevTimelines.map((timeline) => ({
         ...timeline,
-        events: timeline.events.filter(event => event.id !== eventId)
+        events: timeline.events.filter((event) => event.id !== eventId),
       }))
     );
   }, []);
@@ -343,12 +402,14 @@ export const useTimelineLogic = (
   const moveEvent = useCallback((eventId, newY, conflictingEvents) => {
     // 位置を固定せず、レイアウトシステムに任せる
     // ドラッグによる移動は一時的なもので、ズーム時に再レイアウトされる
-    console.log(`イベント ${eventId} を移動: Y=${newY}, 衝突イベント数: ${conflictingEvents.length}`);
+    console.log(
+      `イベント ${eventId} を移動: Y=${newY}, 衝突イベント数: ${conflictingEvents.length}`
+    );
     // 実際の位置固定は行わず、レイアウトシステムが処理する
   }, []);
 
   const moveTimeline = useCallback((timelineId, newY) => {
-    setTimelinePositions(prev => {
+    setTimelinePositions((prev) => {
       const newPositions = new Map(prev);
       newPositions.set(timelineId, { y: newY });
       return newPositions;
@@ -356,30 +417,38 @@ export const useTimelineLogic = (
   }, []);
 
   const addEventToTimeline = useCallback((event, timelineId) => {
-    setCreatedTimelines(prevTimelines => 
-      prevTimelines.map(timeline => {
+    setCreatedTimelines((prevTimelines) =>
+      prevTimelines.map((timeline) => {
         if (timeline.id === timelineId) {
           const temporaryEvents = timeline.temporaryEvents || [];
           const removedEvents = timeline.removedEvents || [];
-          
+
           // 仮削除リストから削除（復元の場合）
-          const newRemovedEvents = removedEvents.filter(removed => removed.id !== event.id);
-          
+          const newRemovedEvents = removedEvents.filter(
+            (removed) => removed.id !== event.id
+          );
+
           // 既に仮登録されているかチェック
-          const alreadyTemporary = temporaryEvents.some(temp => temp.id === event.id);
-          const alreadyOriginal = timeline.events.some(orig => orig.id === event.id);
-          
+          const alreadyTemporary = temporaryEvents.some(
+            (temp) => temp.id === event.id
+          );
+          const alreadyOriginal = timeline.events.some(
+            (orig) => orig.id === event.id
+          );
+
           if (!alreadyTemporary && !alreadyOriginal) {
-            console.log(`イベント「${event.title}」を年表「${timeline.name}」に仮登録`);
+            console.log(
+              `イベント「${event.title}」を年表「${timeline.name}」に仮登録`
+            );
             return {
               ...timeline,
               temporaryEvents: [...temporaryEvents, event],
-              removedEvents: newRemovedEvents
+              removedEvents: newRemovedEvents,
             };
           } else {
             return {
               ...timeline,
-              removedEvents: newRemovedEvents
+              removedEvents: newRemovedEvents,
             };
           }
         }
@@ -389,25 +458,29 @@ export const useTimelineLogic = (
   }, []);
 
   const removeEventFromTimeline = useCallback((timelineId, eventId) => {
-    setCreatedTimelines(prevTimelines => 
-      prevTimelines.map(timeline => {
+    setCreatedTimelines((prevTimelines) =>
+      prevTimelines.map((timeline) => {
         if (timeline.id === timelineId) {
           const temporaryEvents = timeline.temporaryEvents || [];
           const removedEvents = timeline.removedEvents || [];
-          
+
           // 仮登録リストから削除
-          const newTemporaryEvents = temporaryEvents.filter(temp => temp.id !== eventId);
-          
+          const newTemporaryEvents = temporaryEvents.filter(
+            (temp) => temp.id !== eventId
+          );
+
           // 元々のイベントの場合は仮削除リストに追加
-          const originalEvent = timeline.events.find(event => event.id === eventId);
-          const newRemovedEvents = originalEvent 
+          const originalEvent = timeline.events.find(
+            (event) => event.id === eventId
+          );
+          const newRemovedEvents = originalEvent
             ? [...removedEvents, originalEvent]
             : removedEvents;
-          
+
           return {
             ...timeline,
             temporaryEvents: newTemporaryEvents,
-            removedEvents: newRemovedEvents
+            removedEvents: newRemovedEvents,
           };
         }
         return timeline;
@@ -598,6 +671,7 @@ export const useTimelineLogic = (
   );
 
   // イベント保存
+  // イベント保存
   const saveEvent = useCallback(() => {
     if (!newEvent.title.trim()) return;
 
@@ -614,8 +688,9 @@ export const useTimelineLogic = (
       setAllTags((prev) => [...prev, ...newTags]);
     }
 
+    let savedEvent;
     if (editingEvent) {
-      const updatedEvent = {
+      savedEvent = {
         ...editingEvent,
         title: newEvent.title,
         startDate: newEvent.date,
@@ -624,10 +699,10 @@ export const useTimelineLogic = (
         tags: eventTags,
       };
       setEvents((prev) =>
-        prev.map((e) => (e.id === editingEvent.id ? updatedEvent : e))
+        prev.map((e) => (e.id === editingEvent.id ? savedEvent : e))
       );
     } else {
-      const event = {
+      savedEvent = {
         id: Date.now(),
         title: newEvent.title,
         startDate: newEvent.date,
@@ -636,8 +711,40 @@ export const useTimelineLogic = (
         tags: eventTags,
         position: { x: modalPosition.x, y: modalPosition.y },
       };
-      setEvents((prev) => [...prev, event]);
+      setEvents((prev) => [...prev, savedEvent]);
     }
+
+    // 年表への自動追加チェック
+    setCreatedTimelines((prevTimelines) =>
+      prevTimelines.map((timeline) => {
+        // このイベントが既に年表に含まれているかチェック
+        const alreadyInTimeline =
+          timeline.events.some((e) => e.id === savedEvent.id) ||
+          (timeline.temporaryEvents || []).some((e) => e.id === savedEvent.id);
+
+        if (alreadyInTimeline) return timeline;
+
+        // 年表のタグとイベントのタグが一致するかチェック
+        const hasMatchingTag = timeline.tags.some((timelineTag) =>
+          eventTags.some(
+            (eventTag) =>
+              eventTag.toLowerCase().includes(timelineTag.toLowerCase()) ||
+              timelineTag.toLowerCase().includes(eventTag.toLowerCase())
+          )
+        );
+
+        if (hasMatchingTag) {
+          // 仮登録リストに追加
+          const temporaryEvents = timeline.temporaryEvents || [];
+          return {
+            ...timeline,
+            temporaryEvents: [...temporaryEvents, savedEvent],
+          };
+        }
+
+        return timeline;
+      })
+    );
 
     setIsModalOpen(false);
     setEditingEvent(null);
@@ -647,7 +754,7 @@ export const useTimelineLogic = (
       date: new Date(),
       manualTags: [],
     });
-  }, [newEvent, modalPosition, allTags, editingEvent]);
+  }, [newEvent, modalPosition, allTags, editingEvent, setCreatedTimelines]);
 
   // モーダル操作
   const closeModal = useCallback(() => {
@@ -769,8 +876,10 @@ export const useTimelineLogic = (
 
     return visibleTimelines
       .map((timeline, timelineIndex) => {
-        const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
-        
+        const baseY =
+          TIMELINE_CONFIG.FIRST_ROW_Y +
+          timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+
         // ROW_HEIGHTの中央に軸線を配置
         const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
         const yPosition = axisY + panY;
@@ -989,7 +1098,6 @@ export const useTimelineLogic = (
     setEvents,
 
     // ドラッグ&ドロップ関連
-    eventPositions,
     timelinePositions,
     moveEvent,
     moveTimeline,
@@ -1001,5 +1109,7 @@ export const useTimelineLogic = (
     selectedTimelineForModal,
     openTimelineModal,
     closeTimelineModal,
+
+    eventPositions,
   };
 };
