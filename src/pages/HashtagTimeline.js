@@ -16,10 +16,16 @@ import { useDragDrop } from "../hooks/useDragDrop";
 import { createTimelineStyles } from "../styles/timelineStyles";
 import { extractTagsFromDescription } from "../utils/timelineUtils";
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
+import { useAuth } from "../hooks/useAuth";
+import { useSupabaseSync } from "../hooks/useSupabaseSync";
+import MyPage from "../components/MyPage";
 
 const HashtagTimeline = () => {
+  // ローディング状態
+  const [isSaving, setIsSaving] = useState(false);
+
   // ビュー切り替え状態
-  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' or 'table'
+  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage'
 
   // メインの状態管理
   const timelineRef = useRef(null);
@@ -29,6 +35,25 @@ const HashtagTimeline = () => {
   const isShiftPressed = useRef(false);
 
   // カスタムフックから必要な状態と関数を取得
+  // 認証フック
+  const { user, loading, signInWithGoogle, signOut, isAuthenticated } =
+    useAuth();
+
+  // Supabase同期フック
+  const {
+    saveTimelineData,
+    getUserTimelines,
+    upsertProfile,
+    loading: syncLoading,
+  } = useSupabaseSync(user);
+
+  // ログイン時のプロファイル作成
+  useEffect(() => {
+    if (user && !syncLoading) {
+      upsertProfile({});
+    }
+  }, [user, upsertProfile, syncLoading]);
+
   const {
     // 基本状態
     scale,
@@ -101,6 +126,10 @@ const HashtagTimeline = () => {
     selectedTimelineForModal,
     openTimelineModal,
     closeTimelineModal,
+
+    // 年表データの読み込み・保存・削除
+    setEvents,
+    setCreatedTimelines,
   } = useTimelineLogic(
     timelineRef,
     isDragging,
@@ -108,6 +137,45 @@ const HashtagTimeline = () => {
     lastMouseY,
     isShiftPressed
   );
+
+  // 年表データの読み込み
+  const handleLoadTimeline = useCallback(
+    (timelineData) => {
+      if (timelineData.events) {
+        setEvents(timelineData.events);
+      }
+      if (timelineData.timelines) {
+        setCreatedTimelines(timelineData.timelines);
+      }
+    },
+    []
+  );
+
+  // 年表データの保存
+  const handleSaveTimeline = useCallback(async () => {
+    if (!isAuthenticated || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const timelineData = {
+        events: events,
+        timelines: Timelines,
+        version: "1.0",
+        savedAt: new Date().toISOString(),
+      };
+
+      const title = `年表 ${new Date().toLocaleDateString("ja-JP")}`;
+      const result = await saveTimelineData(timelineData, title);
+
+      if (result) {
+        alert("年表を保存しました");
+      } else {
+        alert("保存に失敗しました");
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [isAuthenticated, events, Timelines, saveTimelineData, isSaving]);
 
   // ドラッグ&ドロップ機能
   const {
@@ -349,19 +417,70 @@ const HashtagTimeline = () => {
               </span>
             </>
           )}
+
+          {/* 保存ボタン（ログイン時のみ表示） */}
+          {isAuthenticated && (
+            <button
+              onClick={handleSaveTimeline}
+              style={{
+                ...styles.resetButton,
+                backgroundColor: isSaving ? "#9ca3af" : "#10b981",
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? "保存中..." : "保存"}
+            </button>
+          )}
+
+          {/* マイページボタン（ログイン時のみ表示） */}
+          {isAuthenticated && (
+            <>
+              <button
+                onClick={() => setCurrentView("mypage")}
+                style={{
+                  ...styles.resetButton,
+                  backgroundColor:
+                    currentView === "mypage" ? "#3b82f6" : "#6b7280",
+                }}
+              >
+                マイページ
+              </button>
+            </>
+          )}
+
+          {/* 認証ボタン */}
+          {loading ? (
+            <span style={{ fontSize: "14px", color: "#666" }}>
+              読み込み中...
+            </span>
+          ) : isAuthenticated ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "14px", color: "#374151" }}>
+                {user.email}
+              </span>
+              <button onClick={signOut} style={styles.resetButton}>
+                ログアウト
+              </button>
+            </div>
+          ) : (
+            <button onClick={signInWithGoogle} style={styles.resetButton}>
+              ログイン
+            </button>
+          )}
         </div>
       </div>
 
       {/* メインコンテンツ */}
       {currentView === "table" ? (
         // テーブルビュー
-        <TableView
-          events={events}
-          timelines={Timelines}
-          highlightedEvents={highlightedEvents}
-          onEventUpdate={updateEvent}
-          onEventDelete={handleTableEventDelete}
-          searchTerm={searchTerm}
+        <TableView /* 既存のprops */ />
+      ) : currentView === "mypage" ? (
+        // マイページ
+        <MyPage
+          user={user}
+          supabaseSync={{ getUserTimelines, deleteTimeline }}
+          onLoadTimeline={handleLoadTimeline}
+          onBackToTimeline={() => setCurrentView("timeline")}
         />
       ) : (
         // 年表ビュー

@@ -1137,5 +1137,7 @@ export const useTimelineLogic = (
     closeTimelineModal,
 
     eventPositions,
+
+    setCreatedTimelines,
   };
 };
