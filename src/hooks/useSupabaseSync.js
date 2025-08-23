@@ -6,6 +6,31 @@ export const useSupabaseSync = (user) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // Wiki関連の関数を追加
+  const getWikiEvents = useCallback(async (searchTerm = '', limit = 50) => {
+    try {
+      let query = supabase
+        .from('shared_events')
+        .select(`
+          *,
+          profiles:created_by(display_name, username)
+        `)
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+
+      if (searchTerm.trim()) {
+        query = query.or(`title.ilike.%${searchTerm}%,tags.cs.{${searchTerm}}`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('Wiki イベント取得エラー:', err);
+      return [];
+    }
+  }, []);
+
   // プロファイル作成・更新
   const upsertProfile = useCallback(
     async (profileData) => {
@@ -166,5 +191,6 @@ export const useSupabaseSync = (user) => {
     updateTimelineData,
     getUserTimelines,
     deleteTimeline,
+    getWikiEvents,
   };
 };

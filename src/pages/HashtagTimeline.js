@@ -21,8 +21,27 @@ import MyPage from "../components/MyPage";
 import Sidebar from "../components/Sidebar";
 import { useIsDesktop } from "../hooks/useMediaQuery";
 import logoImage from "../assets/logo.png";
+import WikiBrowser from "../components/WikiBrowser";
+import { useWikiData } from "../hooks/useWikiData";
 
 const HashtagTimeline = () => {
+  // Wiki関連のフック追加
+  const wikiData = useWikiData(user);
+
+  // 既存のsetCurrentView の選択肢に 'wiki' を追加
+  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage' | 'wiki'
+
+  // Wikiからのイベントインポート処理
+  const handleWikiEventImport = useCallback(
+    (wikiEvent) => {
+      // Wiki イベントを個人の events 配列に追加
+      setEvents((prevEvents) => [...prevEvents, wikiEvent]);
+
+      // 成功メッセージは WikiBrowser 内で表示するので、ここでは何もしない
+    },
+    [setEvents]
+  );
+
   // アカウントメニュー用の状態を追加
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [currentFileName, setCurrentFileName] = useState(null); // 現在開いているファイル名
@@ -970,16 +989,29 @@ const HashtagTimeline = () => {
           </div>
         </div>
 
-        {/* メインコンテンツ */}
+        {/* メインコンテンツ - Wiki ビューを追加 */}
         {currentView === "table" ? (
-          // テーブルビュー
-          <TableView /* 既存のprops */ />
+          <TableView
+            events={events}
+            timelines={Timelines}
+            highlightedEvents={highlightedEvents}
+            onEventUpdate={updateEvent}
+            onEventDelete={handleTableEventDelete}
+            searchTerm={searchTerm}
+          />
         ) : currentView === "mypage" ? (
-          // マイページ
           <MyPage
             user={user}
             supabaseSync={{ getUserTimelines, deleteTimelineFile }}
             onLoadTimeline={handleLoadTimeline}
+            onBackToTimeline={() => setCurrentView("timeline")}
+          />
+        ) : currentView === "wiki" ? (
+          // 新しく追加する Wiki ビュー
+          <WikiBrowser
+            user={user}
+            wikiData={wikiData}
+            onImportEvent={handleWikiEventImport}
             onBackToTimeline={() => setCurrentView("timeline")}
           />
         ) : (
