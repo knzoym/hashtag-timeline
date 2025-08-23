@@ -52,7 +52,7 @@ const HashtagTimeline = () => {
     if (user && !syncLoading) {
       upsertProfile({});
     }
-  }, [user, upsertProfile, syncLoading]);
+  }, [user]);
 
   const {
     // 基本状態
@@ -139,17 +139,42 @@ const HashtagTimeline = () => {
   );
 
   // 年表データの読み込み
-  const handleLoadTimeline = useCallback(
-    (timelineData) => {
-      if (timelineData.events) {
-        setEvents(timelineData.events);
-      }
-      if (timelineData.timelines) {
-        setCreatedTimelines(timelineData.timelines);
-      }
-    },
-    []
-  );
+  const handleLoadTimeline = useCallback((timelineData) => {
+    if (timelineData.events) {
+      // 日付を文字列からDateオブジェクトに変換
+      const eventsWithDates = timelineData.events.map((event) => ({
+        ...event,
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
+      }));
+      setEvents(eventsWithDates);
+    }
+    if (timelineData.timelines) {
+      // 年表内のイベントの日付も変換
+      const timelinesWithDates = timelineData.timelines.map((timeline) => ({
+        ...timeline,
+        events:
+          timeline.events?.map((event) => ({
+            ...event,
+            startDate: new Date(event.startDate),
+            endDate: new Date(event.endDate),
+          })) || [],
+        temporaryEvents:
+          timeline.temporaryEvents?.map((event) => ({
+            ...event,
+            startDate: new Date(event.startDate),
+            endDate: new Date(event.endDate),
+          })) || [],
+        removedEvents:
+          timeline.removedEvents?.map((event) => ({
+            ...event,
+            startDate: new Date(event.startDate),
+            endDate: new Date(event.endDate),
+          })) || [],
+      }));
+      setCreatedTimelines(timelinesWithDates);
+    }
+  }, []);
 
   // 年表データの保存
   const handleSaveTimeline = useCallback(async () => {
@@ -168,7 +193,7 @@ const HashtagTimeline = () => {
       const result = await saveTimelineData(timelineData, title);
 
       if (result) {
-        alert("年表を保存しました");
+        alert("ファイルを保存しました");
       } else {
         alert("保存に失敗しました");
       }

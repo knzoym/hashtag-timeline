@@ -1,147 +1,164 @@
 // src/hooks/useSupabaseSync.js
-import { useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useCallback } from "react";
+import { supabase } from "../lib/supabase";
 
 export const useSupabaseSync = (user) => {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // プロファイル作成・更新
-  const upsertProfile = useCallback(async (profileData) => {
-    if (!user) return null
+  const upsertProfile = useCallback(
+    async (profileData) => {
+      if (!user) return null;
 
-    try {
-      setLoading(true)
-      setError(null)
+      try {
+        setError(null);
 
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          username: profileData.username || user.email.split('@')[0],
-          display_name: profileData.display_name || user.user_metadata?.full_name || user.email,
-          ...profileData
-        })
-        .select()
+        const { data, error } = await supabase
+          .from("profiles")
+          .upsert({
+            id: user.id,
+            username: profileData.username || user.email.split("@")[0],
+            display_name:
+              profileData.display_name ||
+              user.user_metadata?.full_name ||
+              user.email.split("@")[0], // 修正
+            ...profileData,
+          })
+          .select();
 
-      if (error) throw error
-      return data[0]
-    } catch (error) {
-      console.error('プロファイル保存エラー:', error)
-      setError(error.message)
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+        if (error) throw error;
+        return data[0];
+      } catch (error) {
+        console.error("プロファイル保存エラー:", error);
+        setError(error.message);
+        return null;
+      }
+    },
+    [user]
+  );
 
   // 年表データ保存
-  const saveTimelineData = useCallback(async (timelineData, title) => {
-    if (!user) return null
+  const saveTimelineData = useCallback(
+    async (timelineData, title) => {
+      if (!user) return null;
 
-    try {
-      setLoading(true)
-      setError(null)
+      try {
+        setLoading(true);
+        setError(null);
 
-      const { data, error } = await supabase
-        .from('user_timelines')
-        .insert({
-          user_id: user.id,
-          timeline_data: timelineData,
-          title: title || `年表 ${new Date().toLocaleDateString('ja-JP')}`,
-        })
-        .select()
+        const { data, error } = await supabase
+          .from("user_timelines")
+          .insert({
+            user_id: user.id,
+            timeline_data: timelineData,
+            title: title || `年表 ${new Date().toLocaleDateString("ja-JP")}`,
+          })
+          .select();
 
-      if (error) throw error
-      return data[0]
-    } catch (error) {
-      console.error('年表保存エラー:', error)
-      setError(error.message)
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+        if (error) throw error;
+        return data[0];
+      } catch (error) {
+        console.error("年表保存エラー:", error);
+        setError(error.message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
 
   // 年表データ更新
-  const updateTimelineData = useCallback(async (timelineId, timelineData, title) => {
-    if (!user) return null
+  const updateTimelineData = useCallback(
+    async (timelineId, timelineData, title) => {
+      if (!user) return null;
 
-    try {
-      setLoading(true)
-      setError(null)
+      try {
+        setLoading(true);
+        setError(null);
 
-      const { data, error } = await supabase
-        .from('user_timelines')
-        .update({
-          timeline_data: timelineData,
-          title: title,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', timelineId)
-        .eq('user_id', user.id)
-        .select()
+        const { data, error } = await supabase
+          .from("user_timelines")
+          .update({
+            timeline_data: timelineData,
+            title: title,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", timelineId)
+          .eq("user_id", user.id)
+          .select();
 
-      if (error) throw error
-      return data[0]
-    } catch (error) {
-      console.error('年表更新エラー:', error)
-      setError(error.message)
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+        if (error) throw error;
+        return data[0];
+      } catch (error) {
+        console.error("年表更新エラー:", error);
+        setError(error.message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
 
   // ユーザーの年表一覧取得
   const getUserTimelines = useCallback(async () => {
-    if (!user) return []
+    if (!user) return [];
 
     try {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
       const { data, error } = await supabase
-        .from('user_timelines')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false })
+        .from("user_timelines")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false });
 
-      if (error) throw error
-      return data || []
+      if (error) throw error;
+      return data || [];
     } catch (error) {
-      console.error('年表取得エラー:', error)
-      setError(error.message)
-      return []
+      console.error("年表取得エラー:", error);
+      setError(error.message);
+      return [];
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [user])
+  }, [user]);
 
   // 年表削除
   const deleteTimeline = useCallback(async (timelineId) => {
-    if (!user) return false
+  if (!user) {
+    console.error('削除失敗: ユーザーが未認証');
+    return false;
+  }
 
-    try {
-      setLoading(true)
-      setError(null)
+  try {
+    setLoading(true)
+    setError(null)
+    
+    console.log('削除API呼び出し開始:', { timelineId, userId: user.id });
 
-      const { error } = await supabase
-        .from('user_timelines')
-        .delete()
-        .eq('id', timelineId)
-        .eq('user_id', user.id)
+    const { data, error } = await supabase
+      .from('user_timelines')
+      .delete()
+      .eq('id', timelineId)
+      .eq('user_id', user.id)
+      .select() // 削除されたデータを確認用に返す
 
-      if (error) throw error
-      return true
-    } catch (error) {
-      console.error('年表削除エラー:', error)
-      setError(error.message)
-      return false
-    } finally {
-      setLoading(false)
-    }
-  }, [user])
+    console.log('削除API結果:', { data, error });
+
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.error('削除API詳細エラー:', error)
+    setError(error.message)
+    return false
+  } finally {
+    setLoading(false)
+  }
+}, [user])
 
   return {
     loading,
@@ -150,6 +167,6 @@ export const useSupabaseSync = (user) => {
     saveTimelineData,
     updateTimelineData,
     getUserTimelines,
-    deleteTimeline
-  }
-}
+    deleteTimeline,
+  };
+};
