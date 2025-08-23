@@ -19,8 +19,14 @@ import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { useAuth } from "../hooks/useAuth";
 import { useSupabaseSync } from "../hooks/useSupabaseSync";
 import MyPage from "../components/MyPage";
+import Sidebar from "../components/Sidebar";
+import { useIsDesktop } from "../hooks/useMediaQuery";
 
 const HashtagTimeline = () => {
+  // サイドバー状態
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isDesktop = useIsDesktop();
+
   // ローディング状態
   const [isSaving, setIsSaving] = useState(false);
 
@@ -202,6 +208,52 @@ const HashtagTimeline = () => {
       setIsSaving(false);
     }
   }, [isAuthenticated, events, Timelines, saveTimelineData, isSaving]);
+
+  // サイドバーのメニュー項目クリックハンドラー
+  const handleSidebarMenuClick = useCallback(
+    (itemId, section) => {
+      switch (itemId) {
+        case "new":
+          if (window.confirm("現在の年表をクリアして新規作成しますか？")) {
+            setEvents([]);
+            setCreatedTimelines([]);
+          }
+          break;
+        case "open":
+          if (isAuthenticated) {
+            setCurrentView("mypage");
+          }
+          break;
+        case "save":
+          if (isAuthenticated) {
+            handleSaveTimeline();
+          }
+          break;
+        case "add-event":
+          openNewEventModal();
+          break;
+        case "clear-all":
+          if (
+            window.confirm(
+              "すべてのイベントと年表を削除しますか？\nこの操作は取り消せません。"
+            )
+          ) {
+            setEvents([]);
+            setCreatedTimelines([]);
+          }
+          break;
+        default:
+          console.log(`Menu clicked: ${itemId} in ${section}`);
+      }
+    },
+    [
+      isAuthenticated,
+      handleSaveTimeline,
+      openNewEventModal,
+      setEvents,
+      setCreatedTimelines,
+    ]
+  );
 
   // ドラッグ&ドロップ機能
   const {
@@ -398,489 +450,603 @@ const HashtagTimeline = () => {
 
   return (
     <div style={styles.app}>
-      {/* ヘッダー */}
-      <div style={styles.header}>
-        <div style={styles.headerLeft}>
-          {/* ビュー切り替えボタン */}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={() => setCurrentView("timeline")}
-              style={{
-                ...styles.resetButton,
-                backgroundColor:
-                  currentView === "timeline" ? "#3b82f6" : "#6b7280",
-              }}
-            >
-              年表ビュー
-            </button>
-            <button
-              onClick={() => setCurrentView("table")}
-              style={{
-                ...styles.resetButton,
-                backgroundColor:
-                  currentView === "table" ? "#3b82f6" : "#6b7280",
-              }}
-            >
-              テーブルビュー
-            </button>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <h1 style={styles.title}>#ハッシュタグ年表</h1>
-        </div>
-        <div style={styles.headerRight}>
-          {currentView === "timeline" && (
-            <>
+      {/* サイドバー（PC版のみ） */}
+      {isDesktop && (
+        <Sidebar
+          isOpen={sidebarOpen}
+          onToggle={() => setSidebarOpen(!sidebarOpen)}
+          onMenuItemClick={handleSidebarMenuClick}
+          currentUser={user}
+          isSaving={isSaving}
+          canSave={events.length > 0 || Timelines.length > 0}
+        />
+      )}
+      {/* メインコンテンツラッパー */}
+      <div
+        style={{
+          marginLeft: isDesktop && sidebarOpen ? 250 : 0,
+          transition: "margin-left 0.3s ease",
+          width: isDesktop && sidebarOpen ? "calc(100% - 250px)" : "100%",
+          height: "100vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* ヘッダー */}
+        <div style={styles.header}>
+          <div style={styles.headerLeft}>
+            {/* サイドバートグルボタン（PC版のみ） */}
+            {isDesktop && (
               <button
-                style={styles.resetButton}
-                onClick={resetToInitialPosition}
-                title="初期位置に戻す"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                style={{
+                  backgroundColor: "transparent",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  padding: "6px",
+                  marginRight: "16px",
+                  width: "36px",
+                  height: "36px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = "#f9fafb";
+                  e.currentTarget.style.borderColor = "#d1d5db";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.borderColor = "#e5e7eb";
+                }}
+                aria-label="サイドバーを切り替え"
               >
-                初期位置
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ color: "#6b7280" }}
+                >
+                  {sidebarOpen ? (
+                    // サイドバーが開いている時のアイコン
+                    <>
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <path d="M14 8l-2 2 2 2" />
+                    </>
+                  ) : (
+                    // サイドバーが閉じている時のアイコン
+                    <>
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <path d="M14 8l2 2-2 2" />
+                    </>
+                  )}
+                </svg>
               </button>
-              <span style={styles.zoomInfo}>
-                ズーム: {(scale / 2.5).toFixed(1)}x
-              </span>
-            </>
-          )}
-
-          {/* 保存ボタン（ログイン時のみ表示） */}
-          {isAuthenticated && (
-            <button
-              onClick={handleSaveTimeline}
-              style={{
-                ...styles.resetButton,
-                backgroundColor: isSaving ? "#9ca3af" : "#10b981",
-              }}
-              disabled={isSaving}
-            >
-              {isSaving ? "保存中..." : "保存"}
-            </button>
-          )}
-
-          {/* マイページボタン（ログイン時のみ表示） */}
-          {isAuthenticated && (
-            <>
+            )}
+            {/* ビュー切り替えボタン */}
+            <div style={{ display: "flex", gap: "8px" }}>
               <button
-                onClick={() => setCurrentView("mypage")}
+                onClick={() => setCurrentView("timeline")}
                 style={{
                   ...styles.resetButton,
                   backgroundColor:
-                    currentView === "mypage" ? "#3b82f6" : "#6b7280",
+                    currentView === "timeline" ? "#3b82f6" : "#6b7280",
                 }}
               >
-                マイページ
+                年表ビュー
               </button>
-            </>
-          )}
-
-          {/* 認証ボタン */}
-          {loading ? (
-            <span style={{ fontSize: "14px", color: "#666" }}>
-              読み込み中...
-            </span>
-          ) : isAuthenticated ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <span style={{ fontSize: "14px", color: "#374151" }}>
-                {user.email}
-              </span>
-              <button onClick={signOut} style={styles.resetButton}>
-                ログアウト
+              <button
+                onClick={() => setCurrentView("table")}
+                style={{
+                  ...styles.resetButton,
+                  backgroundColor:
+                    currentView === "table" ? "#3b82f6" : "#6b7280",
+                }}
+              >
+                テーブルビュー
               </button>
             </div>
-          ) : (
-            <button onClick={signInWithGoogle} style={styles.resetButton}>
-              ログイン
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* メインコンテンツ */}
-      {currentView === "table" ? (
-        // テーブルビュー
-        <TableView /* 既存のprops */ />
-      ) : currentView === "mypage" ? (
-        // マイページ
-        <MyPage
-          user={user}
-          supabaseSync={{ getUserTimelines, deleteTimelineFile }}
-          onLoadTimeline={handleLoadTimeline}
-          onBackToTimeline={() => setCurrentView("timeline")}
-        />
-      ) : (
-        // 年表ビュー
-        <div
-          ref={timelineRef}
-          style={styles.timeline}
-          onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onDoubleClick={handleDoubleClick}
-        >
-          {/* 年マーカー */}
-          {generateYearMarkers()}
-
-          {/* イベントを追加ボタン */}
-          <div className="floating-panel">
-            <button style={styles.addButton} onClick={openNewEventModal}>
-              + イベントを追加
-            </button>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <h1 style={styles.title}>#ハッシュタグ年表</h1>
+          </div>
+          <div style={styles.headerRight}>
+            {currentView === "timeline" && (
+              <>
+                <button
+                  style={styles.resetButton}
+                  onClick={resetToInitialPosition}
+                  title="初期位置に戻す"
+                >
+                  初期位置
+                </button>
+                <span style={styles.zoomInfo}>
+                  ズーム: {(scale / 2.5).toFixed(1)}x
+                </span>
+              </>
+            )}
 
-          {/* 検索パネル */}
-          <SearchPanel
-            searchTerm={searchTerm}
-            highlightedEvents={highlightedEvents}
-            onSearchChange={handleSearchChange}
-            onCreateTimeline={createTimeline}
-            onDeleteTimeline={deleteTimeline}
-            getTopTagsFromSearch={getTopTagsFromSearch}
-            styles={styles}
+            {/* 保存ボタン（ログイン時のみ表示） */}
+            {isAuthenticated && (
+              <button
+                onClick={handleSaveTimeline}
+                style={{
+                  ...styles.resetButton,
+                  backgroundColor: isSaving ? "#9ca3af" : "#10b981",
+                }}
+                disabled={isSaving}
+              >
+                {isSaving ? "保存中..." : "保存"}
+              </button>
+            )}
+
+            {/* マイページボタン（ログイン時のみ表示） */}
+            {isAuthenticated && (
+              <>
+                <button
+                  onClick={() => setCurrentView("mypage")}
+                  style={{
+                    ...styles.resetButton,
+                    backgroundColor:
+                      currentView === "mypage" ? "#3b82f6" : "#6b7280",
+                  }}
+                >
+                  マイページ
+                </button>
+              </>
+            )}
+
+            {/* 認証ボタン */}
+            {loading ? (
+              <span style={{ fontSize: "14px", color: "#666" }}>
+                読み込み中...
+              </span>
+            ) : isAuthenticated ? (
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "12px" }}
+              >
+                <span style={{ fontSize: "14px", color: "#374151" }}>
+                  {user.email}
+                </span>
+                <button onClick={signOut} style={styles.resetButton}>
+                  ログアウト
+                </button>
+              </div>
+            ) : (
+              <button onClick={signInWithGoogle} style={styles.resetButton}>
+                ログイン
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* メインコンテンツ */}
+        {currentView === "table" ? (
+          // テーブルビュー
+          <TableView /* 既存のprops */ />
+        ) : currentView === "mypage" ? (
+          // マイページ
+          <MyPage
+            user={user}
+            supabaseSync={{ getUserTimelines, deleteTimelineFile }}
+            onLoadTimeline={handleLoadTimeline}
+            onBackToTimeline={() => setCurrentView("timeline")}
           />
+        ) : (
+          // 年表ビュー
+          <div
+            ref={timelineRef}
+            style={styles.timeline}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onDoubleClick={handleDoubleClick}
+          >
+            {/* 年マーカー */}
+            {generateYearMarkers()}
 
-          {/* Part 1: 年号とグループアイコンを描画 */}
-          {visibleEvents.map((event, index) => {
-            if (event.isGroup) {
-              return (
-                <EventGroupIcon
-                  key={`group-${event.groupData.id}-${index}`}
-                  groupData={event.groupData}
-                  position={{
-                    x: event.adjustedPosition.x,
-                    y: event.adjustedPosition.y,
-                  }}
-                  panY={panY}
-                  timelineColor={event.timelineColor || "#6b7280"}
-                  onHover={handleGroupHover}
-                  onDoubleClick={handleDoubleClick}
-                />
-              );
-            }
+            {/* イベントを追加ボタン */}
+            <div className="floating-panel">
+              <button style={styles.addButton} onClick={openNewEventModal}>
+                + イベントを追加
+              </button>
+            </div>
 
-            const uniqueKey = event.timelineId
-              ? `year-${event.id}-${event.timelineId}-${index}`
-              : `year-${event.id}-main-${index}`;
-
-            return (
-              <div
-                key={uniqueKey}
-                style={{
-                  position: "absolute",
-                  left: event.adjustedPosition.x,
-                  top: event.adjustedPosition.y + panY + 8 + "px",
-                  transform: "translateX(-50%)",
-                  zIndex: 2,
-                  textAlign: "center",
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: "10px",
-                    color: "#666",
-                    marginBottom: "2px",
-                  }}
-                >
-                  {event.startDate.getFullYear()}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Part 2: イベントタイトルを描画 */}
-          {visibleEvents.map((event, index) => {
-            if (event.isGroup) return null;
-
-            const isHighlighted = highlightedEvents.has(event.id);
-            const truncatedTitle = truncateTitle(event.title);
-            const eventWidth =
-              event.calculatedWidth || calculateTextWidth(truncatedTitle) + 16;
-
-            let eventColors = {
-              backgroundColor: "#6b7280",
-              textColor: "white",
-            };
-
-            if (event.timelineColor && !event.isRemoved) {
-              eventColors = createEventColors(event.timelineColor);
-            } else if (isHighlighted) {
-              eventColors = { backgroundColor: "#10b981", textColor: "white" };
-            } else if (event.id === 1 || event.id === 2) {
-              eventColors = {
-                backgroundColor: event.id === 1 ? "#3b82f6" : "#ef4444",
-                textColor: "white",
-              };
-            }
-
-            const uniqueKey = event.timelineId
-              ? `event-${event.id}-${event.timelineId}-${index}`
-              : `event-${event.id}-main-${index}`;
-
-            return (
-              <div
-                key={uniqueKey}
-                data-event-id={event.id}
-                style={{
-                  position: "absolute",
-                  left: event.adjustedPosition.x,
-                  top: event.adjustedPosition.y + panY + 15 + "px",
-                  transform: "translateX(-50%)",
-                  cursor: "ns-resize",
-                  zIndex: isHighlighted ? 5 : 4,
-                  textAlign: "center",
-                  userSelect: "none",
-                  opacity:
-                    isDragActive && dragState.draggedItem?.id === event.id
-                      ? 0.7
-                      : 1,
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  if (e.detail === 1) {
-                    const dragItem = {
-                      ...event,
-                      timelineId: event.timelineId || null,
-                      timelineName: event.timelineName || null,
-                      isTemporary: event.isTemporary || false,
-                    };
-                    handleDragMouseDown(e, "event", dragItem);
-                  }
-                }}
-              >
-                <div
-                  style={{
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                    color: eventColors.textColor,
-                    fontWeight: "500",
-                    fontSize: "11px",
-                    width: `${Math.max(60, eventWidth)}px`,
-                    backgroundColor: eventColors.backgroundColor,
-                    border: isHighlighted
-                      ? "2px solid #059669"
-                      : event.isTemporary
-                      ? `2px dashed ${event.timelineColor}`
-                      : event.timelineColor && !event.isRemoved
-                      ? `1px solid ${event.timelineColor}`
-                      : "none",
-                    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
-                    lineHeight: "1.1",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {truncatedTitle}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* グループツールチップ */}
-          {hoveredGroup && (
-            <GroupTooltip
-              groupData={hoveredGroup.data}
-              position={{
-                x: hoveredGroup.data.position.x,
-                y: hoveredGroup.data.position.y,
-              }}
-              panY={panY}
+            {/* 検索パネル */}
+            <SearchPanel
+              searchTerm={searchTerm}
+              highlightedEvents={highlightedEvents}
+              onSearchChange={handleSearchChange}
+              onCreateTimeline={createTimeline}
+              onDeleteTimeline={deleteTimeline}
+              getTopTagsFromSearch={getTopTagsFromSearch}
+              styles={styles}
             />
-          )}
 
-          {/* 展開されたグループカード */}
-          {Array.from(expandedGroups).map((groupId) => {
-            const groupCard = groupManager.getGroupCard(groupId);
-            const groupData = advancedEventPositions.eventGroups.find(
-              (g) => g.id === groupId
-            );
+            {/* Part 1: 年号とグループアイコンを描画 */}
+            {visibleEvents.map((event, index) => {
+              if (event.isGroup) {
+                return (
+                  <EventGroupIcon
+                    key={`group-${event.groupData.id}-${index}`}
+                    groupData={event.groupData}
+                    position={{
+                      x: event.adjustedPosition.x,
+                      y: event.adjustedPosition.y,
+                    }}
+                    panY={panY}
+                    timelineColor={event.timelineColor || "#6b7280"}
+                    onHover={handleGroupHover}
+                    onDoubleClick={handleDoubleClick}
+                  />
+                );
+              }
 
-            if (!groupCard || !groupData) return null;
+              const uniqueKey = event.timelineId
+                ? `year-${event.id}-${event.timelineId}-${index}`
+                : `year-${event.id}-main-${index}`;
 
-            return (
-              <GroupCard
-                key={`card-${groupId}`}
-                groupData={groupData}
-                position={groupCard.position}
-                panY={panY}
-                panX={panX}
-                timelineColor={groupData.events[0]?.timelineColor || "#6b7280"}
-                onEventDoubleClick={handleGroupEventDoubleClick}
-                onClose={() => toggleEventGroup(groupId, groupCard.position)}
-              />
-            );
-          })}
-
-          {/* 年表カード */}
-          {Timelines.map((timeline, index) => {
-            const axis = axesMap.get(timeline.id);
-            const xPosition = axis ? axis.startX : 20;
-            const baseCardY =
-              cardPositions[timeline.id]?.y ||
-              TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
-            const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
-
-            const customTimelinePosition = timelinePositions.get(timeline.id);
-            const finalCardY = customTimelinePosition
-              ? customTimelinePosition.y
-              : centeredCardY;
-
-            return (
-              <TimelineCard
-                key={timeline.id}
-                timeline={timeline}
-                position={{ x: xPosition, y: finalCardY }}
-                panY={panY}
-                onDeleteTimeline={deleteTimeline}
-                onDoubleClick={() => openTimelineModal(timeline)}
-                onMouseDown={(e) =>
-                  handleDragMouseDown(e, "timeline", {
-                    ...timeline,
-                    yPosition: finalCardY,
-                  })
-                }
-                isDragging={
-                  isDragActive && dragState.draggedItem?.id === timeline.id
-                }
-              />
-            );
-          })}
-
-          {/* 年表軸線の描画 */}
-          {timelineAxes.map((axis) => (
-            <div key={`axis-${axis.id}`}>
-              <div
-                style={{
-                  position: "absolute",
-                  left: axis.startX - 100,
-                  top: axis.yPosition,
-                  width: Math.max(0, axis.endX - axis.startX) + 100,
-                  height: "3px",
-                  backgroundColor: axis.color,
-                  opacity: 0.8,
-                  zIndex: 0,
-                  borderRadius: "1px",
-                }}
-              />
-
-              {isDragActive && dragState.dragType === "event" && (
+              return (
                 <div
+                  key={uniqueKey}
                   style={{
                     position: "absolute",
-                    left: 0,
-                    top: axis.yPosition - 60,
-                    width: "100%",
-                    height: "120px",
-                    backgroundColor: `${axis.color}15`,
-                    border: `2px dashed ${axis.color}`,
-                    borderRadius: "8px",
-                    zIndex: 1,
+                    left: event.adjustedPosition.x,
+                    top: event.adjustedPosition.y + panY + 8 + "px",
+                    transform: "translateX(-50%)",
+                    zIndex: 2,
+                    textAlign: "center",
                     pointerEvents: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "14px",
-                    color: axis.color,
-                    fontWeight: "500",
-                    opacity: 0.8,
                   }}
                 >
                   <div
                     style={{
-                      backgroundColor: "white",
-                      padding: "6px 12px",
-                      borderRadius: "16px",
-                      border: `1px solid ${axis.color}`,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
+                      fontSize: "10px",
+                      color: "#666",
+                      marginBottom: "2px",
                     }}
                   >
-                    {axis.name} に仮登録
+                    {event.startDate.getFullYear()}
                   </div>
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
 
-          {/* 現在ライン */}
-          <div
-            style={{
-              position: "absolute",
-              left: (2025.6 - -5000) * currentPixelsPerYear + panX,
-              top: 0,
-              height: "100%",
-              borderLeft: "2px solid #f59e0b",
-              pointerEvents: "none",
-              opacity: 0.8,
-            }}
-          >
+            {/* Part 2: イベントタイトルを描画 */}
+            {visibleEvents.map((event, index) => {
+              if (event.isGroup) return null;
+
+              const isHighlighted = highlightedEvents.has(event.id);
+              const truncatedTitle = truncateTitle(event.title);
+              const eventWidth =
+                event.calculatedWidth ||
+                calculateTextWidth(truncatedTitle) + 16;
+
+              let eventColors = {
+                backgroundColor: "#6b7280",
+                textColor: "white",
+              };
+
+              if (event.timelineColor && !event.isRemoved) {
+                eventColors = createEventColors(event.timelineColor);
+              } else if (isHighlighted) {
+                eventColors = {
+                  backgroundColor: "#10b981",
+                  textColor: "white",
+                };
+              } else if (event.id === 1 || event.id === 2) {
+                eventColors = {
+                  backgroundColor: event.id === 1 ? "#3b82f6" : "#ef4444",
+                  textColor: "white",
+                };
+              }
+
+              const uniqueKey = event.timelineId
+                ? `event-${event.id}-${event.timelineId}-${index}`
+                : `event-${event.id}-main-${index}`;
+
+              return (
+                <div
+                  key={uniqueKey}
+                  data-event-id={event.id}
+                  style={{
+                    position: "absolute",
+                    left: event.adjustedPosition.x,
+                    top: event.adjustedPosition.y + panY + 15 + "px",
+                    transform: "translateX(-50%)",
+                    cursor: "ns-resize",
+                    zIndex: isHighlighted ? 5 : 4,
+                    textAlign: "center",
+                    userSelect: "none",
+                    opacity:
+                      isDragActive && dragState.draggedItem?.id === event.id
+                        ? 0.7
+                        : 1,
+                  }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    if (e.detail === 1) {
+                      const dragItem = {
+                        ...event,
+                        timelineId: event.timelineId || null,
+                        timelineName: event.timelineName || null,
+                        isTemporary: event.isTemporary || false,
+                      };
+                      handleDragMouseDown(e, "event", dragItem);
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                      color: eventColors.textColor,
+                      fontWeight: "500",
+                      fontSize: "11px",
+                      width: `${Math.max(60, eventWidth)}px`,
+                      backgroundColor: eventColors.backgroundColor,
+                      border: isHighlighted
+                        ? "2px solid #059669"
+                        : event.isTemporary
+                        ? `2px dashed ${event.timelineColor}`
+                        : event.timelineColor && !event.isRemoved
+                        ? `1px solid ${event.timelineColor}`
+                        : "none",
+                      boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                      lineHeight: "1.1",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {truncatedTitle}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* グループツールチップ */}
+            {hoveredGroup && (
+              <GroupTooltip
+                groupData={hoveredGroup.data}
+                position={{
+                  x: hoveredGroup.data.position.x,
+                  y: hoveredGroup.data.position.y,
+                }}
+                panY={panY}
+              />
+            )}
+
+            {/* 展開されたグループカード */}
+            {Array.from(expandedGroups).map((groupId) => {
+              const groupCard = groupManager.getGroupCard(groupId);
+              const groupData = advancedEventPositions.eventGroups.find(
+                (g) => g.id === groupId
+              );
+
+              if (!groupCard || !groupData) return null;
+
+              return (
+                <GroupCard
+                  key={`card-${groupId}`}
+                  groupData={groupData}
+                  position={groupCard.position}
+                  panY={panY}
+                  panX={panX}
+                  timelineColor={
+                    groupData.events[0]?.timelineColor || "#6b7280"
+                  }
+                  onEventDoubleClick={handleGroupEventDoubleClick}
+                  onClose={() => toggleEventGroup(groupId, groupCard.position)}
+                />
+              );
+            })}
+
+            {/* 年表カード */}
+            {Timelines.map((timeline, index) => {
+              const axis = axesMap.get(timeline.id);
+              const xPosition = axis ? axis.startX : 20;
+              const baseCardY =
+                cardPositions[timeline.id]?.y ||
+                TIMELINE_CONFIG.FIRST_ROW_Y +
+                  index * TIMELINE_CONFIG.ROW_HEIGHT;
+              const centeredCardY = baseCardY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
+
+              const customTimelinePosition = timelinePositions.get(timeline.id);
+              const finalCardY = customTimelinePosition
+                ? customTimelinePosition.y
+                : centeredCardY;
+
+              return (
+                <TimelineCard
+                  key={timeline.id}
+                  timeline={timeline}
+                  position={{ x: xPosition, y: finalCardY }}
+                  panY={panY}
+                  onDeleteTimeline={deleteTimeline}
+                  onDoubleClick={() => openTimelineModal(timeline)}
+                  onMouseDown={(e) =>
+                    handleDragMouseDown(e, "timeline", {
+                      ...timeline,
+                      yPosition: finalCardY,
+                    })
+                  }
+                  isDragging={
+                    isDragActive && dragState.draggedItem?.id === timeline.id
+                  }
+                />
+              );
+            })}
+
+            {/* 年表軸線の描画 */}
+            {timelineAxes.map((axis) => (
+              <div key={`axis-${axis.id}`}>
+                <div
+                  style={{
+                    position: "absolute",
+                    left: axis.startX - 100,
+                    top: axis.yPosition,
+                    width: Math.max(0, axis.endX - axis.startX) + 100,
+                    height: "3px",
+                    backgroundColor: axis.color,
+                    opacity: 0.8,
+                    zIndex: 0,
+                    borderRadius: "1px",
+                  }}
+                />
+
+                {isDragActive && dragState.dragType === "event" && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: axis.yPosition - 60,
+                      width: "100%",
+                      height: "120px",
+                      backgroundColor: `${axis.color}15`,
+                      border: `2px dashed ${axis.color}`,
+                      borderRadius: "8px",
+                      zIndex: 1,
+                      pointerEvents: "none",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "14px",
+                      color: axis.color,
+                      fontWeight: "500",
+                      opacity: 0.8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        backgroundColor: "white",
+                        padding: "6px 12px",
+                        borderRadius: "16px",
+                        border: `1px solid ${axis.color}`,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      {axis.name} に仮登録
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* 現在ライン */}
             <div
               style={{
                 position: "absolute",
-                left: "5px",
-                top: "20px",
-                fontSize: "12px",
-                color: "#f59e0b",
-                backgroundColor: "rgba(255,255,255,0.9)",
-                padding: "2px 6px",
-                borderRadius: "3px",
-                fontWeight: "600",
+                left: (2025.6 - -5000) * currentPixelsPerYear + panX,
+                top: 0,
+                height: "100%",
+                borderLeft: "2px solid #f59e0b",
+                pointerEvents: "none",
+                opacity: 0.8,
               }}
             >
-              現在 (2025)
+              <div
+                style={{
+                  position: "absolute",
+                  left: "5px",
+                  top: "20px",
+                  fontSize: "12px",
+                  color: "#f59e0b",
+                  backgroundColor: "rgba(255,255,255,0.9)",
+                  padding: "2px 6px",
+                  borderRadius: "3px",
+                  fontWeight: "600",
+                }}
+              >
+                現在 (2025)
+              </div>
             </div>
+
+            {/* ヘルプボックス */}
+            <HelpBox
+              isHelpOpen={isHelpOpen}
+              setIsHelpOpen={setIsHelpOpen}
+              highlightedEvents={highlightedEvents}
+              styles={styles}
+            />
           </div>
+        )}
 
-          {/* ヘルプボックス */}
-          <HelpBox
-            isHelpOpen={isHelpOpen}
-            setIsHelpOpen={setIsHelpOpen}
-            highlightedEvents={highlightedEvents}
-            styles={styles}
-          />
-        </div>
-      )}
+        {/* 年表詳細モーダル */}
+        <TimelineModal
+          isOpen={timelineModalOpen}
+          timeline={selectedTimelineForModal}
+          onClose={closeTimelineModal}
+          onEventRemove={removeEventFromTimeline}
+          onEventAdd={addEventToTimeline}
+          allEvents={events}
+        />
 
-      {/* 年表詳細モーダル */}
-      <TimelineModal
-        isOpen={timelineModalOpen}
-        timeline={selectedTimelineForModal}
-        onClose={closeTimelineModal}
-        onEventRemove={removeEventFromTimeline}
-        onEventAdd={addEventToTimeline}
-        allEvents={events}
-      />
+        {/* ドラッグ中のプレビュー */}
+        {isDragActive && dragState.draggedItem && (
+          <>
+            <div
+              style={{
+                position: "fixed",
+                left: dragState.startPosition.x - 1,
+                top: 0,
+                width: "2px",
+                height: "100vh",
+                backgroundColor: "#3b82f6",
+                opacity: 0.3,
+                zIndex: 9998,
+                pointerEvents: "none",
+              }}
+            />
 
-      {/* ドラッグ中のプレビュー */}
-      {isDragActive && dragState.draggedItem && (
-        <>
-          <div
-            style={{
-              position: "fixed",
-              left: dragState.startPosition.x - 1,
-              top: 0,
-              width: "2px",
-              height: "100vh",
-              backgroundColor: "#3b82f6",
-              opacity: 0.3,
-              zIndex: 9998,
-              pointerEvents: "none",
-            }}
-          />
+            <div
+              style={{
+                position: "fixed",
+                left: dragState.startPosition.x - 40,
+                top: dragState.currentPosition.y - 15,
+                zIndex: 9999,
+                pointerEvents: "none",
+                opacity: 0.9,
+                backgroundColor: (() => {
+                  const headerHeight = 64;
+                  const nearTimeline = timelineAxes.find((axis) => {
+                    const adjustedAxisY = axis.yPosition + headerHeight;
+                    const distance = Math.abs(
+                      dragState.currentPosition.y - adjustedAxisY
+                    );
+                    return distance < 60;
+                  });
 
-          <div
-            style={{
-              position: "fixed",
-              left: dragState.startPosition.x - 40,
-              top: dragState.currentPosition.y - 15,
-              zIndex: 9999,
-              pointerEvents: "none",
-              opacity: 0.9,
-              backgroundColor: (() => {
+                  if (dragState.draggedItem.timelineId && !nearTimeline) {
+                    return "#ef4444";
+                  }
+
+                  return nearTimeline ? nearTimeline.color : "#3b82f6";
+                })(),
+                color: "white",
+                padding: "6px 12px",
+                borderRadius: "4px",
+                fontSize: "11px",
+                fontWeight: "500",
+                boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+                border: "1px solid white",
+                transition: "background-color 0.2s ease",
+              }}
+            >
+              {(() => {
                 const headerHeight = 64;
                 const nearTimeline = timelineAxes.find((axis) => {
                   const adjustedAxisY = axis.yPosition + headerHeight;
@@ -891,56 +1057,31 @@ const HashtagTimeline = () => {
                 });
 
                 if (dragState.draggedItem.timelineId && !nearTimeline) {
-                  return "#ef4444";
+                  return `✕ ${dragState.draggedItem.timelineName}から削除`;
                 }
 
-                return nearTimeline ? nearTimeline.color : "#3b82f6";
-              })(),
-              color: "white",
-              padding: "6px 12px",
-              borderRadius: "4px",
-              fontSize: "11px",
-              fontWeight: "500",
-              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
-              border: "1px solid white",
-              transition: "background-color 0.2s ease",
-            }}
-          >
-            {(() => {
-              const headerHeight = 64;
-              const nearTimeline = timelineAxes.find((axis) => {
-                const adjustedAxisY = axis.yPosition + headerHeight;
-                const distance = Math.abs(
-                  dragState.currentPosition.y - adjustedAxisY
-                );
-                return distance < 60;
-              });
+                return nearTimeline
+                  ? `→ ${nearTimeline.name}`
+                  : dragState.draggedItem.title;
+              })()}
+            </div>
+          </>
+        )}
 
-              if (dragState.draggedItem.timelineId && !nearTimeline) {
-                return `✕ ${dragState.draggedItem.timelineName}から削除`;
-              }
-
-              return nearTimeline
-                ? `→ ${nearTimeline.name}`
-                : dragState.draggedItem.title;
-            })()}
-          </div>
-        </>
-      )}
-
-      {/* モーダル */}
-      <EventModal
-        isOpen={isModalOpen}
-        editingEvent={editingEvent}
-        newEvent={newEvent}
-        modalPosition={modalPosition}
-        onSave={saveEvent}
-        onClose={closeModal}
-        onAddManualTag={addManualTag}
-        onRemoveManualTag={removeManualTag}
-        getAllCurrentTags={getAllCurrentTags}
-        onEventChange={handleEventChange}
-      />
+        {/* モーダル */}
+        <EventModal
+          isOpen={isModalOpen}
+          editingEvent={editingEvent}
+          newEvent={newEvent}
+          modalPosition={modalPosition}
+          onSave={saveEvent}
+          onClose={closeModal}
+          onAddManualTag={addManualTag}
+          onRemoveManualTag={removeManualTag}
+          getAllCurrentTags={getAllCurrentTags}
+          onEventChange={handleEventChange}
+        />
+      </div>
     </div>
   );
 };
