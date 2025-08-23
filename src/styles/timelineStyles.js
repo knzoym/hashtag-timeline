@@ -16,29 +16,250 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     height: "64px",
     display: "flex",
     alignItems: "center",
-    padding: "0 25px",
+    padding: "0 20px",
     boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
     zIndex: 15,
-  },
-
-  title: {
-    fontSize: "20px",
-    fontWeight: "bold",
-    color: "#374151",
+    justifyContent: "space-between", // 3分割レイアウト
   },
 
   headerLeft: {
-    marginRight: "auto",
     display: "flex",
     alignItems: "center",
-    gap: "24px",
+    gap: "20px",
+    flex: "1",
+  },
+
+  headerCenter: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 auto",
   },
 
   headerRight: {
-    marginLeft: "auto",
     display: "flex",
     alignItems: "center",
-    gap: "16px",
+    gap: "8px",
+    flex: "1",
+    justifyContent: "flex-end",
+    minWidth: 0, // flexの縮小を許可
+  },
+
+  // 現在のファイル表示
+  currentFile: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+
+  fileName: {
+    fontSize: "14px",
+    color: "#374151",
+    fontWeight: "500",
+  },
+
+  unsavedIndicator: {
+    color: "#f59e0b",
+    fontWeight: "bold",
+    fontSize: "16px",
+  },
+
+  // ビュー切り替えボタン
+  viewToggle: {
+    display: "flex",
+    backgroundColor: "#e5e7eb",
+    borderRadius: "6px",
+    padding: "2px",
+  },
+
+  viewButton: {
+    padding: "6px 12px",
+    border: "none",
+    backgroundColor: "transparent",
+    color: "#6b7280",
+    fontSize: "13px",
+    fontWeight: "500",
+    borderRadius: "4px",
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+
+  viewButtonActive: {
+    backgroundColor: "#3b82f6",
+    color: "white",
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
+  },
+
+  title: {
+    fontSize: "18px",
+    fontWeight: "bold",
+    color: "#374151",
+    margin: 0,
+  },
+
+  // FABイベントを追加ボタン
+  addButton: {
+    position: "absolute",
+    top: "40px",
+    right: "70px",
+    backgroundColor: "#e29548ff",
+    color: "white",
+    padding: "8px 16px",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "500",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
+    zIndex: 10,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+
+  timeline: {
+    width: "calc(100% - 20px)", // 右側に余裕を持たせる
+    height: "calc(100vh - 64px)",
+    position: "relative",
+    backgroundColor: "white",
+    cursor: "grabbing", // isDraggingは削除
+    marginRight: "20px", // 右マージンを追加
+    overflow: "hidden", // はみ出し防止
+  },
+
+  // アクションボタン
+  actionButton: {
+    padding: "6px 12px",
+    backgroundColor: "#6b7280",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "500",
+    fontSize: "13px",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    transition: "background-color 0.2s",
+    whiteSpace: "nowrap", // テキストの折り返し防止
+  },
+
+  // アカウント関連
+  accountContainer: {
+    position: "relative",
+  },
+
+  loadingText: {
+    fontSize: "13px",
+    color: "#6b7280",
+  },
+
+  loginButton: {
+    padding: "8px 16px",
+    backgroundColor: "#3b82f6",
+    color: "white",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "500",
+    fontSize: "13px",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    transition: "background-color 0.2s",
+  },
+
+  accountMenu: {
+    position: "relative",
+  },
+
+  accountButton: {
+    padding: "8px 12px",
+    backgroundColor: "#f9fafb",
+    border: "1px solid #e5e7eb",
+    borderRadius: "6px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "13px",
+    fontWeight: "500",
+    color: "#374151",
+    transition: "all 0.2s",
+  },
+
+  userIcon: {
+    fontSize: "16px",
+  },
+
+  userEmail: {
+    maxWidth: "80px", // さらに短く
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+
+  dropdownIcon: {
+    fontSize: "10px",
+    color: "#9ca3af",
+    transition: "transform 0.2s",
+  },
+
+  // ドロップダウンメニュー
+  dropdown: {
+    position: "absolute",
+    top: "100%",
+    right: 0,
+    marginTop: "4px",
+    width: "200px",
+    backgroundColor: "white",
+    border: "1px solid #e5e7eb",
+    borderRadius: "8px",
+    boxShadow: "0 10px 25px rgba(0, 0, 0, 0.15)",
+    zIndex: 50,
+    overflow: "hidden",
+  },
+
+  dropdownHeader: {
+    padding: "12px 16px",
+    backgroundColor: "#f9fafb",
+    borderBottom: "1px solid #f3f4f6",
+  },
+
+  fullEmail: {
+    fontSize: "12px",
+    color: "#6b7280",
+    wordBreak: "break-all",
+  },
+
+  dropdownDivider: {
+    height: "1px",
+    backgroundColor: "#f3f4f6",
+  },
+
+  dropdownItem: {
+    width: "100%",
+    padding: "10px 16px",
+    border: "none",
+    backgroundColor: "transparent",
+    textAlign: "left",
+    fontSize: "13px",
+    color: "#374151",
+    cursor: "pointer",
+    transition: "background-color 0.2s",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+
+  // オーバーレイ
+  menuOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 40,
+    backgroundColor: "transparent",
   },
 
   resetButton: {
@@ -53,11 +274,6 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     display: "flex",
     alignItems: "center",
     gap: "4px",
-  },
-
-  zoomInfo: {
-    fontSize: "14px",
-    color: "#6b7280",
   },
 
   timeline: {
@@ -80,24 +296,6 @@ export const createTimelineStyles = (isDragging, timelineCardY) => ({
     boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
     zIndex: 10,
     padding: "16px",
-  },
-
-  // FABイベントを追加ボタン
-  addButton: {
-    position: "absolute",
-    top: "40px",
-    right: "25px",
-    backgroundColor: "#e29548ff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "8px",
-    color: "white",
-    padding: "8px 16px",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontWeight: "500",
-    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-    zIndex: 10,
   },
 
   searchInput: {

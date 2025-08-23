@@ -1,4 +1,4 @@
-// src/components/Sidebar.js
+// src/components/Sidebar.js（整理版）
 import React, { useState } from 'react';
 import logoImage from '../assets/logo.png'; // ロゴ画像のパスを適宜変更
 
@@ -9,9 +9,9 @@ const Sidebar = ({
   currentUser,
   isSaving,
   canSave,
-  logoSrc = {logoImage}
+  logoSrc
 }) => {
-  const [expandedSections, setExpandedSections] = useState(new Set(['ファイル']));
+  const [expandedSections, setExpandedSections] = useState(new Set(['ファイル内操作']));
   const [expandedSubmenus, setExpandedSubmenus] = useState(new Set());
   const [isHovering, setIsHovering] = useState(false);
 
@@ -35,10 +35,45 @@ const Sidebar = ({
     setExpandedSubmenus(newExpanded);
   };
 
+  // 機能を整理して配置
   const menuItems = [
     {
-      section: 'ファイル',
-      icon: '📁',
+      section: 'ファイル内操作',
+      icon: '',
+      items: [
+        { 
+          id: 'add-event', 
+          label: 'イベントを追加', 
+          icon: '➕',
+          shortcut: 'ダブルクリック'
+        },
+        { 
+          id: 'reset-view', 
+          label: '表示を初期位置に', 
+          icon: '🎯',
+          shortcut: 'ヘッダーボタン'
+        },
+        { 
+          id: 'sample-events', 
+          label: 'サンプルイベント', 
+          icon: '📌',
+          subItems: [
+            { id: 'sample-architecture', label: '建築史イベント', icon: '🏛️' },
+            { id: 'sample-history', label: '日本史イベント', icon: '🗾' },
+            { id: 'sample-clear', label: 'サンプルをクリア', icon: '🗑️' }
+          ]
+        },
+        { 
+          id: 'clear-all', 
+          label: 'すべてのデータをクリア', 
+          icon: '🗑️',
+          danger: true
+        }
+      ]
+    },
+    {
+      section: 'ファイル操作',
+      icon: '',
       items: [
         { 
           id: 'new', 
@@ -49,7 +84,7 @@ const Sidebar = ({
         },
         { 
           id: 'open', 
-          label: '開く', 
+          label: 'ファイルを開く', 
           icon: '📂', 
           shortcut: 'Ctrl+O',
           disabled: !currentUser,
@@ -64,73 +99,101 @@ const Sidebar = ({
           tooltip: !currentUser ? 'ログインが必要です' : null
         },
         { 
+          id: 'save-as', 
+          label: '名前を付けて保存', 
+          icon: '💾', 
+          disabled: !currentUser || !canSave,
+          tooltip: !currentUser ? 'ログインが必要です' : null
+        },
+        { 
           id: 'export', 
           label: 'エクスポート', 
           icon: '📤',
           subItems: [
-            { id: 'export-json', label: 'JSON形式', icon: '{ }' },
-            { id: 'export-csv', label: 'CSV形式', icon: '📊' }
+            { id: 'export-json', label: 'JSON形式で書き出し', icon: '{ }' },
+            { id: 'export-csv', label: 'CSV形式で書き出し', icon: '📊' },
+            { id: 'export-image', label: '画像として書き出し', icon: '🖼️' }
           ]
         },
         { 
           id: 'import', 
           label: 'インポート', 
           icon: '📥',
-          disabled: false
+          subItems: [
+            { id: 'import-json', label: 'JSONファイル', icon: '{ }' },
+            { id: 'import-csv', label: 'CSVファイル', icon: '📊' }
+          ]
         }
       ]
     },
     {
-      section: '編集',
-      icon: '✏️',
-      items: [
+      section: 'アカウント',
+      icon: '',
+      items: currentUser ? [
         { 
-          id: 'add-event', 
-          label: 'イベントを追加', 
-          icon: '➕',
-          shortcut: 'ダブルクリック'
+          id: 'mypage', 
+          label: 'マイページ', 
+          icon: '📂',
+          shortcut: 'ヘッダーメニュー'
         },
         { 
-          id: 'sample-events', 
-          label: 'サンプルイベント', 
-          icon: '📌',
-          subItems: [
-            { id: 'sample-architecture', label: '建築史', icon: '🏛️' },
-            { id: 'sample-history', label: '日本史', icon: '🗾' },
-            { id: 'sample-clear', label: 'サンプルをクリア', icon: '🗑️' }
-          ]
+          id: 'profile', 
+          label: 'プロフィール設定', 
+          icon: '⚙️'
         },
         { 
-          id: 'clear-all', 
-          label: 'すべてクリア', 
-          icon: '🗑️',
-          danger: true
+          id: 'logout', 
+          label: 'ログアウト', 
+          icon: '🚪',
+          shortcut: 'ヘッダーメニュー'
+        }
+      ] : [
+        { 
+          id: 'login', 
+          label: 'ログイン', 
+          icon: '🔑',
+          shortcut: 'ヘッダーボタン'
+        },
+        { 
+          id: 'about-login', 
+          label: 'ログインについて', 
+          icon: 'ℹ️'
         }
       ]
     },
     {
       section: 'ヘルプ',
-      icon: '❓',
+      icon: '',
       items: [
         { 
           id: 'shortcuts', 
-          label: 'ショートカット一覧', 
+          label: 'キーボードショートカット', 
           icon: '⌨️' 
         },
         { 
+          id: 'usage-guide', 
+          label: '使い方ガイド', 
+          icon: '📖' 
+        },
+        { 
           id: 'tips', 
-          label: '使い方のヒント', 
+          label: '便利な使い方', 
           icon: '💡' 
         },
         { 
           id: 'feedback', 
-          label: 'フィードバック', 
+          label: 'フィードバックを送る', 
           icon: '💭' 
+        },
+        { 
+          id: 'version', 
+          label: 'バージョン情報', 
+          icon: 'ℹ️' 
         },
         { 
           id: 'about', 
           label: 'このアプリについて', 
-          icon: 'ℹ️' 
+          icon: '📱' 
         }
       ]
     }
@@ -147,16 +210,16 @@ const Sidebar = ({
     compactSidebar: {
       position: 'fixed',
       left: 0,
-      top: 64,
+      top: 0,
       width: 60,
-      height: 'calc(100vh - 64px)',
+      height: '100vh',
       backgroundColor: '#f9fafb',
       borderRight: '1px solid #e5e7eb',
       zIndex: 101,
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      paddingTop: '12px',
+      paddingTop: '12px', // 76から12に変更
     },
     logoContainer: {
       width: 40,
@@ -185,13 +248,13 @@ const Sidebar = ({
       opacity: isHovering ? 1 : 0,
       transition: 'opacity 0.2s',
     },
-    // フルサイドバー（開いた状態）
+    // フルサイドバー
     fullSidebar: {
       position: 'fixed',
       left: isOpen ? 60 : -250,
-      top: 64,
+      top: 0,
       width: 250,
-      height: 'calc(100vh - 64px)',
+      height: '100vh',
       backgroundColor: '#ffffff',
       borderRight: '1px solid #e5e7eb',
       transition: 'left 0.3s ease',
@@ -200,16 +263,27 @@ const Sidebar = ({
       flexDirection: 'column',
       boxShadow: isOpen ? '2px 0 8px rgba(0, 0, 0, 0.1)' : 'none',
     },
+    headerSpace: {
+      height: '64px',
+      borderBottom: '1px solid #e5e7eb',
+      display: 'flex',
+      alignItems: 'center',
+      paddingLeft: '16px',
+      backgroundColor: '#f8fafc',
+      fontSize: '14px',
+      fontWeight: '600',
+      color: '#374151',
+    },
     content: {
       flex: 1,
       overflowY: 'auto',
-      padding: '12px 0',
+      padding: '8px 0',
     },
     section: {
-      marginBottom: '8px',
+      marginBottom: '4px',
     },
     sectionHeader: {
-      padding: '8px 16px',
+      padding: '10px 16px',
       fontSize: '13px',
       fontWeight: '600',
       color: '#374151',
@@ -219,6 +293,7 @@ const Sidebar = ({
       justifyContent: 'space-between',
       userSelect: 'none',
       transition: 'background-color 0.2s',
+      borderRadius: '0',
     },
     sectionIcon: {
       marginRight: '8px',
@@ -229,7 +304,7 @@ const Sidebar = ({
       transition: 'transform 0.2s',
     },
     menuItem: {
-      padding: '6px 16px 6px 32px',
+      padding: '8px 16px 8px 40px',
       fontSize: '13px',
       color: '#4b5563',
       cursor: 'pointer',
@@ -257,16 +332,18 @@ const Sidebar = ({
       flex: 1,
     },
     shortcut: {
-      fontSize: '11px',
+      fontSize: '10px',
       color: '#9ca3af',
       marginLeft: '8px',
+      fontStyle: 'italic',
     },
     submenu: {
-      marginLeft: '16px',
-      borderLeft: '2px solid #f3f4f6',
+      backgroundColor: '#f9fafb',
+      borderLeft: '3px solid #e5e7eb',
+      marginLeft: '12px',
     },
     submenuItem: {
-      padding: '4px 16px 4px 24px',
+      padding: '6px 16px 6px 32px',
       fontSize: '12px',
       color: '#6b7280',
       cursor: 'pointer',
@@ -295,12 +372,13 @@ const Sidebar = ({
       padding: '12px 16px',
       fontSize: '11px',
       color: '#9ca3af',
+      backgroundColor: '#f9fafb',
     }
   };
 
   return (
     <>
-      {/* コンパクトサイドバー（常時表示） */}
+      {/* コンパクトサイドバー */}
       <div style={sidebarStyles.compactSidebar}>
         <div
           style={sidebarStyles.logoContainer}
@@ -309,16 +387,7 @@ const Sidebar = ({
           onMouseLeave={() => setIsHovering(false)}
           title={isOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
         >
-          <img 
-            src={logoSrc} 
-            alt="Logo"
-            style={sidebarStyles.logo}
-            onError={(e) => {
-              // 画像が読み込めない場合のフォールバック
-              e.target.style.display = 'none';
-              e.target.parentElement.innerHTML = '📊';
-            }}
-          />
+          <img src={logoImage} alt="Logo" style={sidebarStyles.logo} />
           <div style={sidebarStyles.menuIcon}>
             <svg 
               width="20" 
@@ -339,15 +408,19 @@ const Sidebar = ({
         </div>
       </div>
 
-      {/* フルサイドバー（展開時） */}
+      {/* フルサイドバー */}
       <div style={sidebarStyles.fullSidebar}>
+        <div style={sidebarStyles.headerSpace}>
+          #ハッシュタグ年表
+        </div>
+        
         <div style={sidebarStyles.content}>
           {menuItems.map(({ section, icon, items }) => (
             <div key={section} style={sidebarStyles.section}>
               <div
                 style={sidebarStyles.sectionHeader}
                 onClick={() => toggleSection(section)}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                 onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
               >
                 <div>
@@ -429,7 +502,7 @@ const Sidebar = ({
                               key={subItem.id}
                               style={sidebarStyles.submenuItem}
                               onClick={() => handleItemClick(subItem.id, section)}
-                              onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                              onMouseEnter={(e) => e.target.style.backgroundColor = '#f1f5f9'}
                               onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                             >
                               <span style={sidebarStyles.menuItemIcon}>{subItem.icon}</span>
@@ -448,13 +521,16 @@ const Sidebar = ({
         
         {/* フッター */}
         <div style={sidebarStyles.footer}>
+          <div style={{ marginBottom: '4px' }}>
+            ヒント: ヘッダーで現在のファイル操作
+          </div>
           {currentUser ? (
-            <div>
-              ログイン中: {currentUser.email}
+            <div style={{ fontSize: '10px' }}>
+              ログイン中: {currentUser.email.split('@')[0]}
             </div>
           ) : (
-            <div>
-              ログインすると保存機能が使えます
+            <div style={{ fontSize: '10px' }}>
+              ログインで保存機能が利用可能
             </div>
           )}
         </div>

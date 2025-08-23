@@ -2,7 +2,6 @@
 import React, { useRef, useCallback, useState, useEffect } from "react";
 import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
-import { HelpBox } from "../components/HelpBox";
 import { TimelineCard } from "../components/TimelineCard";
 import TableView from "../components/TableView";
 import TimelineModal from "../components/TimelineModal";
@@ -21,8 +20,13 @@ import { useSupabaseSync } from "../hooks/useSupabaseSync";
 import MyPage from "../components/MyPage";
 import Sidebar from "../components/Sidebar";
 import { useIsDesktop } from "../hooks/useMediaQuery";
+import logoImage from "../assets/logo.png";
 
 const HashtagTimeline = () => {
+  // アカウントメニュー用の状態を追加
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [currentFileName, setCurrentFileName] = useState(null); // 現在開いているファイル名
+
   // サイドバー状態
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const isDesktop = useIsDesktop();
@@ -209,14 +213,55 @@ const HashtagTimeline = () => {
     }
   }, [isAuthenticated, events, Timelines, saveTimelineData, isSaving]);
 
-  // サイドバーのメニュー項目クリックハンドラー
+  // サイドバーのメニュー項目クリックハンドラー（拡張版）
   const handleSidebarMenuClick = useCallback(
     (itemId, section) => {
       switch (itemId) {
-        case "new":
-          if (window.confirm("現在の年表をクリアして新規作成しますか？")) {
+        // ファイル内操作
+        case "add-event":
+          openNewEventModal();
+          break;
+        case "reset-view":
+          resetToInitialPosition();
+          break;
+        case "sample-architecture":
+          // 建築史のサンプルイベントを追加
+          console.log("建築史サンプルを追加");
+          break;
+        case "sample-history":
+          // 日本史のサンプルイベントを追加
+          console.log("日本史サンプルを追加");
+          break;
+        case "sample-clear":
+          if (window.confirm("サンプルイベントをクリアしますか？")) {
+            // サンプルイベントのみクリア
+            console.log("サンプルイベントをクリア");
+          }
+          break;
+        case "clear-all":
+          if (
+            window.confirm(
+              "すべてのイベントと年表を削除しますか？\nこの操作は取り消せません。"
+            )
+          ) {
             setEvents([]);
             setCreatedTimelines([]);
+            setCurrentFileName(null);
+          }
+          break;
+
+        // ファイル操作
+        case "new":
+          if (
+            events.length > 0 || Timelines.length > 0
+              ? window.confirm(
+                  "現在の年表をクリアして新規作成しますか？\n保存されていない変更は失われます。"
+                )
+              : true
+          ) {
+            setEvents([]);
+            setCreatedTimelines([]);
+            setCurrentFileName(null);
           }
           break;
         case "open":
@@ -229,31 +274,335 @@ const HashtagTimeline = () => {
             handleSaveTimeline();
           }
           break;
-        case "add-event":
-          openNewEventModal();
-          break;
-        case "clear-all":
-          if (
-            window.confirm(
-              "すべてのイベントと年表を削除しますか？\nこの操作は取り消せません。"
-            )
-          ) {
-            setEvents([]);
-            setCreatedTimelines([]);
+        case "save-as":
+          if (isAuthenticated) {
+            const fileName = prompt(
+              "ファイル名を入力してください:",
+              currentFileName || "新しい年表"
+            );
+            if (fileName) {
+              // 名前を付けて保存の処理
+              handleSaveTimelineAs(fileName);
+            }
           }
           break;
+        case "export-json":
+          handleExportJSON();
+          break;
+        case "export-csv":
+          handleExportCSV();
+          break;
+        case "export-image":
+          handleExportImage();
+          break;
+        case "import-json":
+          handleImportJSON();
+          break;
+        case "import-csv":
+          handleImportCSV();
+          break;
+
+        // アカウント関連
+        case "mypage":
+          if (isAuthenticated) {
+            setCurrentView("mypage");
+          }
+          break;
+        case "profile":
+          console.log("プロフィール設定（未実装）");
+          break;
+        case "login":
+          if (!isAuthenticated) {
+            signInWithGoogle();
+          }
+          break;
+        case "logout":
+          if (isAuthenticated) {
+            signOut();
+          }
+          break;
+        case "about-login":
+          alert(
+            "Googleアカウントでログインすると、年表の保存・読み込みができるようになります。\n\n・年表データをクラウドに保存\n・複数のデバイスで同期\n・過去の作品を管理"
+          );
+          break;
+
+        // ヘルプ
+        case "shortcuts":
+          showKeyboardShortcuts();
+          break;
+        case "usage-guide":
+          showUsageGuide();
+          break;
+        case "tips":
+          showTips();
+          break;
+        case "feedback":
+          window.open(
+            "mailto:feedback@example.com?subject=年表アプリへのフィードバック",
+            "_blank"
+          );
+          break;
+        case "version":
+          alert(
+            "ハッシュタグ年表 v1.0.0\n\nReact製のインタラクティブな年表作成ツールです。"
+          );
+          break;
+        case "about":
+          showAboutDialog();
+          break;
+
         default:
-          console.log(`Menu clicked: ${itemId} in ${section}`);
+          console.log(`未実装のメニュー項目: ${itemId} in ${section}`);
       }
     },
     [
       isAuthenticated,
-      handleSaveTimeline,
+      events,
+      Timelines,
       openNewEventModal,
+      resetToInitialPosition,
+      handleSaveTimeline,
       setEvents,
       setCreatedTimelines,
+      setCurrentView,
+      signInWithGoogle,
+      signOut,
     ]
   );
+
+  // 新しい保存・エクスポート関数
+  const handleSaveTimelineAs = useCallback(
+    async (fileName) => {
+      if (!isAuthenticated || isSaving) return;
+
+      setIsSaving(true);
+      try {
+        const timelineData = {
+          events: events,
+          timelines: Timelines,
+          version: "1.0",
+          savedAt: new Date().toISOString(),
+        };
+
+        const result = await saveTimelineData(timelineData, fileName);
+
+        if (result) {
+          setCurrentFileName(fileName);
+          alert(`「${fileName}」として保存しました`);
+        } else {
+          alert("保存に失敗しました");
+        }
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [isAuthenticated, events, Timelines, saveTimelineData, isSaving]
+  );
+
+  const handleExportJSON = useCallback(() => {
+    const timelineData = {
+      events: events,
+      timelines: Timelines,
+      version: "1.0",
+      exportedAt: new Date().toISOString(),
+    };
+
+    const dataStr = JSON.stringify(timelineData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `timeline_${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [events, Timelines]);
+
+  const handleExportCSV = useCallback(() => {
+    const csvData = events.map((event) => ({
+      タイトル: event.title,
+      日付: event.startDate.toISOString().split("T")[0],
+      年: event.startDate.getFullYear(),
+      説明: event.description || "",
+      タグ: event.tags.join(", "),
+    }));
+
+    const csvContent = [
+      Object.keys(csvData[0] || {}).join(","),
+      ...csvData.map((row) =>
+        Object.values(row)
+          .map((val) => `"${val}"`)
+          .join(",")
+      ),
+    ].join("\n");
+
+    const dataBlob = new Blob([csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `timeline_${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [events]);
+
+  const handleExportImage = useCallback(() => {
+    alert(
+      "画像エクスポート機能は開発中です。\n\nブラウザのスクリーンショット機能をご利用ください。"
+    );
+  }, []);
+
+  const handleImportJSON = useCallback(() => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const timelineData = JSON.parse(e.target.result);
+            if (timelineData.events && Array.isArray(timelineData.events)) {
+              handleLoadTimeline(timelineData);
+              alert("JSONファイルを読み込みました");
+            } else {
+              alert("無効なファイル形式です");
+            }
+          } catch (error) {
+            alert("ファイルの読み込みに失敗しました");
+            console.error("Import error:", error);
+          }
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  }, [handleLoadTimeline]);
+
+  const handleImportCSV = useCallback(() => {
+    alert(
+      "CSV読み込み機能は開発中です。\n\n現在はJSONファイルの読み込みのみ対応しています。"
+    );
+  }, []);
+
+  // ヘルプ関連の関数
+  const showKeyboardShortcuts = useCallback(() => {
+    const shortcuts = [
+      "🖱️ ダブルクリック - イベント追加・編集",
+      "🎯 マウスホイール - ズーム",
+      "👆 ドラッグ - 横パン移動",
+      "⇧ Shift + ドラッグ - 縦パン移動",
+      "📱 年表カード - 縦ドラッグで移動",
+      "💾 Ctrl/Cmd + S - 保存（ログイン時）",
+      "📄 Ctrl/Cmd + N - 新規作成",
+      "📂 Ctrl/Cmd + O - ファイルを開く",
+      "⎋ Escape - モーダルを閉じる",
+      "↵ Ctrl/Cmd + Enter - モーダルで保存",
+    ];
+    alert("⌨️ キーボードショートカット\n\n" + shortcuts.join("\n"));
+  }, []);
+
+  const showUsageGuide = useCallback(() => {
+    const guide = [
+      "1. ダブルクリックでイベントを追加",
+      "2. タグ機能で関連イベントをグループ化",
+      "3. 検索でタグを絞り込み",
+      "4. 「年表を作成」で専用の年表を作成",
+      "5. ドラッグ＆ドロップでイベントを移動",
+      "6. ログインして保存・同期",
+    ];
+    alert("📖 基本的な使い方\n\n" + guide.join("\n"));
+  }, []);
+
+  const showTips = useCallback(() => {
+    const tips = [
+      "💡 説明文に #タグ名 を入力すると自動的にタグが追加されます",
+      "🎨 年表は自動で色分けされます",
+      "🔍 タグで検索してからまとめて年表化できます",
+      "📱 年表カードをドラッグして見やすい位置に配置",
+      "⚡ グループ化されたイベントはクリックで展開",
+      "💾 こまめな保存で作業を保護",
+    ];
+    alert("💡 便利な使い方のコツ\n\n" + tips.join("\n"));
+  }, []);
+
+  const showAboutDialog = useCallback(() => {
+    const about = [
+      "📊 #ハッシュタグ年表",
+      "",
+      "タグベースのインタラクティブな年表作成ツール",
+      "",
+      "✨ 主な機能:",
+      "• タグによる自動分類",
+      "• ドラッグ&ドロップ操作",
+      "• 複数年表の同時表示",
+      "• クラウド保存（要ログイン）",
+      "• データのエクスポート・インポート",
+      "",
+      "🛠️ 技術:",
+      "React + JavaScript",
+      "",
+      "📝 フィードバックや要望をお気軽にお寄せください",
+    ];
+    alert(about.join("\n"));
+  }, []);
+
+  // HashtagTimeline.js のアカウントメニュー関連の追加部分
+
+  // アカウントメニューが開いているかのクリックアウトハンドラー
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (accountMenuOpen && !event.target.closest(".account-menu")) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [accountMenuOpen]);
+
+  // ヘッダーのスタイル更新（ホバー効果追加）
+  const addHoverEffects = useCallback(() => {
+    return {
+      onMouseEnter: (e, bgColor = "#f3f4f6") => {
+        e.currentTarget.style.backgroundColor = bgColor;
+      },
+      onMouseLeave: (e) => {
+        e.currentTarget.style.backgroundColor = "transparent";
+      },
+    };
+  }, []);
+
+  // アカウントボタンのホバー効果
+  const accountButtonHover = {
+    onMouseEnter: (e) => {
+      e.currentTarget.style.backgroundColor = "#f3f4f6";
+      e.currentTarget.style.borderColor = "#d1d5db";
+    },
+    onMouseLeave: (e) => {
+      e.currentTarget.style.backgroundColor = "#f9fafb";
+      e.currentTarget.style.borderColor = "#e5e7eb";
+    },
+  };
+
+  // ドロップダウンアイテムのホバー効果
+  const dropdownItemHover = {
+    onMouseEnter: (e) => {
+      e.currentTarget.style.backgroundColor = "#f3f4f6";
+    },
+    onMouseLeave: (e) => {
+      e.currentTarget.style.backgroundColor = "transparent";
+    },
+  };
 
   // ドラッグ&ドロップ機能
   const {
@@ -450,7 +799,7 @@ const HashtagTimeline = () => {
 
   return (
     <div style={styles.app}>
-      {/* サイドバー（PC版のみ） */}
+      {/* サイドバー */}
       {isDesktop && (
         <Sidebar
           isOpen={sidebarOpen}
@@ -464,168 +813,160 @@ const HashtagTimeline = () => {
       {/* メインコンテンツラッパー */}
       <div
         style={{
-          marginLeft: isDesktop && sidebarOpen ? 250 : 0,
+          marginLeft: isDesktop ? 60 : 0,
           transition: "margin-left 0.3s ease",
-          width: isDesktop && sidebarOpen ? "calc(100% - 250px)" : "100%",
+          width: isDesktop ? "calc(100% - 60px)" : "100%",
           height: "100vh",
           display: "flex",
           flexDirection: "column",
         }}
       >
-        {/* ヘッダー */}
+        {/* ヘッダー - ファイル内操作とアカウント */}
         <div style={styles.header}>
+          {/* 左側：現在のファイル情報とビュー切り替え */}
           <div style={styles.headerLeft}>
-            {/* サイドバートグルボタン（PC版のみ） */}
-            {isDesktop && (
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                style={{
-                  backgroundColor: "transparent",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "6px",
-                  cursor: "pointer",
-                  padding: "6px",
-                  marginRight: "16px",
-                  width: "36px",
-                  height: "36px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  transition: "all 0.2s",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = "#f9fafb";
-                  e.currentTarget.style.borderColor = "#d1d5db";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.borderColor = "#e5e7eb";
-                }}
-                aria-label="サイドバーを切り替え"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ color: "#6b7280" }}
-                >
-                  {sidebarOpen ? (
-                    // サイドバーが開いている時のアイコン
-                    <>
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <line x1="9" y1="3" x2="9" y2="21" />
-                      <path d="M14 8l-2 2 2 2" />
-                    </>
-                  ) : (
-                    // サイドバーが閉じている時のアイコン
-                    <>
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <line x1="9" y1="3" x2="9" y2="21" />
-                      <path d="M14 8l2 2-2 2" />
-                    </>
-                  )}
-                </svg>
-              </button>
-            )}
+            {/* 現在のファイル名表示 */}
+            <div style={styles.currentFile}>
+              {currentFileName ? (
+                <span style={styles.fileName}>📄 {currentFileName}</span>
+              ) : (
+                <span style={styles.fileName}>📄 無題の年表</span>
+              )}
+              {(events.length > 0 || Timelines.length > 0) &&
+                !currentFileName && (
+                  <span style={styles.unsavedIndicator}>*</span>
+                )}
+            </div>
+
             {/* ビュー切り替えボタン */}
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div style={styles.viewToggle}>
               <button
                 onClick={() => setCurrentView("timeline")}
                 style={{
-                  ...styles.resetButton,
-                  backgroundColor:
-                    currentView === "timeline" ? "#3b82f6" : "#6b7280",
+                  ...styles.viewButton,
+                  ...(currentView === "timeline"
+                    ? styles.viewButtonActive
+                    : {}),
                 }}
               >
-                年表ビュー
+                📊 年表
               </button>
               <button
                 onClick={() => setCurrentView("table")}
                 style={{
-                  ...styles.resetButton,
-                  backgroundColor:
-                    currentView === "table" ? "#3b82f6" : "#6b7280",
+                  ...styles.viewButton,
+                  ...(currentView === "table" ? styles.viewButtonActive : {}),
                 }}
               >
-                テーブルビュー
+                📋 テーブル
               </button>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+
+          {/* 中央：タイトル */}
+          <div style={styles.headerCenter}>
             <h1 style={styles.title}>#ハッシュタグ年表</h1>
           </div>
+
+          {/* 右側：ファイル内操作とアカウント */}
           <div style={styles.headerRight}>
+            {/* ファイル内操作ボタン */}
             {currentView === "timeline" && (
               <>
                 <button
-                  style={styles.resetButton}
+                  style={styles.actionButton}
                   onClick={resetToInitialPosition}
                   title="初期位置に戻す"
                 >
-                  初期位置
+                  🎯 初期位置
                 </button>
                 <span style={styles.zoomInfo}>
-                  ズーム: {(scale / 2.5).toFixed(1)}x
+                  🔍 {(scale / 2.5).toFixed(1)}x
                 </span>
               </>
             )}
 
-            {/* 保存ボタン（ログイン時のみ表示） */}
+            {/* イベント追加ボタン */}
+            <button
+              style={styles.actionButton}
+              onClick={openNewEventModal}
+              title="新しいイベントを追加"
+            >
+              ➕ イベント追加
+            </button>
+
+            {/* 保存ボタン（ログイン時のみ） */}
             {isAuthenticated && (
               <button
                 onClick={handleSaveTimeline}
                 style={{
-                  ...styles.resetButton,
+                  ...styles.actionButton,
                   backgroundColor: isSaving ? "#9ca3af" : "#10b981",
                 }}
                 disabled={isSaving}
+                title="現在の年表を保存"
               >
-                {isSaving ? "保存中..." : "保存"}
+                {isSaving ? "💾 保存中..." : "💾 保存"}
               </button>
             )}
 
-            {/* マイページボタン（ログイン時のみ表示） */}
-            {isAuthenticated && (
-              <>
+            {/* アカウントメニュー */}
+            <div style={styles.accountContainer}>
+              {loading ? (
+                <span style={styles.loadingText}>読み込み中...</span>
+              ) : isAuthenticated ? (
+                <div style={styles.accountMenu}>
+                  <button
+                    onClick={() => setAccountMenuOpen(!accountMenuOpen)}
+                    style={styles.accountButton}
+                    title="アカウントメニュー"
+                  >
+                    <span style={styles.userIcon}>👤</span>
+                    <span style={styles.userEmail}>
+                      {user.email.split("@")[0]}
+                    </span>
+                    <span style={styles.dropdownIcon}>▼</span>
+                  </button>
+
+                  {/* ドロップダウンメニュー */}
+                  {accountMenuOpen && (
+                    <div style={styles.dropdown}>
+                      <div style={styles.dropdownHeader}>
+                        <div style={styles.fullEmail}>{user.email}</div>
+                      </div>
+                      <div style={styles.dropdownDivider}></div>
+                      <button
+                        onClick={() => {
+                          setCurrentView("mypage");
+                          setAccountMenuOpen(false);
+                        }}
+                        style={styles.dropdownItem}
+                      >
+                        📂 マイページ
+                      </button>
+                      <div style={styles.dropdownDivider}></div>
+                      <button
+                        onClick={() => {
+                          signOut();
+                          setAccountMenuOpen(false);
+                        }}
+                        style={styles.dropdownItem}
+                      >
+                        🚪 ログアウト
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <button
-                  onClick={() => setCurrentView("mypage")}
-                  style={{
-                    ...styles.resetButton,
-                    backgroundColor:
-                      currentView === "mypage" ? "#3b82f6" : "#6b7280",
-                  }}
+                  onClick={signInWithGoogle}
+                  style={styles.loginButton}
+                  title="Googleアカウントでログイン"
                 >
-                  マイページ
+                  🔑 ログイン
                 </button>
-              </>
-            )}
-
-            {/* 認証ボタン */}
-            {loading ? (
-              <span style={{ fontSize: "14px", color: "#666" }}>
-                読み込み中...
-              </span>
-            ) : isAuthenticated ? (
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "12px" }}
-              >
-                <span style={{ fontSize: "14px", color: "#374151" }}>
-                  {user.email}
-                </span>
-                <button onClick={signOut} style={styles.resetButton}>
-                  ログアウト
-                </button>
-              </div>
-            ) : (
-              <button onClick={signInWithGoogle} style={styles.resetButton}>
-                ログイン
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -974,14 +1315,6 @@ const HashtagTimeline = () => {
                 現在 (2025)
               </div>
             </div>
-
-            {/* ヘルプボックス */}
-            <HelpBox
-              isHelpOpen={isHelpOpen}
-              setIsHelpOpen={setIsHelpOpen}
-              highlightedEvents={highlightedEvents}
-              styles={styles}
-            />
           </div>
         )}
 
@@ -1082,6 +1415,14 @@ const HashtagTimeline = () => {
           onEventChange={handleEventChange}
         />
       </div>
+
+      {/* アカウントメニューが開いている時のオーバーレイ */}
+      {accountMenuOpen && (
+        <div
+          style={styles.menuOverlay}
+          onClick={() => setAccountMenuOpen(false)}
+        />
+      )}
     </div>
   );
 };
