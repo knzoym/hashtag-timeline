@@ -127,38 +127,36 @@ export const useSupabaseSync = (user) => {
     }
   }, [user]);
 
-  // 年表削除
-  const deleteTimeline = useCallback(async (timelineId) => {
-  if (!user) {
-    console.error('削除失敗: ユーザーが未認証');
-    return false;
-  }
+  // 返り値を { ok: boolean, message?: string } にしたい場合（任意）
+  const deleteTimeline = useCallback(
+    async (timelineId) => {
+      if (!user) return { ok: false, message: "未認証です" };
 
-  try {
-    setLoading(true)
-    setError(null)
-    
-    console.log('削除API呼び出し開始:', { timelineId, userId: user.id });
+      try {
+        setLoading(true);
+        setError(null);
 
-    const { data, error } = await supabase
-      .from('user_timelines')
-      .delete()
-      .eq('id', timelineId)
-      .eq('user_id', user.id)
-      .select() // 削除されたデータを確認用に返す
+        const { error } = await supabase
+          .from("user_timelines")
+          .delete()
+          .eq("id", timelineId)
+          .eq("user_id", user.id);
 
-    console.log('削除API結果:', { data, error });
-
-    if (error) throw error
-    return true
-  } catch (error) {
-    console.error('削除API詳細エラー:', error)
-    setError(error.message)
-    return false
-  } finally {
-    setLoading(false)
-  }
-}, [user])
+        if (error) {
+          setError(error.message);
+          return { ok: false, message: error.message };
+        }
+        return { ok: true };
+      } catch (err) {
+        const msg = err?.message || "削除に失敗しました";
+        setError(msg);
+        return { ok: false, message: msg };
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
 
   return {
     loading,

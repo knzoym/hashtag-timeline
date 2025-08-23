@@ -5,6 +5,7 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
   const [timelines, setTimelines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deletingId, setDeletingId] = useState(null); // ★ 追加: 削除中のIDを管理
 
   const { getUserTimelines, deleteTimeline } = supabaseSync;
 
@@ -14,53 +15,74 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
       setLoading(true);
       try {
         const data = await getUserTimelines();
-        setTimelines(data);
+        setTimelines(Array.isArray(data) ? data : []);
         setError(null);
       } catch (err) {
         console.error("ファイル取得エラー:", err);
-        setError(err.message);
+        setError(err?.message || "ファイルの取得に失敗しました");
         setTimelines([]); // エラー時は空配列
       } finally {
         setLoading(false);
       }
     };
 
-    if (user) {
-      loadTimelines();
-    }
+    if (user) loadTimelines();
   }, [user, getUserTimelines]);
 
   // 年表削除
-  const handleDelete = async (timelineId) => {
-  console.log('削除開始:', timelineId);
-  
-  if (window.confirm('このファイルを削除しますか？')) {
-    console.log('削除確認OK');
-    
+  const handleDelete = async (timelineId, titleForConfirm) => {
+    if (deletingId) return; // ★ 連打防止（すでに削除中なら無視）
+
+    const ok = window.confirm(
+      titleForConfirm
+        ? `「${titleForConfirm}」を削除しますか？\nこの操作は取り消せません。`
+        : "このファイルを削除しますか？\nこの操作は取り消せません。"
+    );
+    if (!ok) return;
+
+    setDeletingId(timelineId);
+    setError(null);
+
     try {
       const success = await deleteTimeline(timelineId);
-      console.log('削除結果:', success);
-      
+
       if (success) {
-        setTimelines(prev => prev.filter(t => t.id !== timelineId));
-        console.log('削除成功、UI更新');
+        // 楽観的更新
+        setTimelines((prev) => prev.filter((t) => t.id !== timelineId));
       } else {
-        alert('削除に失敗しました');
+        setError("削除に失敗しました（詳細はコンソールをご確認ください）");
+        alert("削除に失敗しました");
       }
-    } catch (error) {
-      console.error('削除エラー:', error);
-      alert('削除に失敗しました');
+    } catch (err) {
+      console.error("削除エラー:", err);
+      setError(err?.message || "削除に失敗しました");
+      alert("削除に失敗しました");
+    } finally {
+      setDeletingId(null);
     }
-  } else {
-    console.log('削除キャンセル');
-  }
-};
+  };
 
   // 年表読み込み
   const handleLoad = (timeline) => {
-    const timelineData = timeline.timeline_data;
-    onLoadTimeline(timelineData);
-    onBackToTimeline();
+    // もし timeline.timeline_data が文字列ならパース
+    const raw = timeline.timeline_data;
+    const timelineData =
+      typeof raw === "string"
+        ? (() => {
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+          })()
+        : raw;
+
+    if (timelineData) {
+      onLoadTimeline(timelineData);
+      onBackToTimeline();
+    } else {
+      setError("保存データの形式が不正です（JSONの読み込みに失敗）");
+    }
   };
 
   if (loading) {
@@ -139,6 +161,7 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
               padding: "12px",
               borderRadius: "4px",
               marginBottom: "16px",
+              whiteSpace: "pre-wrap",
             }}
           >
             エラー: {error}
@@ -165,91 +188,126 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
               gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
             }}
           >
-            {timelines.map((timeline) => (
-              <div
-                key={timeline.id}
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  backgroundColor: "white",
-                }}
-              >
-                <h4
-                  style={{
-                    margin: "0 0 8px 0",
-                    fontSize: "16px",
-                    color: "#374151",
-                  }}
-                >
-                  {timeline.title}
-                </h4>
-
+            {timelines.map((timeline) => {
+              const isDeleting = deletingId === timeline.id;
+              return (
                 <div
+                  key={timeline.id}
                   style={{
-                    fontSize: "12px",
-                    color: "#6b7280",
-                    marginBottom: "12px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    padding: "16px",
+                    backgroundColor: "white",
+                    opacity: isDeleting ? 0.6 : 1,
                   }}
                 >
-                  <div>
-                    作成:{" "}
-                    {new Date(timeline.created_at).toLocaleDateString("ja-JP")}
-                  </div>
-                  <div>
-                    更新:{" "}
-                    {new Date(timeline.updated_at).toLocaleDateString("ja-JP")}
-                  </div>
-                  {timeline.timeline_data && (
+                  <h4
+                    style={{
+                      margin: "0 0 8px 0",
+                      fontSize: "16px",
+                      color: "#374151",
+                    }}
+                  >
+                    {timeline.title}
+                  </h4>
+
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#6b7280",
+                      marginBottom: "12px",
+                    }}
+                  >
                     <div>
-                      イベント数: {timeline.timeline_data.events?.length || 0}件
-                      <br />
-                      年表数: {timeline.timeline_data.timelines?.length || 0}件
+                      作成:{" "}
+                      {timeline.created_at
+                        ? new Date(timeline.created_at).toLocaleDateString(
+                            "ja-JP"
+                          )
+                        : "-"}
                     </div>
-                  )}
-                </div>
+                    <div>
+                      更新:{" "}
+                      {timeline.updated_at
+                        ? new Date(timeline.updated_at).toLocaleDateString(
+                            "ja-JP"
+                          )
+                        : "-"}
+                    </div>
+                    {timeline.timeline_data && (
+                      <div>
+                        イベント数:{" "}
+                        {Array.isArray(
+                          (typeof timeline.timeline_data === "string"
+                            ? (() => {
+                                try {
+                                  return JSON.parse(timeline.timeline_data);
+                                } catch {
+                                  return {};
+                                }
+                              })()
+                            : timeline.timeline_data
+                          )?.events
+                        )
+                          ? (typeof timeline.timeline_data === "string"
+                              ? (() => {
+                                  try {
+                                    return JSON.parse(timeline.timeline_data);
+                                  } catch {
+                                    return { events: [] };
+                                  }
+                                })()
+                              : timeline.timeline_data
+                            ).events.length
+                          : 0}
+                        件
+                      </div>
+                    )}
+                  </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <button
-                    onClick={() => handleLoad(timeline)}
+                  <div
                     style={{
-                      padding: "6px 12px",
-                      backgroundColor: "#10b981",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "12px",
+                      display: "flex",
+                      gap: "8px",
+                      justifyContent: "flex-end",
                     }}
                   >
-                    読み込み
-                  </button>
-                  <button
-                    onClick={() => {
-                      alert("削除ボタンがクリックされました"); // 確認用
-                      handleDelete(timeline.id);
-                    }}
-                    style={{
-                      padding: "6px 12px",
-                      backgroundColor: "#ef4444",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "4px",
-                      cursor: "pointer",
-                      fontSize: "12px",
-                    }}
-                  >
-                    削除
-                  </button>
+                    <button
+                      onClick={() => handleLoad(timeline)}
+                      disabled={isDeleting}
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: "#10b981",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: isDeleting ? "not-allowed" : "pointer",
+                        fontSize: "12px",
+                      }}
+                    >
+                      読み込み
+                    </button>
+                    <button
+                      onClick={() =>
+                        handleDelete(timeline.id, timeline.title)
+                      }
+                      disabled={isDeleting}
+                      style={{
+                        padding: "6px 12px",
+                        backgroundColor: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: isDeleting ? "not-allowed" : "pointer",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {isDeleting ? "削除中…" : "削除"}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
