@@ -43,6 +43,7 @@ const HashtagTimeline = () => {
   const {
     saveTimelineData,
     getUserTimelines,
+    deleteTimeline: deleteTimelineFile, // ファイル削除用の関数（別名で取得）
     upsertProfile,
     loading: syncLoading,
   } = useSupabaseSync(user);
@@ -503,7 +504,7 @@ const HashtagTimeline = () => {
         // マイページ
         <MyPage
           user={user}
-          supabaseSync={{ getUserTimelines, deleteTimeline }}
+          supabaseSync={{ getUserTimelines, deleteTimelineFile }}
           onLoadTimeline={handleLoadTimeline}
           onBackToTimeline={() => setCurrentView("timeline")}
         />

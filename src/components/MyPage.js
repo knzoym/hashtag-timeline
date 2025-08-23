@@ -7,7 +7,8 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
   const [error, setError] = useState(null);
   const [deletingId, setDeletingId] = useState(null); // ★ 追加: 削除中のIDを管理
 
-  const { getUserTimelines, deleteTimeline } = supabaseSync;
+  // deleteTimelineをdeleteTimelineFileという別名で取得
+  const { getUserTimelines, deleteTimelineFile } = supabaseSync;
 
   // 年表一覧取得
   useEffect(() => {
@@ -44,14 +45,15 @@ const MyPage = ({ user, supabaseSync, onLoadTimeline, onBackToTimeline }) => {
     setError(null);
 
     try {
-      const success = await deleteTimeline(timelineId);
+      const result = await deleteTimelineFile(timelineId);
 
-      if (success) {
+      if (result.ok) {
         // 楽観的更新
         setTimelines((prev) => prev.filter((t) => t.id !== timelineId));
       } else {
-        setError("削除に失敗しました（詳細はコンソールをご確認ください）");
-        alert("削除に失敗しました");
+        const errorMsg = result.message || "削除に失敗しました（詳細はコンソールをご確認ください）";
+        setError(errorMsg);
+        alert("削除に失敗しました: " + errorMsg);
       }
     } catch (err) {
       console.error("削除エラー:", err);
