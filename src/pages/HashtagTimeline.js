@@ -23,6 +23,7 @@ import { useIsDesktop } from "../hooks/useMediaQuery";
 import logoImage from "../assets/logo.png";
 import WikiBrowser from "../components/WikiBrowser";
 import { useWikiData } from "../hooks/useWikiData";
+import EventGraphView from "../components/EventGraphView";
 
 const HashtagTimeline = () => {
   // 認証フック
@@ -151,8 +152,8 @@ const HashtagTimeline = () => {
   // Wiki関連のフック追加
   const wikiData = useWikiData(user);
 
-  // 既存のsetCurrentView の選択肢に 'wiki' を追加
-  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage' | 'wiki'
+  // ビュー状態
+  const [currentView, setCurrentView] = useState("graph"); // 'timeline' | 'table' | 'graph' | 'mypage' | 'wiki'
 
   // Wikiからのイベントインポート処理
   const handleWikiEventImport = useCallback(
@@ -857,6 +858,15 @@ const HashtagTimeline = () => {
             {/* ビュー切り替えボタン - Wiki タブを追加 */}
             <div style={styles.viewToggle}>
               <button
+                onClick={() => setCurrentView("graph")}
+                style={{
+                  ...styles.viewButton,
+                  ...(currentView === "graph" ? styles.viewButtonActive : {}),
+                }}
+              >
+                🕸️ イベント
+              </button>
+              <button
                 onClick={() => setCurrentView("timeline")}
                 style={{
                   ...styles.viewButton,
@@ -995,8 +1005,44 @@ const HashtagTimeline = () => {
           </div>
         </div>
 
-        {/* メインコンテンツ - Wiki ビューを追加 */}
-        {currentView === "table" ? (
+        {/* メインコンテンツ - イベントビューを追加 */}
+        {currentView === "graph" ? (
+          <EventGraphView
+            events={events}
+            timelines={Timelines}
+            highlightedEvents={highlightedEvents}
+            searchTerm={searchTerm}
+            onEventClick={(event) => {
+              // 必要に応じてイベント詳細表示の処理
+              console.log("Event clicked:", event);
+            }}
+            onEventDoubleClick={(event) => {
+              // イベント編集モーダルを開く
+              setEditingEvent(event);
+              setNewEvent({
+                title: event.title,
+                description: event.description,
+                date: event.startDate,
+                manualTags: event.tags.filter(
+                  (tag) =>
+                    tag !== event.title &&
+                    !extractTagsFromDescription(event.description).includes(tag)
+                ),
+              });
+
+              // モーダル位置を画面中央に設定
+              setModalPosition({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+              });
+              setIsModalOpen(true);
+            }}
+            onTagFilter={(tag) => {
+              // タグでフィルタリング
+              handleSearchChange({ target: { value: tag } });
+            }}
+          />
+        ) : currentView === "table" ? (
           <TableView
             events={events}
             timelines={Timelines}
@@ -1010,15 +1056,14 @@ const HashtagTimeline = () => {
             user={user}
             supabaseSync={{ getUserTimelines, deleteTimelineFile }}
             onLoadTimeline={handleLoadTimeline}
-            onBackToTimeline={() => setCurrentView("timeline")}
+            onBackToTimeline={() => setCurrentView("graph")} // 戻り先をイベントビューに変更
           />
         ) : currentView === "wiki" ? (
-          // 新しく追加する Wiki ビュー
           <WikiBrowser
             user={user}
             wikiData={wikiData}
             onImportEvent={handleWikiEventImport}
-            onBackToTimeline={() => setCurrentView("timeline")}
+            onBackToTimeline={() => setCurrentView("graph")} // 戻り先をイベントビューに変更
           />
         ) : (
           // 年表ビュー
