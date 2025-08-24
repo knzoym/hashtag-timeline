@@ -52,6 +52,7 @@ const HashtagTimelinePage = () => {
 
       <main style={styles.mainContent}>
         <ViewSwitcher
+
           user={user}
           onLoadTimeline={handleLoadTimeline}
         />

@@ -29,7 +29,7 @@ export const useSupabaseSync = (user) => {
       console.error('Wiki イベント取得エラー:', err);
       return [];
     }
-  }, []);
+  }, []); // userに依存しないため、空の依存配列
 
   // プロファイル作成・更新
   const upsertProfile = useCallback(
@@ -47,7 +47,7 @@ export const useSupabaseSync = (user) => {
             display_name:
               profileData.display_name ||
               user.user_metadata?.full_name ||
-              user.email.split("@")[0], // 修正
+              user.email.split("@")[0],
             ...profileData,
           })
           .select();
@@ -152,7 +152,7 @@ export const useSupabaseSync = (user) => {
     }
   }, [user]);
 
-  // 返り値を { ok: boolean, message?: string } にしたい場合（任意）
+  // 年表削除
   const deleteTimeline = useCallback(
     async (timelineId) => {
       if (!user) return { ok: false, message: "未認証です" };

@@ -19,6 +19,7 @@ const TableView = () => {
   const sortedEvents = useMemo(() => {
     let eventsToShow = [...events];
 
+
     return eventsToShow.sort((a, b) => {
       let aValue = a[sortField];
       let bValue = b[sortField];
@@ -30,7 +31,6 @@ const TableView = () => {
         aValue = a.title.toLowerCase();
         bValue = b.title.toLowerCase();
       }
-
       if (sortOrder === 'asc') {
         return aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
       } else {
