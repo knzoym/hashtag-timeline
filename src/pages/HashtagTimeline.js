@@ -1,4 +1,5 @@
 // src/pages/HashtagTimeline.js
+
 import React, { useRef, useCallback, useState, useEffect } from "react";
 import { EventModal } from "../components/EventModal";
 import { SearchPanel } from "../components/SearchPanel";
@@ -26,47 +27,36 @@ import { useWikiData } from "../hooks/useWikiData";
 import EventGraphView from "../components/EventGraphView";
 
 const HashtagTimeline = () => {
-  // 認証フック
   const { user, loading, signInWithGoogle, signOut, isAuthenticated } =
     useAuth();
 
-  // カスタムフックから必要な状態と関数を取得
-  // Supabase同期フック
   const {
     saveTimelineData,
     getUserTimelines,
-    deleteTimeline: deleteTimelineFile, // ファイル削除用の関数（別名で取得）
+    deleteTimeline: deleteTimelineFile,
     upsertProfile,
     loading: syncLoading,
   } = useSupabaseSync(user);
 
-  // アカウントメニュー用の状態を追加
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [currentFileName, setCurrentFileName] = useState(null); // 現在開いているファイル名
-
-  // サイドバー状態
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [currentFileName, setCurrentFileName] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const isDesktop = useIsDesktop();
-
-  // ローディング状態
   const [isSaving, setIsSaving] = useState(false);
 
-  // メインの状態管理
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
   const lastMouseX = useRef(0);
   const lastMouseY = useRef(0);
   const isShiftPressed = useRef(false);
 
-  // ログイン時のプロファイル作成
   useEffect(() => {
     if (user && !syncLoading) {
       upsertProfile({});
     }
-  }, [user]);
+  }, [user, syncLoading, upsertProfile]);
 
   const {
-    // 基本状態
     scale,
     panX,
     panY,
@@ -79,14 +69,10 @@ const HashtagTimeline = () => {
     newEvent,
     currentPixelsPerYear,
     cardPositions,
-
-    // 高度レイアウト関連
-    advancedEventPositions,
+    positionedEvents, // ★ 変更: advancedEventPositions -> positionedEvents
     expandedGroups,
     hoveredGroup,
     groupManager,
-
-    // 関数
     setIsHelpOpen,
     resetToInitialPosition,
     handleSearchChange,
@@ -107,38 +93,26 @@ const HashtagTimeline = () => {
     openNewEventModal,
     toggleEventGroup,
     handleGroupHover,
-
     Timelines,
     deleteTimeline,
     getTimelineAxesForDisplay,
-
-    // テーブルビュー用関数
     updateEvent,
     deleteEvent,
-
-    // ユーティリティ関数
     calculateTextWidth,
-
     setEditingEvent,
     setNewEvent,
     setModalPosition,
     setIsModalOpen,
     events,
-
-    // ドラッグ&ドロップ関連
     timelinePositions,
     moveEvent,
     moveTimeline,
     addEventToTimeline,
     removeEventFromTimeline,
-
-    // 年表モーダル関連
     timelineModalOpen,
     selectedTimelineForModal,
     openTimelineModal,
     closeTimelineModal,
-
-    // 年表データの読み込み・保存・削除
     setEvents,
     setCreatedTimelines,
   } = useTimelineLogic(
@@ -149,27 +123,18 @@ const HashtagTimeline = () => {
     isShiftPressed
   );
 
-  // Wiki関連のフック追加
   const wikiData = useWikiData(user);
+  const [currentView, setCurrentView] = useState("graph");
 
-  // ビュー状態
-  const [currentView, setCurrentView] = useState("graph"); // 'timeline' | 'table' | 'graph' | 'mypage' | 'wiki'
-
-  // Wikiからのイベントインポート処理
   const handleWikiEventImport = useCallback(
     (wikiEvent) => {
-      // Wiki イベントを個人の events 配列に追加
       setEvents((prevEvents) => [...prevEvents, wikiEvent]);
-
-      // 成功メッセージは WikiBrowser 内で表示するので、ここでは何もしない
     },
     [setEvents]
   );
 
-  // 年表データの読み込み
   const handleLoadTimeline = useCallback((timelineData) => {
     if (timelineData.events) {
-      // 日付を文字列からDateオブジェクトに変換
       const eventsWithDates = timelineData.events.map((event) => ({
         ...event,
         startDate: new Date(event.startDate),
@@ -178,7 +143,6 @@ const HashtagTimeline = () => {
       setEvents(eventsWithDates);
     }
     if (timelineData.timelines) {
-      // 年表内のイベントの日付も変換
       const timelinesWithDates = timelineData.timelines.map((timeline) => ({
         ...timeline,
         events:
@@ -202,9 +166,8 @@ const HashtagTimeline = () => {
       }));
       setCreatedTimelines(timelinesWithDates);
     }
-  }, []);
+  }, [setEvents, setCreatedTimelines]);
 
-  // 年表データの保存
   const handleSaveTimeline = useCallback(async () => {
     if (!isAuthenticated || isSaving) return;
 
@@ -230,11 +193,9 @@ const HashtagTimeline = () => {
     }
   }, [isAuthenticated, events, Timelines, saveTimelineData, isSaving]);
 
-  // サイドバーのメニュー項目クリックハンドラー（拡張版）
   const handleSidebarMenuClick = useCallback(
     (itemId, section) => {
       switch (itemId) {
-        // ファイル内操作
         case "add-event":
           openNewEventModal();
           break;
@@ -242,16 +203,13 @@ const HashtagTimeline = () => {
           resetToInitialPosition();
           break;
         case "sample-architecture":
-          // 建築史のサンプルイベントを追加
           console.log("建築史サンプルを追加");
           break;
         case "sample-history":
-          // 日本史のサンプルイベントを追加
           console.log("日本史サンプルを追加");
           break;
         case "sample-clear":
           if (window.confirm("サンプルイベントをクリアしますか？")) {
-            // サンプルイベントのみクリア
             console.log("サンプルイベントをクリア");
           }
           break;
@@ -266,8 +224,6 @@ const HashtagTimeline = () => {
             setCurrentFileName(null);
           }
           break;
-
-        // ファイル操作
         case "new":
           if (
             events.length > 0 || Timelines.length > 0
@@ -298,7 +254,6 @@ const HashtagTimeline = () => {
               currentFileName || "新しい年表"
             );
             if (fileName) {
-              // 名前を付けて保存の処理
               handleSaveTimelineAs(fileName);
             }
           }
@@ -318,8 +273,6 @@ const HashtagTimeline = () => {
         case "import-csv":
           handleImportCSV();
           break;
-
-        // アカウント関連
         case "mypage":
           if (isAuthenticated) {
             setCurrentView("mypage");
@@ -343,8 +296,6 @@ const HashtagTimeline = () => {
             "Googleアカウントでログインすると、年表の保存・読み込みができるようになります。\n\n・年表データをクラウドに保存\n・複数のデバイスで同期\n・過去の作品を管理"
           );
           break;
-
-        // ヘルプ
         case "shortcuts":
           showKeyboardShortcuts();
           break;
@@ -368,15 +319,14 @@ const HashtagTimeline = () => {
         case "about":
           showAboutDialog();
           break;
-
         default:
           console.log(`未実装のメニュー項目: ${itemId} in ${section}`);
       }
     },
     [
       isAuthenticated,
-      events,
-      Timelines,
+      events.length,
+      Timelines.length,
       openNewEventModal,
       resetToInitialPosition,
       handleSaveTimeline,
@@ -385,10 +335,10 @@ const HashtagTimeline = () => {
       setCurrentView,
       signInWithGoogle,
       signOut,
+      currentFileName,
     ]
   );
-
-  // 新しい保存・エクスポート関数
+  
   const handleSaveTimelineAs = useCallback(
     async (fileName) => {
       if (!isAuthenticated || isSaving) return;
@@ -508,8 +458,7 @@ const HashtagTimeline = () => {
       "CSV読み込み機能は開発中です。\n\n現在はJSONファイルの読み込みのみ対応しています。"
     );
   }, []);
-
-  // ヘルプ関連の関数
+  
   const showKeyboardShortcuts = useCallback(() => {
     const shortcuts = [
       "🖱️ ダブルクリック - イベント追加・編集",
@@ -571,9 +520,6 @@ const HashtagTimeline = () => {
     alert(about.join("\n"));
   }, []);
 
-  // HashtagTimeline.js のアカウントメニュー関連の追加部分
-
-  // アカウントメニューが開いているかのクリックアウトハンドラー
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (accountMenuOpen && !event.target.closest(".account-menu")) {
@@ -587,41 +533,6 @@ const HashtagTimeline = () => {
     };
   }, [accountMenuOpen]);
 
-  // ヘッダーのスタイル更新（ホバー効果追加）
-  const addHoverEffects = useCallback(() => {
-    return {
-      onMouseEnter: (e, bgColor = "#f3f4f6") => {
-        e.currentTarget.style.backgroundColor = bgColor;
-      },
-      onMouseLeave: (e) => {
-        e.currentTarget.style.backgroundColor = "transparent";
-      },
-    };
-  }, []);
-
-  // アカウントボタンのホバー効果
-  const accountButtonHover = {
-    onMouseEnter: (e) => {
-      e.currentTarget.style.backgroundColor = "#f3f4f6";
-      e.currentTarget.style.borderColor = "#d1d5db";
-    },
-    onMouseLeave: (e) => {
-      e.currentTarget.style.backgroundColor = "#f9fafb";
-      e.currentTarget.style.borderColor = "#e5e7eb";
-    },
-  };
-
-  // ドロップダウンアイテムのホバー効果
-  const dropdownItemHover = {
-    onMouseEnter: (e) => {
-      e.currentTarget.style.backgroundColor = "#f3f4f6";
-    },
-    onMouseLeave: (e) => {
-      e.currentTarget.style.backgroundColor = "transparent";
-    },
-  };
-
-  // ドラッグ&ドロップ機能
   const {
     dragState,
     handleMouseDown: handleDragMouseDown,
@@ -636,7 +547,6 @@ const HashtagTimeline = () => {
     removeEventFromTimeline
   );
 
-  // テーブルビュー用のイベント削除ハンドラー
   const handleTableEventDelete = useCallback(
     (eventId) => {
       if (window.confirm("このイベントを削除しますか？")) {
@@ -646,14 +556,13 @@ const HashtagTimeline = () => {
     [deleteEvent]
   );
 
-  // 色の変換ユーティリティ関数
   const parseHslColor = (hslString) => {
     const match = hslString.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
     if (match) {
       return {
-        h: parseInt(match[1]),
-        s: parseInt(match[2]),
-        l: parseInt(match[3]),
+        h: parseInt(match[1], 10),
+        s: parseInt(match[2], 10),
+        l: parseInt(match[3], 10),
       };
     }
     return null;
@@ -674,7 +583,6 @@ const HashtagTimeline = () => {
     };
   };
 
-  // グループカードでのイベントダブルクリック処理
   const handleGroupEventDoubleClick = useCallback(
     (event) => {
       setEditingEvent(event);
@@ -689,7 +597,6 @@ const HashtagTimeline = () => {
         ),
       });
 
-      // モーダル位置を画面中央に設定
       setModalPosition({
         x: window.innerWidth / 2,
         y: window.innerHeight / 2,
@@ -699,7 +606,6 @@ const HashtagTimeline = () => {
     [setEditingEvent, setNewEvent, setModalPosition, setIsModalOpen]
   );
 
-  // 年表マーカー生成
   const generateYearMarkers = useCallback(() => {
     const markers = [];
     const adjustedScale = scale / 2.5;
@@ -765,12 +671,10 @@ const HashtagTimeline = () => {
   const timelineAxes = getTimelineAxesForDisplay();
   const axesMap = new Map(timelineAxes.map((axis) => [axis.id, axis]));
 
-  // 表示用のイベント（シンプルに全て表示）
-  const visibleEvents = advancedEventPositions.allEvents.filter(
+  const visibleEvents = positionedEvents.allEvents.filter(
     (event) => !event.hiddenByGroup
   );
 
-  // ドラッグ中のマウス移動処理
   useEffect(() => {
     if (isDragActive) {
       const handleGlobalMouseMove = (e) => {
@@ -781,8 +685,8 @@ const HashtagTimeline = () => {
         const currentTimelineAxes = getTimelineAxesForDisplay();
         const currentEventPositions = visibleEvents.map((event) => ({
           id: event.id,
-          x: event.adjustedPosition.x,
-          y: event.adjustedPosition.y,
+          x: event.adjustedPosition.x + panX, // panXを考慮
+          y: event.adjustedPosition.y + panY, // panYを考慮
           timelineId: event.timelineId,
         }));
 
@@ -812,11 +716,12 @@ const HashtagTimeline = () => {
     cancelDrag,
     getTimelineAxesForDisplay,
     visibleEvents,
+    panX,
+    panY,
   ]);
-
+  
   return (
     <div style={styles.app}>
-      {/* サイドバー */}
       {isDesktop && (
         <Sidebar
           isOpen={sidebarOpen}
@@ -827,7 +732,6 @@ const HashtagTimeline = () => {
           canSave={events.length > 0 || Timelines.length > 0}
         />
       )}
-      {/* メインコンテンツラッパー */}
       <div
         style={{
           marginLeft: isDesktop ? 60 : 0,
@@ -838,11 +742,8 @@ const HashtagTimeline = () => {
           flexDirection: "column",
         }}
       >
-        {/* ヘッダー - ファイル内操作とアカウント */}
         <div style={styles.header}>
-          {/* 左側：現在のファイル情報とビュー切り替え */}
           <div style={styles.headerLeft}>
-            {/* 現在のファイル名表示 */}
             <div style={styles.currentFile}>
               {currentFileName ? (
                 <span style={styles.fileName}>📄 {currentFileName}</span>
@@ -855,7 +756,6 @@ const HashtagTimeline = () => {
                 )}
             </div>
 
-            {/* ビュー切り替えボタン - Wiki タブを追加 */}
             <div style={styles.viewToggle}>
               <button
                 onClick={() => setCurrentView("graph")}
@@ -898,14 +798,11 @@ const HashtagTimeline = () => {
             </div>
           </div>
 
-          {/* 中央：タイトル */}
           <div style={styles.headerCenter}>
             <h1 style={styles.title}>#ハッシュタグ年表</h1>
           </div>
 
-          {/* 右側：ファイル内操作とアカウント */}
           <div style={styles.headerRight}>
-            {/* ファイル内操作ボタン */}
             {currentView === "timeline" && (
               <>
                 <button
@@ -921,7 +818,6 @@ const HashtagTimeline = () => {
               </>
             )}
 
-            {/* イベント追加ボタン */}
             <button
               style={styles.actionButton}
               onClick={openNewEventModal}
@@ -930,7 +826,6 @@ const HashtagTimeline = () => {
               ➕ イベント追加
             </button>
 
-            {/* 保存ボタン（ログイン時のみ） */}
             {isAuthenticated && (
               <button
                 onClick={handleSaveTimeline}
@@ -945,12 +840,11 @@ const HashtagTimeline = () => {
               </button>
             )}
 
-            {/* アカウントメニュー */}
             <div style={styles.accountContainer}>
               {loading ? (
                 <span style={styles.loadingText}>読み込み中...</span>
               ) : isAuthenticated ? (
-                <div style={styles.accountMenu}>
+                <div style={styles.accountMenu} className="account-menu">
                   <button
                     onClick={() => setAccountMenuOpen(!accountMenuOpen)}
                     style={styles.accountButton}
@@ -963,7 +857,6 @@ const HashtagTimeline = () => {
                     <span style={styles.dropdownIcon}>▼</span>
                   </button>
 
-                  {/* ドロップダウンメニュー */}
                   {accountMenuOpen && (
                     <div style={styles.dropdown}>
                       <div style={styles.dropdownHeader}>
@@ -1005,7 +898,6 @@ const HashtagTimeline = () => {
           </div>
         </div>
 
-        {/* メインコンテンツ - イベントビューを追加 */}
         {currentView === "graph" ? (
           <EventGraphView
             events={events}
@@ -1013,11 +905,9 @@ const HashtagTimeline = () => {
             highlightedEvents={highlightedEvents}
             searchTerm={searchTerm}
             onEventClick={(event) => {
-              // 必要に応じてイベント詳細表示の処理
               console.log("Event clicked:", event);
             }}
             onEventDoubleClick={(event) => {
-              // イベント編集モーダルを開く
               setEditingEvent(event);
               setNewEvent({
                 title: event.title,
@@ -1029,8 +919,6 @@ const HashtagTimeline = () => {
                     !extractTagsFromDescription(event.description).includes(tag)
                 ),
               });
-
-              // モーダル位置を画面中央に設定
               setModalPosition({
                 x: window.innerWidth / 2,
                 y: window.innerHeight / 2,
@@ -1038,7 +926,6 @@ const HashtagTimeline = () => {
               setIsModalOpen(true);
             }}
             onTagFilter={(tag) => {
-              // タグでフィルタリング
               handleSearchChange({ target: { value: tag } });
             }}
           />
@@ -1056,17 +943,16 @@ const HashtagTimeline = () => {
             user={user}
             supabaseSync={{ getUserTimelines, deleteTimelineFile }}
             onLoadTimeline={handleLoadTimeline}
-            onBackToTimeline={() => setCurrentView("graph")} // 戻り先をイベントビューに変更
+            onBackToTimeline={() => setCurrentView("graph")}
           />
         ) : currentView === "wiki" ? (
           <WikiBrowser
             user={user}
             wikiData={wikiData}
             onImportEvent={handleWikiEventImport}
-            onBackToTimeline={() => setCurrentView("graph")} // 戻り先をイベントビューに変更
+            onBackToTimeline={() => setCurrentView("graph")}
           />
         ) : (
-          // 年表ビュー
           <div
             ref={timelineRef}
             style={styles.timeline}
@@ -1077,17 +963,14 @@ const HashtagTimeline = () => {
             onMouseLeave={handleMouseUp}
             onDoubleClick={handleDoubleClick}
           >
-            {/* 年マーカー */}
             {generateYearMarkers()}
 
-            {/* イベントを追加ボタン */}
             <div className="floating-panel">
               <button style={styles.addButton} onClick={openNewEventModal}>
                 + イベントを追加
               </button>
             </div>
 
-            {/* 検索パネル */}
             <SearchPanel
               searchTerm={searchTerm}
               highlightedEvents={highlightedEvents}
@@ -1097,8 +980,8 @@ const HashtagTimeline = () => {
               getTopTagsFromSearch={getTopTagsFromSearch}
               styles={styles}
             />
-
-            {/* Part 1: 年号とグループアイコンを描画 */}
+            
+            {/* ★ 変更: positionedEvents と panX/panY を使って描画 */}
             {visibleEvents.map((event, index) => {
               if (event.isGroup) {
                 return (
@@ -1106,7 +989,7 @@ const HashtagTimeline = () => {
                     key={`group-${event.groupData.id}-${index}`}
                     groupData={event.groupData}
                     position={{
-                      x: event.adjustedPosition.x,
+                      x: event.adjustedPosition.x + panX,
                       y: event.adjustedPosition.y,
                     }}
                     panY={panY}
@@ -1126,7 +1009,7 @@ const HashtagTimeline = () => {
                   key={uniqueKey}
                   style={{
                     position: "absolute",
-                    left: event.adjustedPosition.x,
+                    left: event.adjustedPosition.x + panX,
                     top: event.adjustedPosition.y + panY + 8 + "px",
                     transform: "translateX(-50%)",
                     zIndex: 2,
@@ -1147,7 +1030,6 @@ const HashtagTimeline = () => {
               );
             })}
 
-            {/* Part 2: イベントタイトルを描画 */}
             {visibleEvents.map((event, index) => {
               if (event.isGroup) return null;
 
@@ -1186,7 +1068,7 @@ const HashtagTimeline = () => {
                   data-event-id={event.id}
                   style={{
                     position: "absolute",
-                    left: event.adjustedPosition.x,
+                    left: event.adjustedPosition.x + panX,
                     top: event.adjustedPosition.y + panY + 15 + "px",
                     transform: "translateX(-50%)",
                     cursor: "ns-resize",
@@ -1211,7 +1093,7 @@ const HashtagTimeline = () => {
                     }
                   }}
                 >
-                  <div
+                  <div // イベントカードのスタイル調整
                     style={{
                       padding: "4px 8px",
                       borderRadius: "4px",
@@ -1240,22 +1122,20 @@ const HashtagTimeline = () => {
               );
             })}
 
-            {/* グループツールチップ */}
-            {hoveredGroup && (
+            {hoveredGroup && ( 
               <GroupTooltip
                 groupData={hoveredGroup.data}
                 position={{
-                  x: hoveredGroup.data.position.x,
+                  x: hoveredGroup.data.position.x + panX,
                   y: hoveredGroup.data.position.y,
                 }}
                 panY={panY}
               />
             )}
 
-            {/* 展開されたグループカード */}
             {Array.from(expandedGroups).map((groupId) => {
               const groupCard = groupManager.getGroupCard(groupId);
-              const groupData = advancedEventPositions.eventGroups.find(
+              const groupData = positionedEvents.eventGroups.find(
                 (g) => g.id === groupId
               );
 
@@ -1276,8 +1156,7 @@ const HashtagTimeline = () => {
                 />
               );
             })}
-
-            {/* 年表カード */}
+            
             {Timelines.map((timeline, index) => {
               const axis = axesMap.get(timeline.id);
               const xPosition = axis ? axis.startX : 20;
@@ -1313,7 +1192,6 @@ const HashtagTimeline = () => {
               );
             })}
 
-            {/* 年表軸線の描画 */}
             {timelineAxes.map((axis) => (
               <div key={`axis-${axis.id}`}>
                 <div
@@ -1370,7 +1248,6 @@ const HashtagTimeline = () => {
               </div>
             ))}
 
-            {/* 現在ライン */}
             <div
               style={{
                 position: "absolute",
@@ -1401,7 +1278,6 @@ const HashtagTimeline = () => {
           </div>
         )}
 
-        {/* 年表詳細モーダル */}
         <TimelineModal
           isOpen={timelineModalOpen}
           timeline={selectedTimelineForModal}
@@ -1411,29 +1287,28 @@ const HashtagTimeline = () => {
           allEvents={events}
         />
 
-        {/* ドラッグ中のプレビュー */}
         {isDragActive && dragState.draggedItem && (
           <>
-            <div
+            <div // ドラッグ中の縦線
               style={{
                 position: "fixed",
-                left: dragState.startPosition.x - 1,
+                left: dragState.startPosition.x,
                 top: 0,
                 width: "2px",
                 height: "100vh",
                 backgroundColor: "#3b82f6",
                 opacity: 0.3,
-                zIndex: 9998,
+                zIndex: 8,
                 pointerEvents: "none",
               }}
             />
 
-            <div
+            <div // ドラッグ中のアイテム名表示
               style={{
                 position: "fixed",
                 left: dragState.startPosition.x - 40,
                 top: dragState.currentPosition.y - 15,
-                zIndex: 9999,
+                zIndex: 8,
                 pointerEvents: "none",
                 opacity: 0.9,
                 backgroundColor: (() => {
@@ -1453,7 +1328,7 @@ const HashtagTimeline = () => {
                   return nearTimeline ? nearTimeline.color : "#3b82f6";
                 })(),
                 color: "white",
-                padding: "6px 12px",
+                padding: "4px 8px",
                 borderRadius: "4px",
                 fontSize: "11px",
                 fontWeight: "500",
@@ -1484,7 +1359,6 @@ const HashtagTimeline = () => {
           </>
         )}
 
-        {/* モーダル */}
         <EventModal
           isOpen={isModalOpen}
           editingEvent={editingEvent}
@@ -1499,7 +1373,6 @@ const HashtagTimeline = () => {
         />
       </div>
 
-      {/* アカウントメニューが開いている時のオーバーレイ */}
       {accountMenuOpen && (
         <div
           style={styles.menuOverlay}
