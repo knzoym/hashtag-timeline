@@ -1,6 +1,6 @@
-// src/components/WikiEventForm.js
+// src/components/WikiBrowser/WikiEventForm.js
 import React, { useState, useEffect } from 'react';
-import { extractTagsFromDescription } from '../utils/timelineUtils';
+import { extractTagsFromDescription } from '../../utils/timelineUtils';
 
 const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
   const [formData, setFormData] = useState({
@@ -251,7 +251,7 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
           <h2 style={styles.title}>
             {event ? 'イベントを編集' : '新しいイベントを作成'}
           </h2>
-          <button 
+          <button
             style={styles.closeButton}
             onClick={onCancel}
             onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
@@ -283,9 +283,9 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
             <input
               type="date"
               value={formData.startDate.toISOString().split('T')[0]}
-              onChange={(e) => setFormData(prev => ({ 
-                ...prev, 
-                startDate: new Date(e.target.value) 
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                startDate: new Date(e.target.value)
               }))}
               onKeyDown={handleKeyDown}
               style={styles.input}
@@ -327,7 +327,7 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
                   )}
                 </span>
               ))}
-              
+
               <input
                 type="text"
                 style={styles.tagInput}
