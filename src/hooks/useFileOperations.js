@@ -1,81 +1,41 @@
 // src/hooks/useFileOperations.js
-import { useCallback, useState, useRef, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useTimelineStore } from '../store/useTimelineStore';
-import { useSupabaseSync } from './useSupabaseSync';
-import { useAuth } from './useAuth';
 
 export const useFileOperations = () => {
-  // アクション関数は参照が安定しているため、直接取得します
-  const setEvents = useTimelineStore(state => state.setEvents);
-  const setTimelines = useTimelineStore(state => state.setTimelines);
-
-  const { user, isAuthenticated } = useAuth();
-  
-  // useSupabaseSyncはuserに依存するため、返り値の参照が不安定になる可能性があります。
-  // これをuseRefに格納することで、このフックが返す関数の安定性を確保します。
-  const supabaseSync = useSupabaseSync(user);
-  const supabaseSyncRef = useRef(supabaseSync);
-  useEffect(() => {
-    supabaseSyncRef.current = supabaseSync;
-  }, [supabaseSync]);
-
   const [isSaving, setIsSaving] = useState(false);
 
-  const handleSaveTimeline = useCallback(async (title = `年表 ${new Date().toLocaleDateString("ja-JP")}`) => {
-    if (!isAuthenticated || isSaving) return;
-    setIsSaving(true);
+  // JSONエクスポート（ローカルファイル）
+  const handleExportJSON = useCallback(() => {
     try {
       const { events, timelines } = useTimelineStore.getState();
-      const timelineData = { events, timelines, version: "1.0", savedAt: new Date().toISOString() };
-      const result = await supabaseSyncRef.current.saveTimelineData(timelineData, title);
-      if (result) {
-        alert("ファイルを保存しました");
-      } else {
-        alert("保存に失敗しました");
-      }
-    } finally {
-      setIsSaving(false);
+      const timelineData = { 
+        events, 
+        timelines, 
+        version: "1.0", 
+        exportedAt: new Date().toISOString() 
+      };
+      
+      const dataStr = JSON.stringify(timelineData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `timeline_${new Date().toISOString().split("T")[0]}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('エクスポートに失敗しました');
     }
-  }, [isAuthenticated, isSaving]); // 依存配列内の値は安定的です
-
-  const handleLoadTimeline = useCallback((timelineData) => {
-    const parseDates = (event) => ({
-      ...event,
-      startDate: new Date(event.startDate),
-      endDate: new Date(event.endDate),
-    });
-
-    if (timelineData.events) {
-      setEvents(timelineData.events.map(parseDates));
-    }
-    if (timelineData.timelines) {
-      setTimelines(timelineData.timelines.map(timeline => ({
-        ...timeline,
-        events: (timeline.events || []).map(parseDates),
-        temporaryEvents: (timeline.temporaryEvents || []).map(parseDates),
-        removedEvents: (timeline.removedEvents || []).map(parseDates),
-      })));
-    }
-  }, [setEvents, setTimelines]);
-
-  const handleExportJSON = useCallback(() => {
-    const { events, timelines } = useTimelineStore.getState();
-    const timelineData = { events, timelines, version: "1.0", exportedAt: new Date().toISOString() };
-    const dataStr = JSON.stringify(timelineData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `timeline_${new Date().toISOString().split("T")[0]}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
   }, []);
 
+  // JSONインポート（ローカルファイル）
   const handleImportJSON = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = e => {
+    input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
@@ -85,6 +45,7 @@ export const useFileOperations = () => {
             handleLoadTimeline(data);
             alert('JSONファイルを読み込みました');
           } catch (error) {
+            console.error('Import error:', error);
             alert('ファイルの読み込みに失敗しました');
           }
         };
@@ -92,15 +53,53 @@ export const useFileOperations = () => {
       }
     };
     input.click();
-  }, [handleLoadTimeline]);
-
-  // ref経由で呼び出すことで、これらの関数自体の参照を安定させます
-  const getUserTimelines = useCallback(async () => {
-    return supabaseSyncRef.current.getUserTimelines();
   }, []);
 
+  // タイムラインデータの読み込み
+  const handleLoadTimeline = useCallback((timelineData) => {
+    try {
+      const { setEvents, setTimelines } = useTimelineStore.getState();
+      
+      const parseDates = (event) => ({
+        ...event,
+        startDate: new Date(event.startDate),
+        endDate: new Date(event.endDate),
+      });
+
+      if (timelineData.events) {
+        setEvents(timelineData.events.map(parseDates));
+      }
+      
+      if (timelineData.timelines) {
+        setTimelines(timelineData.timelines.map(timeline => ({
+          ...timeline,
+          events: (timeline.events || []).map(parseDates),
+          temporaryEvents: (timeline.temporaryEvents || []).map(parseDates),
+          removedEvents: (timeline.removedEvents || []).map(parseDates),
+        })));
+      }
+    } catch (error) {
+      console.error('Load timeline error:', error);
+      alert('データの読み込みに失敗しました');
+    }
+  }, []);
+
+  // クラウド保存（一時的に無効化）
+  const handleSaveTimeline = useCallback(async (title) => {
+    console.log('Cloud save temporarily disabled');
+    alert('クラウド保存は一時的に無効化されています。JSONエクスポートをご利用ください。');
+  }, []);
+
+  // ユーザータイムライン取得（一時的に無効化）
+  const getUserTimelines = useCallback(async () => {
+    console.log('Cloud timelines temporarily disabled');
+    return [];
+  }, []);
+
+  // タイムライン削除（一時的に無効化）
   const deleteTimelineFile = useCallback(async (timelineId) => {
-    return supabaseSyncRef.current.deleteTimelineFile(timelineId);
+    console.log('Cloud delete temporarily disabled');
+    return { ok: false, message: 'クラウド削除は一時的に無効化されています' };
   }, []);
 
   return {
