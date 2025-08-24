@@ -13,10 +13,14 @@ const EventGraphView = ({
 }) => {
   const svgRef = useRef();
   const containerRef = useRef();
+  const simulationRef = useRef(null);
+  
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [zoomState, setZoomState] = useState({ scale: 1, translateX: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [isDraggingNode, setIsDraggingNode] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [hoveredEvent, setHoveredEvent] = useState(null);
-  const simulationRef = useRef(null);
 
   // ウィンドウサイズに応じて描画エリアのサイズを更新
   useEffect(() => {
@@ -42,6 +46,66 @@ const EventGraphView = ({
     const intersection = new Set([...tags1].filter(x => tags2.has(x)));
     const union = new Set([...tags1, ...tags2]);
     return union.size > 0 ? intersection.size / union.size : 0;
+  }, []);
+
+  // 年表ビューと同様のホイールハンドリング
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    if (!containerRef.current) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+
+    // 現在のスケールでのマウス位置に対応する年代を計算
+    const yearExtent = d3.extent(events, d => d.startDate.getFullYear());
+    const baseYearScale = d3.scaleLinear()
+      .domain(yearExtent)
+      .range([100, dimensions.width - 100]);
+    
+    const currentYearAtMouse = baseYearScale.invert((mouseX - zoomState.translateX) / zoomState.scale);
+
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.1, Math.min(10, zoomState.scale * zoomFactor));
+    
+    // ズーム後もマウス位置の年代が変わらないようにtranslateXを調整
+    const newTranslateX = mouseX - (currentYearAtMouse - yearExtent[0]) / (yearExtent[1] - yearExtent[0]) * (dimensions.width - 200) * newScale;
+    
+    setZoomState({ 
+      scale: newScale, 
+      translateX: Math.max(-(dimensions.width * newScale - dimensions.width), Math.min(0, newTranslateX))
+    });
+  }, [events, dimensions, zoomState]);
+
+  // パンハンドリング
+  const handleMouseDown = useCallback((e) => {
+    // ノードドラッグ中はパンを無効化
+    if (isDraggingNode) return;
+    
+    // ノード要素（circle, text）やその親要素（g）をクリックした場合は除外
+    const target = e.target;
+    if (target.tagName === 'circle' || 
+        target.tagName === 'text' || 
+        target.closest('.node') || 
+        target.classList.contains('node')) {
+      return;
+    }
+    setIsDragging(true);
+    e.preventDefault();
+  }, [isDraggingNode]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || isDraggingNode) return;
+    
+    const deltaX = e.movementX;
+    const newTranslateX = zoomState.translateX + deltaX;
+    const maxTranslateX = Math.max(-(dimensions.width * zoomState.scale - dimensions.width), newTranslateX);
+    const minTranslateX = Math.min(0, maxTranslateX);
+    
+    setZoomState(prev => ({ ...prev, translateX: minTranslateX }));
+  }, [isDragging, isDraggingNode, zoomState, dimensions]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
   }, []);
 
   // ノードとリンクを生成
@@ -128,7 +192,7 @@ const EventGraphView = ({
     return { nodes, links };
   }, [events, timelines, highlightedEvents, calculateEventSimilarity]);
 
-  // D3力学シミュレーションを設定
+  // D3力学シミュレーションを設定（時系列ベース）
   useEffect(() => {
     if (!svgRef.current || events.length === 0) return;
 
@@ -137,40 +201,122 @@ const EventGraphView = ({
     
     svg.selectAll("*").remove();
     
-    const g = svg.append("g");
-    
-    // ズームとパン
-    const zoom = d3.zoom()
-      .scaleExtent([0.1, 4])
-      .on("zoom", (event) => {
-        g.attr("transform", event.transform);
+    // 背景レイヤー（パン操作用）
+    const backgroundLayer = svg.append("rect")
+      .attr("width", dimensions.width)
+      .attr("height", dimensions.height)
+      .attr("fill", "transparent")
+      .attr("class", "background-layer")
+      .style("cursor", isDragging ? "grabbing" : "grab")
+      .on("mousedown", (event) => {
+        if (!isDraggingNode) {
+          setIsDragging(true);
+          event.preventDefault();
+        }
       });
     
-    svg.call(zoom);
+    const g = svg.append("g");
 
-    // 力学シミュレーション
-    const sim = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links)
-        .id(d => d.id)
-        .distance(d => {
-          // 年表リンクは短く、類似度リンクは強さに応じて距離調整
-          if (d.type === 'timeline') return 80;
-          return 120 - (d.strength * 60);
-        })
-        .strength(d => d.type === 'timeline' ? 0.8 : d.strength * 0.5)
-      )
-      .force("charge", d3.forceManyBody()
-        .strength(-300)
-        .distanceMax(200)
-      )
-      .force("center", d3.forceCenter(dimensions.width / 2, dimensions.height / 2))
-      .force("collision", d3.forceCollide().radius(d => d.size + 5));
+    // 年代の範囲を計算
+    const yearExtent = d3.extent(nodes, d => d.year);
+    
+    // ズーム状態に基づいたスケール関数
+    const getYearScale = () => {
+      const baseScale = d3.scaleLinear()
+        .domain(yearExtent)
+        .range([100, dimensions.width - 100]);
+      
+      return (year) => {
+        const baseX = baseScale(year);
+        return baseX * zoomState.scale + zoomState.translateX;
+      };
+    };
 
-    simulationRef.current = sim;
+    const yearScale = getYearScale();
+
+    // 適切な年代目盛りの間隔を計算
+    const getOptimalTickInterval = (scale) => {
+      const yearRange = yearExtent[1] - yearExtent[0];
+      const pixelsPerYear = (dimensions.width - 200) * scale / yearRange;
+      
+      if (pixelsPerYear > 50) return 1;
+      if (pixelsPerYear > 25) return 2;
+      if (pixelsPerYear > 10) return 5;
+      if (pixelsPerYear > 5) return 10;
+      if (pixelsPerYear > 2) return 20;
+      if (pixelsPerYear > 1) return 50;
+      return 100;
+    };
+
+    const tickInterval = getOptimalTickInterval(zoomState.scale);
+    const startYear = Math.ceil(yearExtent[0] / tickInterval) * tickInterval;
+    const yearTicks = [];
+    for (let year = startYear; year <= yearExtent[1]; year += tickInterval) {
+      yearTicks.push(year);
+    }
+
+    // 時系列軸を描画（固定位置）
+    const axisGroup = g.append("g").attr("class", "time-axis");
+    
+    // 縦のグリッドライン（ズームに対応）
+    axisGroup.selectAll(".grid-line")
+      .data(yearTicks)
+      .enter().append("line")
+      .attr("class", "grid-line")
+      .attr("x1", d => yearScale(d))
+      .attr("x2", d => yearScale(d))
+      .attr("y1", 20)
+      .attr("y2", dimensions.height - 20)
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 1)
+      .attr("stroke-opacity", 0.5);
+
+    // 年代ラベル（上部・固定）
+    axisGroup.selectAll(".year-label-top")
+      .data(yearTicks)
+      .enter().append("text")
+      .attr("class", "year-label-top")
+      .attr("x", d => yearScale(d))
+      .attr("y", 15)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "12px")
+      .attr("font-weight", "500")
+      .attr("fill", "#64748b")
+      .text(d => d);
+
+    // 年代ラベル（下部・固定）
+    axisGroup.selectAll(".year-label-bottom")
+      .data(yearTicks)
+      .enter().append("text")
+      .attr("class", "year-label-bottom")
+      .attr("x", d => yearScale(d))
+      .attr("y", dimensions.height - 5)
+      .attr("text-anchor", "middle")
+      .attr("font-size", "12px")
+      .attr("font-weight", "500")
+      .attr("fill", "#64748b")
+      .text(d => d);
+
+    // 各ノードのX位置を年代に基づいて固定（ズーム対応）
+    nodes.forEach(d => {
+      d.fx = yearScale(d.year); // X位置を年代で固定
+    });
+
+    // 同じ年代のノードを縦方向に散らす初期配置
+    const nodesByYear = d3.group(nodes, d => d.year);
+    nodesByYear.forEach((yearNodes, year) => {
+      const centerY = dimensions.height / 2;
+      const spreadRange = Math.min(200, yearNodes.length * 25);
+      
+      yearNodes.forEach((node, index) => {
+        // 初期Y位置を均等に配置
+        const offsetY = (index - (yearNodes.length - 1) / 2) * (spreadRange / Math.max(1, yearNodes.length - 1));
+        node.y = centerY + offsetY;
+      });
+    });
 
     // リンクの描画
-    const linkGroup = g.append("g")
-      .attr("class", "links");
+    const linkGroup = g.append("g").attr("class", "links");
 
     const link = linkGroup.selectAll("line")
       .data(links)
@@ -189,28 +335,32 @@ const EventGraphView = ({
       .attr("stroke-dasharray", d => d.type === 'timeline' ? "0" : "5,5");
 
     // ノードの描画
-    const nodeGroup = g.append("g")
-      .attr("class", "nodes");
+    const nodeGroup = g.append("g").attr("class", "nodes");
 
+    // ノードのドラッグ設定（縦方向のみ）
     const node = nodeGroup.selectAll("g")
       .data(nodes)
       .enter().append("g")
       .attr("class", "node")
-      .style("cursor", "pointer")
+      .style("cursor", "ns-resize") // 縦方向のリサイズカーソル
       .call(d3.drag()
         .on("start", (event, d) => {
+          event.sourceEvent.stopPropagation(); // より確実にイベント伝播を防ぐ
+          setIsDraggingNode(true); // ノードドラッグ状態をセット
           if (!event.active) sim.alphaTarget(0.3).restart();
-          d.fx = d.x;
           d.fy = d.y;
         })
         .on("drag", (event, d) => {
-          d.fx = event.x;
+          event.sourceEvent.stopPropagation();
           d.fy = event.y;
+          d.fx = yearScale(d.year);
         })
         .on("end", (event, d) => {
+          event.sourceEvent.stopPropagation();
+          setIsDraggingNode(false); // ノードドラッグ状態をリセット
           if (!event.active) sim.alphaTarget(0);
-          d.fx = null;
-          d.fy = null;
+          d.fy = d.y; // 位置を固定
+          d.fx = yearScale(d.year);
         })
       );
 
@@ -294,6 +444,28 @@ const EventGraphView = ({
         link.style("opacity", d => d.type === 'timeline' ? 0.8 : 0.4);
       });
 
+    // 力学シミュレーション（縦方向の配置のみ調整）
+    const sim = d3.forceSimulation(nodes)
+      .force("link", d3.forceLink(links)
+        .id(d => d.id)
+        .distance(d => {
+          if (d.type === 'timeline') return 50;
+          return 80 - (d.strength * 30);
+        })
+        .strength(d => d.type === 'timeline' ? 0.3 : d.strength * 0.1)
+      )
+      .force("charge", d3.forceManyBody()
+        .strength(-100)
+        .distanceMax(100)
+      )
+      // Y方向の中心力を大幅に弱く（手動位置を尊重）
+      .force("centerY", d3.forceY(dimensions.height / 2).strength(0.01))
+      .force("collision", d3.forceCollide().radius(d => d.size + 10))
+      // アルファの減衰を速くして早期に安定
+      .alphaDecay(0.1);
+
+    simulationRef.current = sim;
+
     // シミュレーション更新時の描画更新
     sim.on("tick", () => {
       link
@@ -309,7 +481,26 @@ const EventGraphView = ({
     return () => {
       sim.stop();
     };
-  }, [events, timelines, dimensions, generateGraphData, highlightedEvents, onEventClick, onEventDoubleClick]);
+  }, [events, timelines, dimensions, generateGraphData, highlightedEvents, onEventClick, onEventDoubleClick, zoomState]);
+
+  // マウスイベントの登録
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // ホイールイベントのみコンテナに適用
+    container.addEventListener('wheel', handleWheel, { passive: false });
+
+    // マウス移動とアップはドキュメントレベルで処理（ドラッグ中に範囲外に出ても対応）
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleWheel, handleMouseMove, handleMouseUp]);
 
   // 検索フィルタリング
   const filteredEvents = events.filter(event => {
@@ -337,7 +528,9 @@ const EventGraphView = ({
     svg: {
       width: '100%',
       height: '100%',
-      cursor: 'grab'
+      cursor: isDragging ? 'grabbing' : 'grab',
+      userSelect: 'none',
+      pointerEvents: 'all' // マウスイベントを確実に受け取る
     },
     controlPanel: {
       width: panelWidth,
@@ -554,13 +747,17 @@ const EventGraphView = ({
               🔍 検索ヒット: {stats.highlightedCount}
             </div>
           )}
+          <div style={styles.statItem}>
+            🔍 ズーム: {zoomState.scale.toFixed(1)}x
+          </div>
         </div>
 
         {/* 操作説明 */}
         <div style={{ marginTop: '20px', fontSize: '11px', color: '#6b7280' }}>
           <div style={{ fontWeight: '500', marginBottom: '6px' }}>操作方法:</div>
-          <div>• ドラッグ: ノード移動</div>
-          <div>• ホイール: ズーム</div>
+          <div>• 横ドラッグ: パン移動</div>
+          <div>• 縦ドラッグ: ノード移動</div>
+          <div>• ホイール: 横ズーム</div>
           <div>• クリック: 詳細表示</div>
           <div>• ダブルクリック: 編集</div>
         </div>
