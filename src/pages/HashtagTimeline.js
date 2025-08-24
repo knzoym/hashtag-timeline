@@ -25,22 +25,19 @@ import WikiBrowser from "../components/WikiBrowser";
 import { useWikiData } from "../hooks/useWikiData";
 
 const HashtagTimeline = () => {
-  // Wiki関連のフック追加
-  const wikiData = useWikiData(user);
+  // 認証フック
+  const { user, loading, signInWithGoogle, signOut, isAuthenticated } =
+    useAuth();
 
-  // 既存のsetCurrentView の選択肢に 'wiki' を追加
-  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage' | 'wiki'
-
-  // Wikiからのイベントインポート処理
-  const handleWikiEventImport = useCallback(
-    (wikiEvent) => {
-      // Wiki イベントを個人の events 配列に追加
-      setEvents((prevEvents) => [...prevEvents, wikiEvent]);
-
-      // 成功メッセージは WikiBrowser 内で表示するので、ここでは何もしない
-    },
-    [setEvents]
-  );
+  // カスタムフックから必要な状態と関数を取得
+  // Supabase同期フック
+  const {
+    saveTimelineData,
+    getUserTimelines,
+    deleteTimeline: deleteTimelineFile, // ファイル削除用の関数（別名で取得）
+    upsertProfile,
+    loading: syncLoading,
+  } = useSupabaseSync(user);
 
   // アカウントメニュー用の状態を追加
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -53,29 +50,12 @@ const HashtagTimeline = () => {
   // ローディング状態
   const [isSaving, setIsSaving] = useState(false);
 
-  // ビュー切り替え状態
-  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage'
-
   // メインの状態管理
   const timelineRef = useRef(null);
   const isDragging = useRef(false);
   const lastMouseX = useRef(0);
   const lastMouseY = useRef(0);
   const isShiftPressed = useRef(false);
-
-  // カスタムフックから必要な状態と関数を取得
-  // 認証フック
-  const { user, loading, signInWithGoogle, signOut, isAuthenticated } =
-    useAuth();
-
-  // Supabase同期フック
-  const {
-    saveTimelineData,
-    getUserTimelines,
-    deleteTimeline: deleteTimelineFile, // ファイル削除用の関数（別名で取得）
-    upsertProfile,
-    loading: syncLoading,
-  } = useSupabaseSync(user);
 
   // ログイン時のプロファイル作成
   useEffect(() => {
@@ -166,6 +146,23 @@ const HashtagTimeline = () => {
     lastMouseX,
     lastMouseY,
     isShiftPressed
+  );
+
+  // Wiki関連のフック追加
+  const wikiData = useWikiData(user);
+
+  // 既存のsetCurrentView の選択肢に 'wiki' を追加
+  const [currentView, setCurrentView] = useState("timeline"); // 'timeline' | 'table' | 'mypage' | 'wiki'
+
+  // Wikiからのイベントインポート処理
+  const handleWikiEventImport = useCallback(
+    (wikiEvent) => {
+      // Wiki イベントを個人の events 配列に追加
+      setEvents((prevEvents) => [...prevEvents, wikiEvent]);
+
+      // 成功メッセージは WikiBrowser 内で表示するので、ここでは何もしない
+    },
+    [setEvents]
   );
 
   // 年表データの読み込み
@@ -857,7 +854,7 @@ const HashtagTimeline = () => {
                 )}
             </div>
 
-            {/* ビュー切り替えボタン */}
+            {/* ビュー切り替えボタン - Wiki タブを追加 */}
             <div style={styles.viewToggle}>
               <button
                 onClick={() => setCurrentView("timeline")}
@@ -878,6 +875,15 @@ const HashtagTimeline = () => {
                 }}
               >
                 📋 テーブル
+              </button>
+              <button
+                onClick={() => setCurrentView("wiki")}
+                style={{
+                  ...styles.viewButton,
+                  ...(currentView === "wiki" ? styles.viewButtonActive : {}),
+                }}
+              >
+                📚 Wiki
               </button>
             </div>
           </div>
