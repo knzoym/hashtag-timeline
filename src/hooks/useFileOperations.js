@@ -1,27 +1,42 @@
 // src/hooks/useFileOperations.js
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { useTimelineStore } from '../store/useTimelineStore';
 import { useSupabaseSync } from './useSupabaseSync';
 import { useAuth } from './useAuth';
 
 export const useFileOperations = () => {
-  const { events, timelines, setEvents, setTimelines } = useTimelineStore.getState();
+  // アクション関数は参照が安定しているため、直接取得します
+  const setEvents = useTimelineStore(state => state.setEvents);
+  const setTimelines = useTimelineStore(state => state.setTimelines);
+
   const { user, isAuthenticated } = useAuth();
-  const { saveTimelineData, getUserTimelines, deleteTimelineFile } = useSupabaseSync(user);
+  
+  // useSupabaseSyncはuserに依存するため、返り値の参照が不安定になる可能性があります。
+  // これをuseRefに格納することで、このフックが返す関数の安定性を確保します。
+  const supabaseSync = useSupabaseSync(user);
+  const supabaseSyncRef = useRef(supabaseSync);
+  useEffect(() => {
+    supabaseSyncRef.current = supabaseSync;
+  }, [supabaseSync]);
+
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSaveTimeline = useCallback(async (title = `年表 ${new Date().toLocaleDateString("ja-JP")}`) => {
     if (!isAuthenticated || isSaving) return;
     setIsSaving(true);
     try {
+      const { events, timelines } = useTimelineStore.getState();
       const timelineData = { events, timelines, version: "1.0", savedAt: new Date().toISOString() };
-      const result = await saveTimelineData(timelineData, title);
-      if (result) alert("ファイルを保存しました");
-      else alert("保存に失敗しました");
+      const result = await supabaseSyncRef.current.saveTimelineData(timelineData, title);
+      if (result) {
+        alert("ファイルを保存しました");
+      } else {
+        alert("保存に失敗しました");
+      }
     } finally {
       setIsSaving(false);
     }
-  }, [isAuthenticated, isSaving, events, timelines, saveTimelineData]);
+  }, [isAuthenticated, isSaving]); // 依存配列内の値は安定的です
 
   const handleLoadTimeline = useCallback((timelineData) => {
     const parseDates = (event) => ({
@@ -44,6 +59,7 @@ export const useFileOperations = () => {
   }, [setEvents, setTimelines]);
 
   const handleExportJSON = useCallback(() => {
+    const { events, timelines } = useTimelineStore.getState();
     const timelineData = { events, timelines, version: "1.0", exportedAt: new Date().toISOString() };
     const dataStr = JSON.stringify(timelineData, null, 2);
     const dataBlob = new Blob([dataStr], { type: "application/json" });
@@ -53,7 +69,7 @@ export const useFileOperations = () => {
     link.download = `timeline_${new Date().toISOString().split("T")[0]}.json`;
     link.click();
     URL.revokeObjectURL(url);
-  }, [events, timelines]);
+  }, []);
 
   const handleImportJSON = useCallback(() => {
     const input = document.createElement('input');
@@ -77,6 +93,15 @@ export const useFileOperations = () => {
     };
     input.click();
   }, [handleLoadTimeline]);
+
+  // ref経由で呼び出すことで、これらの関数自体の参照を安定させます
+  const getUserTimelines = useCallback(async () => {
+    return supabaseSyncRef.current.getUserTimelines();
+  }, []);
+
+  const deleteTimelineFile = useCallback(async (timelineId) => {
+    return supabaseSyncRef.current.deleteTimelineFile(timelineId);
+  }, []);
 
   return {
     isSaving,

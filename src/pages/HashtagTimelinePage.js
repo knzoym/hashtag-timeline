@@ -7,20 +7,15 @@ import { useFileOperations } from '../hooks/useFileOperations';
 import Header from '../components/UI/Header';
 import ViewSwitcher from '../components/UI/ViewSwitcher';
 import { EventModal } from '../components/Shared/EventModal';
+import TimelineModal from '../components/Shared/TimelineModal';
 
 import { createappStyles } from '../styles/appStyles';
 
 const HashtagTimelinePage = () => {
-  // Zustandストアから状態とアクションを取得
   const {
-    currentView,
     isModalOpen,
-    editingEvent,
-    newEventData,
-    modalPosition,
     saveEvent,
     closeModal,
-    updateNewEventData
   } = useTimelineStore();
 
   const { user, loading: authLoading, signInWithGoogle, signOut, isAuthenticated } = useAuth();
@@ -28,7 +23,6 @@ const HashtagTimelinePage = () => {
 
   const styles = createappStyles();
 
-  // キーボードショートカット
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (isModalOpen) {
@@ -58,21 +52,13 @@ const HashtagTimelinePage = () => {
       
       <main style={styles.mainContent}>
         <ViewSwitcher 
-          currentView={currentView}
           user={user}
           onLoadTimeline={handleLoadTimeline}
         />
       </main>
 
-      <EventModal
-        isOpen={isModalOpen}
-        editingEvent={editingEvent}
-        newEventData={newEventData}
-        modalPosition={modalPosition}
-        onSave={saveEvent}
-        onClose={closeModal}
-        onEventChange={updateNewEventData}
-      />
+      <EventModal />
+      <TimelineModal />
     </div>
   );
 };
