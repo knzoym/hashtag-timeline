@@ -23,7 +23,7 @@ import { useIsDesktop } from "../hooks/useMediaQuery";
 import logoImage from "../assets/logo.png";
 import WikiBrowser from "../components/WikiBrowser";
 import { useWikiData } from "../hooks/useWikiData";
-import { EventView } from "../components/EventView";
+import { EventView } from "../components/EnhancedEventView";
 
 const HashtagTimeline = () => {
   // 認証フック

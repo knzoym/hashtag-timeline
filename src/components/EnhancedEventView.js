@@ -1,9 +1,8 @@
-
-// src/components/EventView.js
-import React, { useCallback } from 'react';
-import { SharedEventCard } from './SharedEventCard';
-import { SubwayConnection } from './SubwayConnection';
-import { useEventViewLayout } from '../hooks/useEventViewLayout';
+// src/components/EventView.js - 強化版
+import React, { useCallback, useState, useMemo } from 'react';
+import { EnhancedEventCard } from './EnhancedEventCard';
+import { SmoothTimelineConnection } from './SmoothTimelineConnection';
+import { useEnhancedEventLayout } from '../hooks/useEnhancedEventLayout';
 import { TIMELINE_CONFIG } from '../constants/timelineConfig';
 
 export const EventView = ({
@@ -18,14 +17,35 @@ export const EventView = ({
   onEventDrag,
   calculateTextWidth,
 }) => {
-  // イベントビュー専用レイアウト
-  const { eventPositions, timelineConnections } = useEventViewLayout(
+  // 強調表示状態管理
+  const [hoveredTimeline, setHoveredTimeline] = useState(null);
+  const [selectedTimeline, setSelectedTimeline] = useState(null);
+
+  // 強化されたレイアウト
+  const { eventPositions, timelineConnections } = useEnhancedEventLayout(
     events,
     timelines, 
     currentPixelsPerYear,
     panX,
     panY
   );
+
+  // 年表のクリック/ホバーハンドリング
+  const handleTimelineHover = useCallback((timelineId) => {
+    setHoveredTimeline(timelineId);
+  }, []);
+
+  const handleTimelineClick = useCallback((timelineId) => {
+    setSelectedTimeline(selectedTimeline === timelineId ? null : timelineId);
+  }, [selectedTimeline]);
+
+  // 表示状態の判定
+  const getTimelineDisplayState = useCallback((timelineId) => {
+    if (selectedTimeline === timelineId) return 'selected';
+    if (hoveredTimeline === timelineId) return 'hovered';
+    if (selectedTimeline && selectedTimeline !== timelineId) return 'dimmed';
+    return 'normal';
+  }, [selectedTimeline, hoveredTimeline]);
 
   // 年マーカー生成
   const generateYearMarkers = useCallback(() => {
@@ -48,8 +68,9 @@ export const EventView = ({
               left: x,
               top: 0,
               height: '100%',
-              borderLeft: '1px solid #e5e7eb',
+              borderLeft: '1px solid #f0f0f0',
               pointerEvents: 'none',
+              zIndex: 1,
             }}
           >
             <span
@@ -57,8 +78,8 @@ export const EventView = ({
                 position: 'absolute',
                 top: '10px',
                 left: '5px',
-                fontSize: '12px',
-                color: '#9ca3af',
+                fontSize: '11px',
+                color: '#c0c0c0',
                 userSelect: 'none',
               }}
             >
@@ -72,7 +93,7 @@ export const EventView = ({
   }, [scale, currentPixelsPerYear, panX]);
 
   // 現在線
-  const currentYearLine = (
+  const currentYearLine = useMemo(() => (
     <div
       style={{
         position: 'absolute',
@@ -81,7 +102,8 @@ export const EventView = ({
         height: '100%',
         borderLeft: '2px solid #f59e0b',
         pointerEvents: 'none',
-        opacity: 0.8,
+        opacity: 0.6,
+        zIndex: 2,
       }}
     >
       <div
@@ -89,7 +111,7 @@ export const EventView = ({
           position: 'absolute',
           left: '5px',
           top: '20px',
-          fontSize: '12px',
+          fontSize: '11px',
           color: '#f59e0b',
           backgroundColor: 'rgba(255,255,255,0.9)',
           padding: '2px 6px',
@@ -100,7 +122,7 @@ export const EventView = ({
         現在 (2025)
       </div>
     </div>
-  );
+  ), [currentPixelsPerYear, panX]);
 
   return (
     <>
@@ -110,31 +132,28 @@ export const EventView = ({
       {/* 現在線 */}
       {currentYearLine}
       
-      {/* 地下鉄路線図スタイルの年表線 */}
+      {/* 滑らかな年表線（画像参考） */}
       {timelineConnections.map(timeline => (
-        <SubwayConnection 
+        <SmoothTimelineConnection 
           key={timeline.id} 
           timeline={timeline} 
           panY={panY}
-        />
-      ))}
-      
-      {/* 路線名ラベル */}
-      {timelineConnections.map(timeline => (
-        <SubwayLineLabel 
-          key={`label-${timeline.id}`} 
-          timeline={timeline} 
-          panY={panY}
-          panX={panX}
+          displayState={getTimelineDisplayState(timeline.id)}
+          onHover={handleTimelineHover}
+          onClick={handleTimelineClick}
         />
       ))}
       
       {/* イベント表示 */}
       {eventPositions.map((event) => (
-        <SharedEventCard
+        <EnhancedEventCard
           key={event.id}
           event={event}
           isHighlighted={highlightedEvents.has(event.id)}
+          isTimelineHighlighted={
+            selectedTimeline === event.timelineInfo?.timelineId ||
+            hoveredTimeline === event.timelineInfo?.timelineId
+          }
           onDoubleClick={onEventDoubleClick}
           onMouseDown={onEventDrag}
           panY={panY}
@@ -142,40 +161,5 @@ export const EventView = ({
         />
       ))}
     </>
-  );
-};
-
-// 路線名ラベルコンポーネント
-const SubwayLineLabel = ({ timeline, panY, panX }) => {
-  if (!timeline.points || timeline.points.length === 0) return null;
-
-  const visiblePoints = timeline.points.filter(point => 
-    point.x > -panX - 100 && point.x < window.innerWidth - panX + 100
-  );
-
-  if (visiblePoints.length === 0) return null;
-
-  const labelPoint = visiblePoints[0];
-  
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: labelPoint.x - 40,
-        top: labelPoint.y + panY - 35,
-        padding: '4px 10px',
-        backgroundColor: timeline.color,
-        color: 'white',
-        fontSize: '11px',
-        fontWeight: '600',
-        borderRadius: '12px',
-        zIndex: 20,
-        whiteSpace: 'nowrap',
-        boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
-        border: '2px solid white',
-      }}
-    >
-      {timeline.name}
-    </div>
   );
 };
