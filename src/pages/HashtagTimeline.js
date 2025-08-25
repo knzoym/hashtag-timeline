@@ -23,6 +23,7 @@ import { useIsDesktop } from "../hooks/useMediaQuery";
 import logoImage from "../assets/logo.png";
 import WikiBrowser from "../components/WikiBrowser";
 import { useWikiData } from "../hooks/useWikiData";
+import { EventView } from "../components/EventView";
 
 const HashtagTimeline = () => {
   // 認証フック
@@ -868,6 +869,15 @@ const HashtagTimeline = () => {
                 📊 年表
               </button>
               <button
+                onClick={() => setCurrentView("event")} // ← 追加
+                style={{
+                  ...styles.viewButton,
+                  ...(currentView === "event" ? styles.viewButtonActive : {}),
+                }}
+              >
+                🎯 イベント
+              </button>
+              <button
                 onClick={() => setCurrentView("table")}
                 style={{
                   ...styles.viewButton,
@@ -1013,13 +1023,77 @@ const HashtagTimeline = () => {
             onBackToTimeline={() => setCurrentView("timeline")}
           />
         ) : currentView === "wiki" ? (
-          // 新しく追加する Wiki ビュー
           <WikiBrowser
             user={user}
             wikiData={wikiData}
             onImportEvent={handleWikiEventImport}
             onBackToTimeline={() => setCurrentView("timeline")}
           />
+        ) : currentView === "event" ? ( // ← 追加
+          // イベントビュー
+          <div
+            ref={timelineRef}
+            style={styles.timeline}
+            onWheel={handleWheel}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onDoubleClick={handleDoubleClick}
+          >
+            <EventView
+              events={events}
+              timelines={Timelines}
+              currentPixelsPerYear={currentPixelsPerYear}
+              panX={panX}
+              panY={panY}
+              scale={scale}
+              highlightedEvents={highlightedEvents}
+              onEventDoubleClick={handleDoubleClick}
+              onEventDrag={handleDragMouseDown}
+              calculateTextWidth={calculateTextWidth}
+            />
+
+            {/* 既存の共通UI要素も表示 */}
+            <div className="floating-panel">
+              <button style={styles.addButton} onClick={openNewEventModal}>
+                + イベントを追加
+              </button>
+            </div>
+
+            <SearchPanel
+              searchTerm={searchTerm}
+              highlightedEvents={highlightedEvents}
+              onSearchChange={handleSearchChange}
+              onCreateTimeline={createTimeline}
+              onDeleteTimeline={deleteTimeline}
+              getTopTagsFromSearch={getTopTagsFromSearch}
+              styles={styles}
+            />
+
+            {/* ドラッグ中のプレビュー */}
+            {isDragActive && dragState.draggedItem && (
+              <div
+                style={{
+                  position: "fixed",
+                  left: dragState.startPosition.x - 50,
+                  top: dragState.startPosition.y - 15,
+                  zIndex: 9999,
+                  pointerEvents: "none",
+                  opacity: 0.9,
+                  backgroundColor: "#3b82f6",
+                  color: "white",
+                  padding: "6px 12px",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  fontWeight: "500",
+                  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+                }}
+              >
+                📱 {dragState.draggedItem.title}
+              </div>
+            )}
+          </div>
         ) : (
           // 年表ビュー
           <div
