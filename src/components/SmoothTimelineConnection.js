@@ -6,39 +6,40 @@ export const SmoothTimelineConnection = ({
   panY, 
   displayState, 
   onHover, 
-  onClick 
+  onClick,
+  zIndex = 3 
 }) => {
   if (!timeline.points || timeline.points.length < 2) return null;
 
-  // 表示状態に基づくスタイル
+  // 表示状態に基づくスタイル（太く、色付きに変更）
   const getConnectionStyle = () => {
     switch (displayState) {
       case 'selected':
         return {
-          strokeWidth: 4,
+          strokeWidth: 6,
           opacity: 1.0,
           color: timeline.color,
           glowEffect: true,
         };
       case 'hovered':
         return {
-          strokeWidth: 3,
-          opacity: 0.8,
+          strokeWidth: 5,
+          opacity: 0.9,
           color: timeline.color,
           glowEffect: false,
         };
       case 'dimmed':
         return {
-          strokeWidth: 1,
-          opacity: 0.2,
-          color: '#ccc',
+          strokeWidth: 2,
+          opacity: 0.3,
+          color: timeline.color,
           glowEffect: false,
         };
       default:
         return {
-          strokeWidth: 1,
-          opacity: 0.4,
-          color: '#ddd',
+          strokeWidth: 3, // デフォルトも太くする
+          opacity: 0.7,   // 色も見えるようにする
+          color: timeline.color,
           glowEffect: false,
         };
     }
@@ -66,7 +67,6 @@ export const SmoothTimelineConnection = ({
         path += `M ${point.x - horizontalExtend} ${point.y} L ${point.x} ${point.y}`;
       } else {
         const prevPoint = adjustedPoints[i - 1];
-        const midX = (prevPoint.x + point.x) / 2;
         
         // 滑らかな曲線で接続
         const cp1x = prevPoint.x + horizontalExtend;
@@ -94,14 +94,14 @@ export const SmoothTimelineConnection = ({
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: displayState === 'normal' ? 'auto' : 'none',
-        zIndex: 3,
+        pointerEvents: 'auto', // 常にイベント処理を有効にする
+        zIndex: zIndex, // 明示的にzIndexを制御
       }}
     >
       <defs>
         {style.glowEffect && (
           <filter id={`glow-${timeline.id}`}>
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
             <feMerge> 
               <feMergeNode in="coloredBlur"/>
               <feMergeNode in="SourceGraphic"/> 
@@ -110,15 +110,23 @@ export const SmoothTimelineConnection = ({
         )}
       </defs>
 
-      {/* クリック可能な透明な太い線（ホバー/クリック用） */}
+      {/* クリック可能な透明な非常に太い線（ホバー/クリック用） - ちらつき防止 */}
       <path
         d={pathD}
         stroke="transparent"
-        strokeWidth="12"
+        strokeWidth="20" // さらに太い判定領域
         fill="none"
-        style={{ cursor: 'pointer' }}
-        onMouseEnter={() => onHover(timeline.id)}
-        onMouseLeave={() => onHover(null)}
+        style={{ 
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => {
+          e.stopPropagation();
+          onHover(timeline.id);
+        }}
+        onMouseLeave={(e) => {
+          e.stopPropagation();
+          onHover(null);
+        }}
         onClick={(e) => {
           e.stopPropagation();
           onClick(timeline.id);
@@ -137,7 +145,7 @@ export const SmoothTimelineConnection = ({
         filter={style.glowEffect ? `url(#glow-${timeline.id})` : undefined}
         style={{
           transition: 'all 0.2s ease',
-          pointerEvents: 'none',
+          pointerEvents: 'none', // 表示線はクリックイベントを受けない
         }}
       />
 
@@ -148,11 +156,15 @@ export const SmoothTimelineConnection = ({
             key={index}
             cx={point.x}
             cy={point.y + panY}
-            r="3"
+            r="4" // 少し大きくする
             fill={timeline.color}
             stroke="white"
-            strokeWidth="1"
+            strokeWidth="2"
             opacity={style.opacity}
+            style={{
+              filter: style.glowEffect ? `url(#glow-${timeline.id})` : undefined,
+              pointerEvents: 'none',
+            }}
           />
         ))
       }

@@ -78,7 +78,7 @@ export const EnhancedEventCard = ({
           top: event.adjustedPosition.y + panY + "px",
           transform: "translateX(-50%)",
           cursor: "ns-resize",
-          zIndex: isTimelineHighlighted ? 6 : (isHighlighted ? 5 : 4),
+          zIndex: isTimelineHighlighted ? 25 : (isHighlighted ? 24 : 23), // 年表線より確実に上に
           textAlign: "center",
           userSelect: "none",
           transition: "all 0.2s ease",

@@ -132,8 +132,8 @@ export const EventView = ({
       {/* 現在線 */}
       {currentYearLine}
       
-      {/* 滑らかな年表線（画像参考） */}
-      {timelineConnections.map(timeline => (
+      {/* 滑らかな年表線（画像参考） - zIndexを個別に設定 */}
+      {timelineConnections.map((timeline, index) => (
         <SmoothTimelineConnection 
           key={timeline.id} 
           timeline={timeline} 
@@ -141,25 +141,30 @@ export const EventView = ({
           displayState={getTimelineDisplayState(timeline.id)}
           onHover={handleTimelineHover}
           onClick={handleTimelineClick}
+          zIndex={10 + index} // 各年表線に異なるzIndexを割り当て
         />
       ))}
       
-      {/* イベント表示 */}
-      {eventPositions.map((event) => (
-        <EnhancedEventCard
-          key={event.id}
-          event={event}
-          isHighlighted={highlightedEvents.has(event.id)}
-          isTimelineHighlighted={
-            selectedTimeline === event.timelineInfo?.timelineId ||
-            hoveredTimeline === event.timelineInfo?.timelineId
-          }
-          onDoubleClick={onEventDoubleClick}
-          onMouseDown={onEventDrag}
-          panY={panY}
-          calculateTextWidth={calculateTextWidth}
-        />
-      ))}
+      {/* イベント表示 - 年表線より上のレイヤーに配置 */}
+      {eventPositions.map((event) => {
+        // 複数年表対応の強調判定
+        const isTimelineHighlighted = event.timelineInfos?.some(info =>
+          selectedTimeline === info.timelineId || hoveredTimeline === info.timelineId
+        );
+
+        return (
+          <EnhancedEventCard
+            key={event.id}
+            event={event}
+            isHighlighted={highlightedEvents.has(event.id)}
+            isTimelineHighlighted={isTimelineHighlighted}
+            onDoubleClick={onEventDoubleClick}
+            onMouseDown={onEventDrag}
+            panY={panY}
+            calculateTextWidth={calculateTextWidth}
+          />
+        );
+      })}
     </>
   );
 };
