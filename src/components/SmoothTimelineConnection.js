@@ -1,4 +1,4 @@
-// src/components/SmoothTimelineConnection.js
+// src/components/SmoothTimelineConnection.js - 完全修正版
 import React from 'react';
 
 export const SmoothTimelineConnection = ({ 
@@ -7,38 +7,41 @@ export const SmoothTimelineConnection = ({
   displayState, 
   onHover, 
   onClick,
-  zIndex = 3 
+  zIndex = 3,
+  eventSizeScale = { scale: 1.0, fontSize: 11 }
 }) => {
   if (!timeline.points || timeline.points.length < 2) return null;
 
-  // 表示状態に基づくスタイル（太く、色付きに変更）
+  // 表示状態に基づくスタイル
   const getConnectionStyle = () => {
+    const baseWidth = 3 * eventSizeScale.scale;
+    
     switch (displayState) {
       case 'selected':
         return {
-          strokeWidth: 6,
+          strokeWidth: Math.max(2, baseWidth * 2),
           opacity: 1.0,
           color: timeline.color,
           glowEffect: true,
         };
       case 'hovered':
         return {
-          strokeWidth: 5,
+          strokeWidth: Math.max(2, baseWidth * 1.6),
           opacity: 0.9,
           color: timeline.color,
           glowEffect: false,
         };
       case 'dimmed':
         return {
-          strokeWidth: 2,
+          strokeWidth: Math.max(1, baseWidth * 0.6),
           opacity: 0.3,
           color: timeline.color,
           glowEffect: false,
         };
       default:
         return {
-          strokeWidth: 3, // デフォルトも太くする
-          opacity: 0.7,   // 色も見えるようにする
+          strokeWidth: Math.max(1, baseWidth),
+          opacity: 0.7,
           color: timeline.color,
           glowEffect: false,
         };
@@ -47,44 +50,56 @@ export const SmoothTimelineConnection = ({
 
   const style = getConnectionStyle();
 
-  // 滑らかな曲線パス生成（画像を参考に）
-  const generateSmoothPath = (points) => {
+  // イベントボックスの左右から横方向に伸ばす接続パス生成
+  const generateHorizontalConnectionPath = (points) => {
     if (points.length < 2) return '';
 
     let path = '';
     const adjustedPoints = points.map(p => ({
       x: p.x,
-      y: p.y + panY
+      y: p.y + panY,
+      event: p.event
     }));
 
-    // 各イベントから横に伸ばしてから接続
+    // イベントの推定幅を計算
+    const getEventWidth = (point) => {
+      const baseWidth = 80;
+      return Math.max(120 * eventSizeScale.scale, (baseWidth + 16) * eventSizeScale.scale);
+    };
+
     for (let i = 0; i < adjustedPoints.length; i++) {
       const point = adjustedPoints[i];
-      const horizontalExtend = 30; // 横に伸ばす距離
-
+      const eventWidth = getEventWidth(point);
+      const horizontalExtend = Math.max(20, eventWidth / 2 + 10); // ボックス端から少し伸ばす
+      
       if (i === 0) {
-        // 最初のポイント: 横線から開始
-        path += `M ${point.x - horizontalExtend} ${point.y} L ${point.x} ${point.y}`;
+        // 最初のポイント: 右端から開始
+        path += `M ${point.x + horizontalExtend} ${point.y}`;
       } else {
         const prevPoint = adjustedPoints[i - 1];
+        const prevEventWidth = getEventWidth(prevPoint);
+        const prevExtend = Math.max(20, prevEventWidth / 2 + 10);
         
-        // 滑らかな曲線で接続
-        const cp1x = prevPoint.x + horizontalExtend;
-        const cp1y = prevPoint.y;
-        const cp2x = point.x - horizontalExtend;
-        const cp2y = point.y;
+        // 前のポイントの右端から現在のポイントの左端へ滑らかに接続
+        const startX = prevPoint.x + prevExtend;
+        const endX = point.x - horizontalExtend;
         
-        // 3次ベジエ曲線
-        path += ` L ${cp1x} ${cp1y}`;
-        path += ` C ${cp1x + 20} ${cp1y}, ${cp2x - 20} ${cp2y}, ${cp2x} ${cp2y}`;
-        path += ` L ${point.x} ${point.y}`;
+        // 制御点で滑らかなカーブを作成
+        const midX = (startX + endX) / 2;
+        const cp1X = startX + Math.min(50, Math.abs(endX - startX) / 3);
+        const cp2X = endX - Math.min(50, Math.abs(endX - startX) / 3);
+        
+        // ベジエ曲線で接続
+        path += ` L ${startX} ${prevPoint.y}`;
+        path += ` C ${cp1X} ${prevPoint.y}, ${cp2X} ${point.y}, ${endX} ${point.y}`;
+        path += ` L ${point.x - horizontalExtend} ${point.y}`;
       }
     }
 
     return path;
   };
 
-  const pathD = generateSmoothPath(timeline.points);
+  const pathD = generateHorizontalConnectionPath(timeline.points);
 
   return (
     <svg
@@ -94,8 +109,8 @@ export const SmoothTimelineConnection = ({
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: 'auto', // 常にイベント処理を有効にする
-        zIndex: zIndex, // 明示的にzIndexを制御
+        pointerEvents: 'auto',
+        zIndex: zIndex,
       }}
     >
       <defs>
@@ -110,15 +125,13 @@ export const SmoothTimelineConnection = ({
         )}
       </defs>
 
-      {/* クリック可能な透明な非常に太い線（ホバー/クリック用） - ちらつき防止 */}
+      {/* ホバー/クリック判定用の透明な太い線 */}
       <path
         d={pathD}
         stroke="transparent"
-        strokeWidth="20" // さらに太い判定領域
+        strokeWidth="20"
         fill="none"
-        style={{ 
-          cursor: 'pointer',
-        }}
+        style={{ cursor: 'pointer' }}
         onMouseEnter={(e) => {
           e.stopPropagation();
           onHover(timeline.id);
@@ -144,22 +157,22 @@ export const SmoothTimelineConnection = ({
         strokeLinejoin="round"
         filter={style.glowEffect ? `url(#glow-${timeline.id})` : undefined}
         style={{
-          transition: 'all 0.2s ease',
-          pointerEvents: 'none', // 表示線はクリックイベントを受けない
+          transition: 'all 0.1s ease', // パン遅延を軽減
+          pointerEvents: 'none',
         }}
       />
 
-      {/* 接続ポイント（選択/ホバー時のみ表示） */}
+      {/* 接続ポイント */}
       {(displayState === 'selected' || displayState === 'hovered') && 
         timeline.points.map((point, index) => (
           <circle
             key={index}
             cx={point.x}
             cy={point.y + panY}
-            r="4" // 少し大きくする
+            r={Math.max(2, 4 * eventSizeScale.scale)}
             fill={timeline.color}
             stroke="white"
-            strokeWidth="2"
+            strokeWidth={Math.max(1, 2 * eventSizeScale.scale)}
             opacity={style.opacity}
             style={{
               filter: style.glowEffect ? `url(#glow-${timeline.id})` : undefined,

@@ -1,4 +1,4 @@
-// src/components/EventView.js - 強化版
+// src/components/EventView.js - 完全修正版
 import React, { useCallback, useState, useMemo } from 'react';
 import { EnhancedEventCard } from './EnhancedEventCard';
 import { SmoothTimelineConnection } from './SmoothTimelineConnection';
@@ -29,6 +29,25 @@ export const EventView = ({
     panX,
     panY
   );
+
+  // 画面内のイベント数に基づくサイズ調整
+  const getEventSizeScale = useMemo(() => {
+    const viewportWidth = window.innerWidth;
+    const visibleEvents = eventPositions.filter(event => {
+      const eventX = event.adjustedPosition.x;
+      return eventX > -panX - 200 && eventX < viewportWidth - panX + 200;
+    });
+
+    const visibleCount = visibleEvents.length;
+    
+    // 段階的なサイズ調整
+    if (visibleCount <= 3) return { scale: 1.4, fontSize: 13, spacing: 80 };      // 極少: 最大
+    if (visibleCount <= 8) return { scale: 1.2, fontSize: 12, spacing: 70 };      // 少ない: 大きく
+    if (visibleCount <= 15) return { scale: 1.0, fontSize: 11, spacing: 60 };     // 普通: 標準
+    if (visibleCount <= 25) return { scale: 0.85, fontSize: 10, spacing: 50 };    // 多い: 小さく
+    if (visibleCount <= 40) return { scale: 0.7, fontSize: 9, spacing: 45 };      // 非常に多い: より小さく
+    return { scale: 0.6, fontSize: 8, spacing: 40 };                              // 極多: 最小
+  }, [eventPositions, panX]);
 
   // 年表のクリック/ホバーハンドリング
   const handleTimelineHover = useCallback((timelineId) => {
@@ -132,20 +151,24 @@ export const EventView = ({
       {/* 現在線 */}
       {currentYearLine}
       
-      {/* 滑らかな年表線（画像参考） - zIndexを個別に設定 */}
-      {timelineConnections.map((timeline, index) => (
-        <SmoothTimelineConnection 
-          key={timeline.id} 
-          timeline={timeline} 
-          panY={panY}
-          displayState={getTimelineDisplayState(timeline.id)}
-          onHover={handleTimelineHover}
-          onClick={handleTimelineClick}
-          zIndex={10 + index} // 各年表線に異なるzIndexを割り当て
-        />
-      ))}
+      {/* 滑らかな年表線 - 逆順で描画してホバー問題を解決 */}
+      {timelineConnections.slice().reverse().map((timeline, reverseIndex) => {
+        const originalIndex = timelineConnections.length - 1 - reverseIndex;
+        return (
+          <SmoothTimelineConnection 
+            key={timeline.id} 
+            timeline={timeline} 
+            panY={panY}
+            displayState={getTimelineDisplayState(timeline.id)}
+            onHover={handleTimelineHover}
+            onClick={handleTimelineClick}
+            zIndex={5 + originalIndex} // 適切なzIndex順序
+            eventSizeScale={getEventSizeScale}
+          />
+        );
+      })}
       
-      {/* イベント表示 - 年表線より上のレイヤーに配置 */}
+      {/* イベント表示 */}
       {eventPositions.map((event) => {
         // 複数年表対応の強調判定
         const isTimelineHighlighted = event.timelineInfos?.some(info =>
@@ -162,6 +185,7 @@ export const EventView = ({
             onMouseDown={onEventDrag}
             panY={panY}
             calculateTextWidth={calculateTextWidth}
+            sizeScale={getEventSizeScale}
           />
         );
       })}

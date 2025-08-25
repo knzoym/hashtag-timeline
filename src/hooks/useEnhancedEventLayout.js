@@ -1,9 +1,10 @@
-// src/hooks/useEnhancedEventLayout.js
+// src/hooks/useEnhancedEventLayout.js - 検索問題修正版
 import { useMemo } from 'react';
 import { TIMELINE_CONFIG } from '../constants/timelineConfig';
 
 export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, panX, panY) => {
   return useMemo(() => {
+    // 依存関係を明示的に定義して検索問題を解決
     const eventTimelineMap = new Map(); // eventId -> [timelineInfo1, timelineInfo2, ...]
 
     // 複数年表対応：各イベントが属する全ての年表を記録
@@ -26,7 +27,7 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
         });
     });
 
-    // 全てのイベントを統合（重複除去）
+    // 全てのイベントを統合
     const allEventIds = new Set([
       ...events.map(e => e.id),
       ...Array.from(eventTimelineMap.keys())
@@ -38,15 +39,16 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
       
       return {
         ...baseEvent,
-        timelineInfos, // 複数の年表情報を配列で保持
+        timelineInfos,
       };
-    }).filter(Boolean).sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+    }).filter(event => event && event.startDate) // null/undefinedチェック追加
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
-    // 改善された配置アルゴリズム（複数年表を考慮）
+    // 配置アルゴリズム
     const eventPositions = [];
     let currentLevel = 0;
 
-    // 年表別にグループ化（イベントが複数年表に属する場合は全てに含める）
+    // 年表別にグループ化
     const timelineEventGroups = new Map();
     timelines.forEach(timeline => {
       if (!timeline.isVisible) return;
@@ -60,7 +62,7 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
       }
     });
 
-    // 年表ごとにまとめて配置（同じ年表内のイベントをy座標近くに）
+    // 年表ごとにまとめて配置
     const processedEventIds = new Set();
     
     timelineEventGroups.forEach((timelineEvents, timelineId) => {
@@ -68,7 +70,7 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
       
       timelineEvents.forEach((event, index) => {
         if (processedEventIds.has(event.id)) {
-          return; // 既に配置済みのイベントはスキップ
+          return;
         }
 
         const eventX = (event.startDate.getFullYear() - (-5000)) * currentPixelsPerYear + panX;
@@ -80,7 +82,6 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
           const testY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + testLevel * 60;
           let hasCollision = false;
 
-          // 他のイベントとの衝突チェック
           for (const pos of eventPositions) {
             if (Math.abs(eventX - pos.adjustedPosition.x) < 120 && 
                 Math.abs(testY - pos.adjustedPosition.y) < 50) {
@@ -96,7 +97,6 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
           }
         }
 
-        // 衝突回避できない場合は新しいレベルを使用
         if (eventY === undefined) {
           while (true) {
             currentLevel++;
@@ -127,20 +127,19 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
         processedEventIds.add(event.id);
       });
 
-      currentLevel = Math.max(currentLevel, baseLevel + 2); // 年表間のスペース確保
+      currentLevel = Math.max(currentLevel, baseLevel + 2);
     });
 
     // 年表に属さないイベントを配置
     allEventsForLayout.forEach(event => {
       if (processedEventIds.has(event.id) || event.timelineInfos.length > 0) {
-        return; // 既に配置済みまたは年表所属イベントはスキップ
+        return;
       }
 
       const eventX = (event.startDate.getFullYear() - (-5000)) * currentPixelsPerYear + panX;
       let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
       let level = 0;
 
-      // 衝突回避
       while (level < 50) {
         const testY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * 60;
         let hasCollision = false;
@@ -167,7 +166,7 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
       });
     });
 
-    // 年表接続情報の生成（複数年表対応）
+    // 年表接続情報の生成
     const timelineConnections = [];
     
     timelines.forEach(timeline => {
@@ -175,7 +174,6 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
 
       const connectionPoints = [];
       
-      // この年表に属する全てのイベントを取得
       eventPositions.forEach(eventPos => {
         const belongsToThisTimeline = eventPos.timelineInfos?.some(
           info => info.timelineId === timeline.id
@@ -190,7 +188,6 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
         }
       });
 
-      // 時系列順にソート
       connectionPoints.sort((a, b) => a.event.startDate.getTime() - b.event.startDate.getTime());
 
       if (connectionPoints.length > 1) {
@@ -207,5 +204,5 @@ export const useEnhancedEventLayout = (events, timelines, currentPixelsPerYear, 
       eventPositions,
       timelineConnections,
     };
-  }, [events, timelines, currentPixelsPerYear, panX, panY]);
+  }, [events, timelines, currentPixelsPerYear, panX, panY]); // 明示的な依存関係
 };
