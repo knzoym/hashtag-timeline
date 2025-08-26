@@ -24,6 +24,7 @@ import logoImage from "../assets/logo.png";
 import WikiBrowser from "../components/WikiBrowser";
 import { useWikiData } from "../hooks/useWikiData";
 import { EventView } from "../components/EventView";
+import { supabase } from '../lib/supabase';
 
 const HashtagTimeline = () => {
   // 認証フック
@@ -1030,7 +1031,7 @@ const HashtagTimeline = () => {
             user={user}
             wikiData={{
               ...wikiData,
-              supabaseClient: supabaseClient, // 🆕 追加
+              supabaseClient: supabase, // 🆕 追加
             }}
             onImportEvent={handleWikiEventImport}
             onBackToTimeline={() => setCurrentView("timeline")}
