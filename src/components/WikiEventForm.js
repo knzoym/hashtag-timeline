@@ -1,4 +1,4 @@
-// src/components/WikiEventForm.js
+// src/components/WikiEventForm.js の修正版
 import React, { useState, useEffect } from 'react';
 import { extractTagsFromDescription } from '../utils/timelineUtils';
 
@@ -13,11 +13,15 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
   // 編集時の初期値設定
   useEffect(() => {
     if (event) {
+      // date_startまたはstart_dateから日付を取得
+      const eventDate = event.date_start || event.start_date;
+      const eventTags = Array.isArray(event.tags) ? event.tags : [];
+      
       setFormData({
         title: event.title || '',
-        startDate: new Date(event.start_date) || new Date(),
+        startDate: eventDate ? new Date(eventDate) : new Date(),
         description: event.description || '',
-        manualTags: event.tags || []
+        manualTags: eventTags
       });
     } else {
       setFormData({
@@ -241,6 +245,23 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
     disabledButton: {
       opacity: 0.6,
       cursor: 'not-allowed'
+    },
+    previewSection: {
+      marginTop: '16px',
+      padding: '12px',
+      backgroundColor: '#f8fafc',
+      borderRadius: '6px',
+      border: '1px solid #e2e8f0'
+    },
+    previewTitle: {
+      fontSize: '12px',
+      fontWeight: '600',
+      color: '#475569',
+      marginBottom: '8px'
+    },
+    previewContent: {
+      fontSize: '11px',
+      color: '#64748b'
     }
   };
 
@@ -347,6 +368,23 @@ const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
               💡 Ctrl/Cmd+Enter で保存
             </div>
           </div>
+
+          {/* プレビューセクション */}
+          {(formData.title || formData.description || getAllTags().length > 0) && (
+            <div style={styles.previewSection}>
+              <div style={styles.previewTitle}>プレビュー</div>
+              <div style={styles.previewContent}>
+                <div><strong>タイトル:</strong> {formData.title || '（未入力）'}</div>
+                <div><strong>日付:</strong> {formData.startDate.getFullYear()}年</div>
+                {formData.description && (
+                  <div><strong>説明:</strong> {formData.description}</div>
+                )}
+                {getAllTags().length > 0 && (
+                  <div><strong>タグ:</strong> {getAllTags().join(', ')}</div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* ボタン */}
           <div style={styles.buttonContainer}>

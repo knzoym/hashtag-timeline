@@ -1,10 +1,20 @@
-// src/components/WikiEventCard.js
+// src/components/WikiEventCard.js の修正版
 import React from 'react';
 
-const WikiEventCard = ({ event, onImport, onEdit, canEdit }) => {
+const WikiEventCard = ({ event, onImport, onEdit, canEdit, onClick }) => {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     return date.getFullYear();
+  };
+
+  // date_startまたはstart_dateから日付を取得
+  const getEventDate = () => {
+    return event.date_start || event.start_date;
+  };
+
+  // タグの安全な処理
+  const getEventTags = () => {
+    return Array.isArray(event.tags) ? event.tags : [];
   };
 
   const styles = {
@@ -108,19 +118,25 @@ const WikiEventCard = ({ event, onImport, onEdit, canEdit }) => {
       : 'none';
   };
 
+  const eventDate = getEventDate();
+  const eventTags = getEventTags();
+
   return (
     <div 
       style={styles.card}
       onMouseEnter={(e) => handleCardHover(e, true)}
       onMouseLeave={(e) => handleCardHover(e, false)}
+      onClick={onClick}
     >
       <div style={styles.cardHeader}>
         <div style={{ flex: 1 }}>
           <div style={styles.titleContainer}>
             <h3 style={styles.title}>{event.title}</h3>
-            <span style={styles.year}>
-              {formatDate(event.start_date)}年
-            </span>
+            {eventDate && (
+              <span style={styles.year}>
+                {formatDate(eventDate)}年
+              </span>
+            )}
           </div>
           
           {event.description && (
@@ -129,10 +145,10 @@ const WikiEventCard = ({ event, onImport, onEdit, canEdit }) => {
             </p>
           )}
           
-          {event.tags && event.tags.length > 0 && (
+          {eventTags.length > 0 && (
             <div style={styles.tagsContainer}>
-              {event.tags.map(tag => (
-                <span key={tag} style={styles.tag}>
+              {eventTags.map((tag, index) => (
+                <span key={`${tag}-${index}`} style={styles.tag}>
                   #{tag}
                 </span>
               ))}
@@ -140,11 +156,13 @@ const WikiEventCard = ({ event, onImport, onEdit, canEdit }) => {
           )}
           
           <div style={styles.metadata}>
-            <span>編集回数: {event.edit_count || 1}</span>
-            <span>最終更新: {new Date(event.updated_at).toLocaleDateString('ja-JP')}</span>
-            <span>
-              作成者: {event.profiles?.display_name || event.profiles?.username || '匿名'}
-            </span>
+            <span>ID: {event.id}</span>
+            {event.created_at && (
+              <span>作成: {new Date(event.created_at).toLocaleDateString('ja-JP')}</span>
+            )}
+            {event.updated_at && (
+              <span>更新: {new Date(event.updated_at).toLocaleDateString('ja-JP')}</span>
+            )}
           </div>
         </div>
         
@@ -166,7 +184,7 @@ const WikiEventCard = ({ event, onImport, onEdit, canEdit }) => {
               }}
               onClick={canEdit ? onEdit : undefined}
               disabled={!canEdit}
-              title={canEdit ? '編集する' : '自分が作成したイベントのみ編集できます'}
+              title={canEdit ? '編集する' : '編集機能は現在無効です'}
               onMouseEnter={(e) => {
                 if (canEdit) {
                   e.target.style.backgroundColor = '#d97706';

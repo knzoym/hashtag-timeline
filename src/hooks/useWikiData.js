@@ -1,4 +1,3 @@
-// src/hooks/useWikiData.js
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -6,30 +5,36 @@ export const useWikiData = (user) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 共用イベント取得
+  // 共用イベント取得（public.eventsテーブルから）
   const getSharedEvents = useCallback(async (searchTerm = '', limit = 50) => {
     try {
       setLoading(true);
       setError(null);
 
       let query = supabase
-        .from('shared_events')
-        .select(`
-          *,
-          profiles:created_by(display_name, username)
-        `)
-        .order('updated_at', { ascending: false })
+        .from('events') // テーブル名をeventsに変更
+        .select('*')
+        .order('created_at', { ascending: false })
         .limit(limit);
 
       if (searchTerm.trim()) {
-        // タイトルまたはタグで検索
+        // タイトルまたはタグで検索（PostgreSQLの配列検索を使用）
         query = query.or(`title.ilike.%${searchTerm}%,tags.cs.{${searchTerm}}`);
       }
 
       const { data, error } = await query;
       if (error) throw error;
 
-      return data || [];
+      // データ形式を統一（startDateに変換）
+      const formattedData = (data || []).map(event => ({
+        ...event,
+        start_date: event.date_start || event.start_date, // date_startをstart_dateに統一
+        tags: Array.isArray(event.tags) ? event.tags : [], // tagsが配列でない場合は空配列
+        created_by: event.created_at, // 作成者情報がない場合の代替
+        profiles: null // プロファイル情報は別途取得
+      }));
+
+      return formattedData;
     } catch (err) {
       console.error('共用イベント取得エラー:', err);
       setError(err.message);
@@ -48,27 +53,18 @@ export const useWikiData = (user) => {
       setError(null);
 
       const { data, error } = await supabase
-        .from('shared_events')
+        .from('events')
         .insert({
           title: eventData.title,
-          start_date: eventData.startDate.toISOString().split('T')[0],
+          date_start: eventData.startDate.toISOString().split('T')[0], // date_startカラムに保存
+          date_end: eventData.startDate.toISOString().split('T')[0], // 同じ日付で設定
           description: eventData.description || '',
           tags: eventData.tags || [],
-          created_by: user.id
+          position: { x: 0, y: 0 } // デフォルト位置
         })
-        .select(`
-          *,
-          profiles:created_by(display_name, username)
-        `);
+        .select();
 
       if (error) throw error;
-
-      // 編集履歴に記録
-      await supabase.from('event_edits').insert({
-        event_id: data[0].id,
-        user_id: user.id,
-        edit_type: 'create'
-      });
 
       return data[0];
     } catch (err) {
@@ -88,27 +84,26 @@ export const useWikiData = (user) => {
       setLoading(true);
       setError(null);
 
+      // 更新データの準備
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString()
+      };
+
+      // startDateがある場合はdate_startに変換
+      if (updates.startDate) {
+        updateData.date_start = updates.startDate.toISOString().split('T')[0];
+        updateData.date_end = updates.startDate.toISOString().split('T')[0];
+        delete updateData.startDate; // 不要なフィールドを削除
+      }
+
       const { data, error } = await supabase
-        .from('shared_events')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-          edit_count: supabase.raw('edit_count + 1')
-        })
+        .from('events')
+        .update(updateData)
         .eq('id', eventId)
-        .select(`
-          *,
-          profiles:created_by(display_name, username)
-        `);
+        .select();
 
       if (error) throw error;
-
-      // 編集履歴に記録
-      await supabase.from('event_edits').insert({
-        event_id: eventId,
-        user_id: user.id,
-        edit_type: 'update'
-      });
 
       return data[0];
     } catch (err) {
@@ -126,10 +121,10 @@ export const useWikiData = (user) => {
     return {
       id: Date.now(), // 新しいIDを生成
       title: sharedEvent.title,
-      startDate: new Date(sharedEvent.start_date),
-      endDate: new Date(sharedEvent.start_date),
+      startDate: new Date(sharedEvent.date_start || sharedEvent.start_date),
+      endDate: new Date(sharedEvent.date_end || sharedEvent.date_start || sharedEvent.start_date),
       description: sharedEvent.description || '',
-      tags: sharedEvent.tags || [],
+      tags: Array.isArray(sharedEvent.tags) ? sharedEvent.tags : [],
       // 出典情報を残す
       source: {
         type: 'wiki',
@@ -139,55 +134,41 @@ export const useWikiData = (user) => {
     };
   }, []);
 
-  // 編集履歴取得
-  const getEventHistory = useCallback(async (eventId) => {
-    try {
-      const { data, error } = await supabase
-        .from('event_edits')
-        .select(`
-          *,
-          profiles:user_id(display_name, username)
-        `)
-        .eq('event_id', eventId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data || [];
-    } catch (err) {
-      console.error('履歴取得エラー:', err);
-      return [];
-    }
-  }, []);
-
-  // 最近の編集活動取得
-  const getRecentActivity = useCallback(async (limit = 20) => {
-    try {
-      const { data, error } = await supabase
-        .from('event_edits')
-        .select(`
-          *,
-          shared_events!inner(title),
-          profiles:user_id(display_name, username)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(limit);
-
-      if (error) throw error;
-      return data || [];
-    } catch (err) {
-      console.error('活動履歴取得エラー:', err);
-      return [];
-    }
-  }, []);
-
   // 人気のタグ取得
   const getPopularTags = useCallback(async (limit = 10) => {
     try {
-      const { data, error } = await supabase.rpc('get_popular_tags', {
+      // PostgreSQLでタグの使用頻度を集計
+      const { data, error } = await supabase.rpc('get_popular_event_tags', {
         tag_limit: limit
       });
 
-      if (error) throw error;
+      if (error) {
+        // RPC関数が存在しない場合は、JavaScriptで処理
+        console.warn('RPC関数が見つかりません。代替処理を実行します。');
+        
+        const { data: events, error: eventsError } = await supabase
+          .from('events')
+          .select('tags');
+        
+        if (eventsError) throw eventsError;
+        
+        // タグの使用頻度を計算
+        const tagCounts = {};
+        events.forEach(event => {
+          if (Array.isArray(event.tags)) {
+            event.tags.forEach(tag => {
+              tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+            });
+          }
+        });
+        
+        // 上位のタグを返す
+        return Object.entries(tagCounts)
+          .sort(([,a], [,b]) => b - a)
+          .slice(0, limit)
+          .map(([tag, count]) => ({ tag, count }));
+      }
+
       return data || [];
     } catch (err) {
       console.error('人気タグ取得エラー:', err);
@@ -202,8 +183,6 @@ export const useWikiData = (user) => {
     createSharedEvent,
     updateSharedEvent,
     importEventToPersonal,
-    getEventHistory,
-    getRecentActivity,
     getPopularTags
   };
 };

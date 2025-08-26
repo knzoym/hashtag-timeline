@@ -58,6 +58,9 @@ const HashtagTimeline = () => {
   const lastMouseY = useRef(0);
   const isShiftPressed = useRef(false);
 
+  const [wikiView, setWikiView] = useState("browser"); // 'browser' | 'event-detail'
+  const [selectedWikiEvent, setSelectedWikiEvent] = useState(null);
+
   // ログイン時のプロファイル作成
   useEffect(() => {
     if (user && !syncLoading) {
@@ -1025,9 +1028,16 @@ const HashtagTimeline = () => {
         ) : currentView === "wiki" ? (
           <WikiBrowser
             user={user}
-            wikiData={wikiData}
+            wikiData={{
+              ...wikiData,
+              supabaseClient: supabaseClient, // 🆕 追加
+            }}
             onImportEvent={handleWikiEventImport}
             onBackToTimeline={() => setCurrentView("timeline")}
+            onEventDetail={(event) => {
+              setSelectedWikiEvent(event);
+              setWikiView("event-detail");
+            }}
           />
         ) : currentView === "event" ? ( // ← 追加
           // イベントビュー
