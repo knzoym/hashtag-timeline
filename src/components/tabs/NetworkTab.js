@@ -1,6 +1,6 @@
 // src/components/tabs/NetworkTab.js
 import React from 'react';
-import { useEnhancedEventLayout } from '../../hooks/useEnhancedEventLayout';
+import { useEnhancedEventLayout } from '../../hooks/useEventLayout';
 import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 import { SearchPanel } from '../ui/SearchPanel';
 import { TimelineCard } from '../ui/TimelineCard';
