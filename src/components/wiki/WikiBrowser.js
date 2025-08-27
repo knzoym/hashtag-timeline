@@ -1,8 +1,8 @@
 // src/components/WikiBrowser.js の投票システム統合版
 import React, { useState, useEffect, useCallback } from 'react';
 import WikiEventCard from './WikiEventCard';
-import WikiEventForm from './WikiEventForm';
-import { VersionToggle } from './VotingComponents';
+import WikiEventForm from '../WikiEventForm';
+import { VersionToggle } from '../VotingComponents';
 
 const WikiBrowser = ({ 
   user, 

@@ -1,8 +1,8 @@
 // ================================
 // src/components/EnhancedEventCard.js - 完全修正版
 import React from 'react';
-import { TIMELINE_CONFIG } from '../constants/timelineConfig';
-import { truncateTitle } from '../utils/timelineUtils';
+import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
+import { truncateTitle } from '../../utils/timelineUtils';
 
 export const EnhancedEventCard = ({ 
   event, 

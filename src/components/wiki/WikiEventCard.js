@@ -1,6 +1,6 @@
 // src/components/WikiEventCard.js の投票機能付き拡張版
 import React, { useState, useEffect } from 'react';
-import { VoteButtons, ScoreDisplay, RevisionHistory } from './VotingComponents';
+import { VoteButtons, ScoreDisplay, RevisionHistory } from '../VotingComponents';
 
 const WikiEventCard = ({ 
   event, 
