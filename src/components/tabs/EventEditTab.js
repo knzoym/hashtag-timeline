@@ -1,12 +1,9 @@
-// src/components/tabs/EventEditTab.js
+// src/components/tabs/EventEditTab.js - Scrapbox風編集インターフェース
 import React, { useState, useCallback, useMemo } from 'react';
-import { SearchPanel } from '../ui/SearchPanel';
-import { TimelineCard } from '../ui/TimelineCard';
-import { EventGroupIcon, GroupTooltip, GroupCard } from '../ui/EventGroup';
 
 const EventEditTab = ({
-  events,
-  timelines,
+  events = [],
+  timelines = [],
   user,
   onEventUpdate,
   onEventDelete,
@@ -17,7 +14,7 @@ const EventEditTab = ({
   showRelatedEvents = true,
   onMenuAction
 }) => {
-  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(() => events[0]?.id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
   const [previewMode, setPreviewMode] = useState(false);
@@ -64,11 +61,17 @@ const EventEditTab = ({
       .slice(0, 20);
   }, [searchTerm, events, selectedEventId]);
   
+  // タグを抽出するヘルパー関数
+  const extractTagsFromDescription = useCallback((description) => {
+    if (!description) return [];
+    const tagMatches = description.match(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g);
+    return tagMatches ? tagMatches.map(tag => tag.slice(1)) : [];
+  }, []);
+  
   // タグからリンクを抽出（Scrapbox風）
   const extractTagLinks = useCallback((text) => {
     if (!text || !enableLinking) return text;
     
-    // #タグ のパターンをリンクに変換
     return text.replace(
       /#([\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+)/g,
       (match, tagName) => {
@@ -104,15 +107,10 @@ const EventEditTab = ({
       ...editingEvent,
       // タグを自動抽出して追加
       tags: [
-        // タイトルからのタグ
-        ...(editingEvent.title?.trim() ? [editingEvent.title.trim()] : []),
+        // 手動で追加されたタグ
+        ...(editingEvent.tags || []),
         // 説明文からのタグ
-        ...(extractTagsFromDescription(editingEvent.description || [])),
-        // 手動で追加されたタグ（重複除去）
-        ...(editingEvent.tags || []).filter(tag => 
-          tag !== editingEvent.originalTitle &&
-          !extractTagsFromDescription(editingEvent.originalDescription || '').includes(tag)
-        )
+        ...extractTagsFromDescription(editingEvent.description || '')
       ].filter((tag, index, array) => array.indexOf(tag) === index) // 重複除去
     };
     
@@ -121,7 +119,7 @@ const EventEditTab = ({
     
     onEventUpdate(cleanedEvent);
     setEditingEvent(null);
-  }, [editingEvent, onEventUpdate]);
+  }, [editingEvent, onEventUpdate, extractTagsFromDescription]);
   
   // 編集のキャンセル
   const cancelEdit = useCallback(() => {
@@ -135,7 +133,6 @@ const EventEditTab = ({
     );
     
     if (taggedEvents.length > 0) {
-      // 最初の関連イベントに移動
       setSelectedEventId(taggedEvents[0].id);
     }
   }, [events, selectedEventId]);
@@ -150,6 +147,32 @@ const EventEditTab = ({
       }
     }
   }, [onAddEvent, startEditing]);
+  
+  // 説明文のレンダリング（Scrapbox風リンク処理）
+  const renderDescription = useCallback((description, isEditing = false) => {
+    if (isEditing || !enableLinking) {
+      return description;
+    }
+    
+    const linkedDescription = extractTagLinks(description || '');
+    return (
+      <div 
+        dangerouslySetInnerHTML={{ __html: linkedDescription }}
+        onClick={(e) => {
+          if (e.target.classList.contains('tag-link')) {
+            e.preventDefault();
+            const tagName = e.target.getAttribute('data-tag');
+            handleTagClick(tagName);
+          }
+        }}
+        style={{
+          lineHeight: '1.6',
+          fontSize: '15px',
+          color: '#374151'
+        }}
+      />
+    );
+  }, [enableLinking, extractTagLinks, handleTagClick]);
   
   const styles = {
     container: {
@@ -252,78 +275,68 @@ const EventEditTab = ({
     primaryButton: {
       backgroundColor: '#3b82f6',
       color: 'white',
-      border: '1px solid #3b82f6'
+      borderColor: '#3b82f6'
     },
     dangerButton: {
       backgroundColor: '#ef4444',
       color: 'white',
-      border: '1px solid #ef4444'
+      borderColor: '#ef4444'
     },
-    
-    // エディタコンテンツ
     editorContent: {
       flex: 1,
-      display: 'flex',
-      overflow: 'hidden'
-    },
-    editingArea: {
-      flex: 1,
       padding: '20px',
-      overflow: 'auto'
-    },
-    previewArea: {
-      flex: 1,
-      padding: '20px',
-      backgroundColor: '#ffffff',
-      borderLeft: '1px solid #e5e7eb',
-      overflow: 'auto'
+      overflow: 'auto',
+      backgroundColor: '#ffffff'
     },
     
     // フォーム要素
     formGroup: {
-      marginBottom: '16px'
+      marginBottom: '20px'
     },
     label: {
       display: 'block',
       fontSize: '14px',
-      fontWeight: '500',
+      fontWeight: '600',
       color: '#374151',
-      marginBottom: '4px'
+      marginBottom: '6px'
     },
     input: {
       width: '100%',
-      padding: '8px 12px',
+      padding: '10px 14px',
       border: '1px solid #d1d5db',
       borderRadius: '6px',
-      fontSize: '14px'
+      fontSize: '14px',
+      transition: 'border-color 0.2s'
     },
     textarea: {
       width: '100%',
       minHeight: '200px',
-      padding: '12px',
+      padding: '10px 14px',
       border: '1px solid #d1d5db',
       borderRadius: '6px',
       fontSize: '14px',
+      lineHeight: '1.6',
+      resize: 'vertical',
       fontFamily: 'inherit',
-      resize: 'vertical'
+      transition: 'border-color 0.2s'
     },
-    dateRow: {
+    dateGroup: {
       display: 'flex',
-      gap: '12px'
+      gap: '16px'
     },
-    dateInput: {
+    dateField: {
       flex: 1
     },
     
-    // タグ表示
+    // タグ関連
     tagContainer: {
       display: 'flex',
       flexWrap: 'wrap',
-      gap: '4px',
+      gap: '6px',
       marginTop: '8px'
     },
     tag: {
-      padding: '2px 8px',
+      padding: '4px 8px',
       backgroundColor: '#e5e7eb',
       color: '#374151',
       borderRadius: '12px',
@@ -390,17 +403,11 @@ const EventEditTab = ({
     }
   };
   
-  // タグを抽出するヘルパー関数
-  const extractTagsFromDescription = (description) => {
-    if (!description) return [];
-    const tagMatches = description.match(/#[\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+/g);
-    return tagMatches ? tagMatches.map(tag => tag.slice(1)) : [];
-  };
-  
   return (
     <div style={styles.container}>
       {/* 左サイドバー: イベントリスト */}
       <div style={styles.sidebar}>
+        {/* 検索とイベント作成 */}
         <div style={styles.searchContainer}>
           <input
             type="text"
@@ -415,27 +422,59 @@ const EventEditTab = ({
             onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
             onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
           >
-            + 新しいイベント
+            ➕ 新しいイベント
           </button>
         </div>
         
+        {/* イベントリスト */}
         <div style={styles.eventList}>
-          {/* 検索結果 */}
-          {searchTerm && searchResults.length > 0 && (
+          {searchTerm ? (
             <>
-              <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: '600', color: '#6b7280', backgroundColor: '#f9fafb' }}>
-                検索結果 ({searchResults.length}件)
+              {searchResults.length > 0 && (
+                <>
+                  <div style={{ padding: '8px 16px', fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>
+                    検索結果 ({searchResults.length})
+                  </div>
+                  {searchResults.map(event => (
+                    <div
+                      key={event.id}
+                      onClick={() => setSelectedEventId(event.id)}
+                      style={{
+                        ...styles.eventItem,
+                        ...(selectedEventId === event.id ? styles.eventItemActive : {})
+                      }}
+                      onMouseEnter={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = '#f9fafb')}
+                      onMouseLeave={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = 'transparent')}
+                    >
+                      <div style={styles.eventTitle}>{event.title || '（無題）'}</div>
+                      <div style={styles.eventDate}>
+                        {event.startDate ? event.startDate.toLocaleDateString('ja-JP') : '日付未設定'}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {searchResults.length === 0 && (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>
+                  検索結果がありません
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ padding: '8px 16px', fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>
+                全てのイベント ({events.length})
               </div>
-              {searchResults.map(event => (
+              {events.map(event => (
                 <div
-                  key={`search-${event.id}`}
+                  key={event.id}
                   onClick={() => setSelectedEventId(event.id)}
                   style={{
                     ...styles.eventItem,
                     ...(selectedEventId === event.id ? styles.eventItemActive : {})
                   }}
-                  onMouseEnter={(e) => !selectedEventId === event.id && (e.target.style.backgroundColor = '#f9fafb')}
-                  onMouseLeave={(e) => !selectedEventId === event.id && (e.target.style.backgroundColor = 'transparent')}
+                  onMouseEnter={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = '#f9fafb')}
+                  onMouseLeave={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = 'transparent')}
                 >
                   <div style={styles.eventTitle}>{event.title || '（無題）'}</div>
                   <div style={styles.eventDate}>
@@ -443,36 +482,6 @@ const EventEditTab = ({
                   </div>
                 </div>
               ))}
-              <div style={{ height: '1px', backgroundColor: '#e5e7eb', margin: '8px 0' }} />
-            </>
-          )}
-          
-          {/* 全イベントリスト */}
-          {!searchTerm && (
-            <>
-              <div style={{ padding: '8px 16px', fontSize: '12px', fontWeight: '600', color: '#6b7280', backgroundColor: '#f9fafb' }}>
-                全イベント ({events.length}件)
-              </div>
-              {events
-                .sort((a, b) => (b.startDate || new Date(0)) - (a.startDate || new Date(0)))
-                .map(event => (
-                  <div
-                    key={event.id}
-                    onClick={() => setSelectedEventId(event.id)}
-                    style={{
-                      ...styles.eventItem,
-                      ...(selectedEventId === event.id ? styles.eventItemActive : {})
-                    }}
-                    onMouseEnter={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = '#f9fafb')}
-                    onMouseLeave={(e) => selectedEventId !== event.id && (e.target.style.backgroundColor = 'transparent')}
-                  >
-                    <div style={styles.eventTitle}>{event.title || '（無題）'}</div>
-                    <div style={styles.eventDate}>
-                      {event.startDate ? event.startDate.toLocaleDateString('ja-JP') : '日付未設定'}
-                    </div>
-                  </div>
-                ))
-              }
             </>
           )}
         </div>
@@ -484,7 +493,7 @@ const EventEditTab = ({
           {/* エディタヘッダー */}
           <div style={styles.editorHeader}>
             <div style={styles.editorTitle}>
-              {editingEvent ? '編集中' : selectedEvent.title || '（無題）'}
+              {editingEvent ? '✏️ 編集中' : selectedEvent.title || '（無題）'}
             </div>
             <div style={styles.editorActions}>
               {editingEvent ? (
@@ -492,14 +501,18 @@ const EventEditTab = ({
                   <button
                     onClick={saveEdit}
                     style={{...styles.actionButton, ...styles.primaryButton}}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
                   >
-                    保存
+                    💾 保存
                   </button>
                   <button
                     onClick={cancelEdit}
                     style={styles.actionButton}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
                   >
-                    キャンセル
+                    ❌ キャンセル
                   </button>
                 </>
               ) : (
@@ -507,21 +520,27 @@ const EventEditTab = ({
                   <button
                     onClick={() => startEditing(selectedEvent)}
                     style={{...styles.actionButton, ...styles.primaryButton}}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
                   >
-                    編集
+                    ✏️ 編集
                   </button>
                   <button
                     onClick={() => setPreviewMode(!previewMode)}
                     style={styles.actionButton}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#ffffff'}
                   >
-                    {previewMode ? '編集' : 'プレビュー'}
+                    {previewMode ? '📝 編集' : '👁️ プレビュー'}
                   </button>
                   <button
                     onClick={() => onEventDelete && onEventDelete(selectedEvent.id)}
                     style={{...styles.actionButton, ...styles.dangerButton}}
                     title="イベントを削除"
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
                   >
-                    削除
+                    🗑️ 削除
                   </button>
                 </>
               )}
@@ -531,114 +550,116 @@ const EventEditTab = ({
           {/* エディタコンテンツ */}
           <div style={styles.editorContent}>
             {editingEvent ? (
-              // 編集モード
-              <div style={styles.editingArea}>
+              /* 編集モード */
+              <>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>タイトル</label>
+                  <label style={styles.label}>📝 タイトル</label>
                   <input
                     type="text"
                     value={editingEvent.title || ''}
-                    onChange={(e) => setEditingEvent(prev => ({...prev, title: e.target.value}))}
-                    style={styles.input}
+                    onChange={(e) => setEditingEvent({...editingEvent, title: e.target.value})}
                     placeholder="イベントのタイトル"
+                    style={styles.input}
                   />
                 </div>
                 
-                <div style={styles.dateRow}>
-                  <div style={styles.dateInput}>
-                    <label style={styles.label}>開始日</label>
+                <div style={styles.dateGroup}>
+                  <div style={styles.dateField}>
+                    <label style={styles.label}>📅 開始日</label>
                     <input
                       type="date"
                       value={editingEvent.startDate ? editingEvent.startDate.toISOString().split('T')[0] : ''}
-                      onChange={(e) => setEditingEvent(prev => ({
-                        ...prev, 
+                      onChange={(e) => setEditingEvent({
+                        ...editingEvent, 
                         startDate: e.target.value ? new Date(e.target.value) : null
-                      }))}
+                      })}
                       style={styles.input}
                     />
                   </div>
-                  <div style={styles.dateInput}>
-                    <label style={styles.label}>終了日</label>
+                  <div style={styles.dateField}>
+                    <label style={styles.label}>📅 終了日</label>
                     <input
                       type="date"
                       value={editingEvent.endDate ? editingEvent.endDate.toISOString().split('T')[0] : ''}
-                      onChange={(e) => setEditingEvent(prev => ({
-                        ...prev, 
+                      onChange={(e) => setEditingEvent({
+                        ...editingEvent, 
                         endDate: e.target.value ? new Date(e.target.value) : null
-                      }))}
+                      })}
                       style={styles.input}
                     />
                   </div>
                 </div>
                 
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>説明文</label>
+                  <label style={styles.label}>📋 説明（#タグでリンク作成）</label>
                   <textarea
                     value={editingEvent.description || ''}
-                    onChange={(e) => setEditingEvent(prev => ({...prev, description: e.target.value}))}
+                    onChange={(e) => setEditingEvent({...editingEvent, description: e.target.value})}
+                    placeholder="イベントの詳細説明... #タグ を使って他のイベントにリンク"
                     style={styles.textarea}
-                    placeholder="イベントの詳細な説明。#タグ名 の形式でタグを自動追加できます。"
                   />
-                  <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                    💡 #タグ名 の形式で自動的にタグが追加されます
+                </div>
+                
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>🏷️ タグ</label>
+                  <div style={styles.tagContainer}>
+                    {(editingEvent.tags || []).map((tag, index) => (
+                      <span key={index} style={styles.tag}>
+                        #{tag}
+                        <button
+                          onClick={() => {
+                            const newTags = editingEvent.tags.filter((_, i) => i !== index);
+                            setEditingEvent({...editingEvent, tags: newTags});
+                          }}
+                          style={{
+                            marginLeft: '4px',
+                            background: 'none',
+                            border: 'none',
+                            color: '#6b7280',
+                            cursor: 'pointer',
+                            fontSize: '10px'
+                          }}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* 表示モード */
+              <>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>📝 タイトル</label>
+                  <div style={{ fontSize: '16px', fontWeight: '500', color: '#1f2937' }}>
+                    {selectedEvent.title || '（無題）'}
                   </div>
                 </div>
                 
-                {/* 現在のタグ表示 */}
-                {(editingEvent.tags || []).length > 0 && (
+                <div style={styles.dateGroup}>
+                  <div style={styles.dateField}>
+                    <label style={styles.label}>📅 開始日</label>
+                    <div>{selectedEvent.startDate ? selectedEvent.startDate.toLocaleDateString('ja-JP') : '未設定'}</div>
+                  </div>
+                  <div style={styles.dateField}>
+                    <label style={styles.label}>📅 終了日</label>
+                    <div>{selectedEvent.endDate ? selectedEvent.endDate.toLocaleDateString('ja-JP') : '未設定'}</div>
+                  </div>
+                </div>
+                
+                {selectedEvent.description && (
                   <div style={styles.formGroup}>
-                    <label style={styles.label}>タグ</label>
-                    <div style={styles.tagContainer}>
-                      {(editingEvent.tags || []).map((tag, index) => (
-                        <span key={index} style={styles.tag}>#{tag}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              // 表示モード
-              <div style={styles.previewArea}>
-                <h1 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937', marginBottom: '16px' }}>
-                  {selectedEvent.title || '（無題）'}
-                </h1>
-                
-                {selectedEvent.startDate && (
-                  <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
-                    📅 {selectedEvent.startDate.toLocaleDateString('ja-JP')}
-                    {selectedEvent.endDate && selectedEvent.endDate !== selectedEvent.startDate && 
-                      ` - ${selectedEvent.endDate.toLocaleDateString('ja-JP')}`
-                    }
+                    <label style={styles.label}>📋 説明</label>
+                    {renderDescription(selectedEvent.description)}
                   </div>
                 )}
                 
-                <div style={{ 
-                  fontSize: '16px', 
-                  lineHeight: '1.6', 
-                  color: '#374151',
-                  marginBottom: '20px',
-                  whiteSpace: 'pre-wrap'
-                }}
-                dangerouslySetInnerHTML={{ 
-                  __html: extractTagLinks(selectedEvent.description || '（説明なし）') 
-                }}
-                onClick={(e) => {
-                  if (e.target.classList.contains('tag-link')) {
-                    e.preventDefault();
-                    const tagName = e.target.dataset.tag;
-                    if (tagName) handleTagClick(tagName);
-                  }
-                }}
-                />
-                
-                {/* タグ表示 */}
-                {(selectedEvent.tags || []).length > 0 && (
-                  <div style={{ marginTop: '20px' }}>
-                    <div style={{ fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                      🏷️ タグ
-                    </div>
+                {selectedEvent.tags && selectedEvent.tags.length > 0 && (
+                  <div style={styles.formGroup}>
+                    <label style={styles.label}>🏷️ タグ</label>
                     <div style={styles.tagContainer}>
-                      {(selectedEvent.tags || []).map((tag, index) => (
+                      {selectedEvent.tags.map((tag, index) => (
                         <span 
                           key={index} 
                           style={{
@@ -653,7 +674,7 @@ const EventEditTab = ({
                     </div>
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -695,6 +716,8 @@ const EventEditTab = ({
                 fontSize: '14px'
               }}>
                 関連するイベントがありません
+                <br />
+                <small>タグを追加すると関連イベントが表示されます</small>
               </div>
             )}
           </div>
@@ -718,8 +741,10 @@ const EventEditTab = ({
             <button
               onClick={createNewEvent}
               style={{...styles.actionButton, ...styles.primaryButton, fontSize: '16px', padding: '12px 24px'}}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
             >
-              新しいイベントを作成
+              ➕ 新しいイベントを作成
             </button>
           </div>
         </div>
