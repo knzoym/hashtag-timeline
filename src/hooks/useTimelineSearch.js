@@ -1,4 +1,4 @@
-// hooks/useTimelineSearch.js
+// hooks/useTimelineSearch.js - 修正版
 import { useState, useCallback } from 'react';
 
 export const useTimelineSearch = (events) => {
@@ -7,7 +7,11 @@ export const useTimelineSearch = (events) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedEvents, setHighlightedEvents] = useState(new Set());
 
-  const handleSearchChange = useCallback((term) => {
+  // イベントオブジェクトを受け取るhandleSearchChange
+  const handleSearchChange = useCallback((e) => {
+    // eがイベントオブジェクトかstring値かを判定
+    const term = typeof e === 'string' ? e : e?.target?.value || '';
+    
     console.log('🔍 検索:', term);
     setSearchTerm(term);
     

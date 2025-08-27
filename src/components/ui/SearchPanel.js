@@ -1,9 +1,8 @@
 // src/components/ui/SearchPanel.js
 import React from 'react';
-import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 
 export const SearchPanel = ({
-  searchTerm,
+  searchTerm = '', // デフォルト値を追加
   highlightedEvents = [],
   timelines = [],
   onSearchChange,
@@ -18,6 +17,13 @@ export const SearchPanel = ({
     (highlightedEvents.size || 0);
 
   const topTags = getTopTagsFromSearch ? getTopTagsFromSearch() : [];
+  
+  // デバッグ用ログ
+  console.log('SearchPanel props:', {
+    searchTerm,
+    searchTermType: typeof searchTerm,
+    searchTermValue: searchTerm
+  });
   
   const styles = {
     searchPanel: {
@@ -170,16 +176,21 @@ export const SearchPanel = ({
     }
   };
   
-  // タグクリックハンドラー
+  // タグクリックハンドラー - null/undefined チェックを追加
   const handleTagClick = (tag) => {
-    if (onSearchChange) {
-      // 既存の検索語にタグを追加
-      const newSearchTerm = searchTerm.trim() ? 
-        `${searchTerm.trim()} ${tag}` : 
+    if (onSearchChange && tag) {
+      // searchTermが文字列であることを確認してからtrimを実行
+      const currentSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
+      const newSearchTerm = currentSearchTerm.trim() ? 
+        `${currentSearchTerm.trim()} ${tag}` : 
         tag;
       onSearchChange({ target: { value: newSearchTerm } });
     }
   };
+
+  // 安全なsearchTerm処理用のヘルパー - 文字列であることを確認
+  const safeSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
+  const hasSearchTerm = safeSearchTerm.trim().length > 0;
   
   return (
     <div style={styles.searchPanel}>
@@ -197,7 +208,7 @@ export const SearchPanel = ({
           "Wiki イベントを検索..." : 
           "タグ・タイトルで絞り込み"
         }
-        value={searchTerm}
+        value={safeSearchTerm}
         onChange={onSearchChange}
         style={styles.searchInput}
       />
@@ -206,9 +217,9 @@ export const SearchPanel = ({
       {highlightedEventsSize > 0 && (
         <div style={styles.statsContainer}>
           🎯 {highlightedEventsSize} 件が選択中
-          {searchTerm.trim() && (
+          {hasSearchTerm && (
             <div style={{ marginTop: "4px" }}>
-              検索: "{searchTerm.trim()}"
+              検索: "{safeSearchTerm.trim()}"
             </div>
           )}
         </div>
@@ -327,7 +338,7 @@ export const SearchPanel = ({
       )}
       
       {/* 検索結果が0件の場合のメッセージ */}
-      {searchTerm.trim() && highlightedEventsSize === 0 && (
+      {hasSearchTerm && highlightedEventsSize === 0 && (
         <div style={{
           fontSize: "12px",
           color: "#9ca3af",
@@ -335,7 +346,7 @@ export const SearchPanel = ({
           padding: "12px",
           fontStyle: "italic"
         }}>
-          "{searchTerm.trim()}" に一致するイベントがありません
+          "{safeSearchTerm.trim()}" に一致するイベントがありません
         </div>
       )}
     </div>
