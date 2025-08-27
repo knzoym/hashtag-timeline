@@ -1,19 +1,20 @@
-// src/pages/AppTest.js - データフロー修正版
+// src/pages/App.js - 完全復活版
 import React, { useRef, useCallback, useState, useEffect } from 'react';
-import { PageModeProvider, usePageMode } from '../contexts/PageModeContext';
-import Header from '../components/common/Header';
-import TabSystem from '../components/common/TabSystem';
+import { PageModeProvider, usePageMode } from './contexts/PageModeContext';
+import Header from './components/common/Header';
+import TabSystem from './components/common/TabSystem';
+import MyPage from './components/personal/MyPage';
 
-// 必要なhooksを選択的に使用
-import { useAuth } from '../hooks/useAuth';
-import { useTimelineLogic } from '../hooks/useTimelineLogic';
-import { useDragDrop } from '../hooks/useDragDrop';
-import { useSupabaseSync } from '../hooks/useSupabaseSync';
-import { useWikiData } from '../hooks/useWikiData';
-import { useIsDesktop } from '../hooks/useMediaQuery';
+// フック類
+import { useTimelineLogic } from './hooks/useTimelineLogic';
+import { useDragDrop } from './hooks/useDragDrop';
+import { useAuth } from './hooks/useAuth';
+import { useSupabaseSync } from './hooks/useSupabaseSync';
+import { useWikiData } from './hooks/useWikiData';
+import { useIsDesktop } from './hooks/useMediaQuery';
 
-// 個人ページ用コンポーネント
-import MyPage from '../components/personal/MyPage';
+// // エラーバウンダリ
+// import TimelineErrorBoundary from '../components/common/TimelineErrorBoundary';
 
 const AppContent = () => {
   const {
@@ -29,22 +30,27 @@ const AppContent = () => {
   
   const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo();
   
-  // 認証とデータ同期
+  // 認証
   const { user, loading: authLoading, signInWithGoogle, signOut, isAuthenticated } = useAuth();
+  
+  // Supabase同期
   const {
     saveTimelineData,
     getUserTimelines,
     deleteTimeline: deleteTimelineFile,
   } = useSupabaseSync(user);
+  
+  // Wiki関連
   const wikiData = useWikiData(user);
+  
+  // デスクトップ判定
   const isDesktop = useIsDesktop();
   
   // タイムライン関連の参照
   const timelineRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
   
-  // === 統合データ管理 ===
-  // useTimelineLogicを一度だけ呼び出し、それを唯一のデータソースとする
+  // タイムラインロジック（単一のデータソース）
   const {
     events,
     setEvents,
@@ -104,16 +110,16 @@ const AppContent = () => {
     openEventModal
   });
 
-  // === 修正された年表作成処理 ===
+  // 年表作成処理（修正版）
   const handleCreateTimeline = useCallback((highlightedEventsList) => {
-    console.log('AppTest: 年表作成開始', {
+    console.log('App: 年表作成開始', {
       eventsCount: highlightedEventsList?.length || 0,
-      currentTimelines: Timelines.length
+      currentTimelines: Timelines.length,
+      highlightedType: typeof highlightedEventsList
     });
 
-    // 引数が配列として渡される場合の処理
     if (Array.isArray(highlightedEventsList) && highlightedEventsList.length > 0) {
-      // トップタグを抽出
+      // 直接イベント配列が渡された場合
       const allTags = [];
       highlightedEventsList.forEach(event => {
         if (event.tags && Array.isArray(event.tags)) {
@@ -121,7 +127,6 @@ const AppContent = () => {
         }
       });
       
-      // タグの頻度をカウント
       const tagCount = {};
       allTags.forEach(tag => {
         tagCount[tag] = (tagCount[tag] || 0) + 1;
@@ -134,7 +139,6 @@ const AppContent = () => {
 
       const timelineName = topTags.length > 0 ? `#${topTags[0]}` : "新しい年表";
 
-      // 新しい年表を作成
       const newTimeline = {
         id: Date.now(),
         name: timelineName,
@@ -147,31 +151,31 @@ const AppContent = () => {
         tags: topTags
       };
 
-      console.log('AppTest: 年表データ作成', newTimeline);
+      console.log('App: 新年表作成', newTimeline);
 
-      // 状態を直接更新
       setCreatedTimelines(prevTimelines => {
         const updatedTimelines = [...prevTimelines, newTimeline];
-        console.log('AppTest: 年表状態更新', {
+        console.log('App: 年表状態更新', {
           previous: prevTimelines.length,
           updated: updatedTimelines.length
         });
         return updatedTimelines;
       });
 
-      // 検索をクリア
+      // 検索クリア
       setSearchTerm('');
       setHighlightedEvents(new Set());
 
-      console.log('AppTest: 年表作成完了', timelineName);
+      console.log('App: 年表作成完了', timelineName);
       return newTimeline;
     } else {
-      // 従来の処理（ハイライトされたイベントから作成）
+      // 従来の処理
+      console.log('App: ベース年表作成処理を呼び出し');
       return baseCreateTimeline();
     }
   }, [Timelines.length, setCreatedTimelines, setSearchTerm, setHighlightedEvents, baseCreateTimeline]);
 
-  // === ファイル操作 ===
+  // ファイル操作
   const handleNew = useCallback(() => {
     if (events.length > 0 || Timelines.length > 0) {
       if (!window.confirm('現在の作業内容が失われますが、よろしいですか？')) {
@@ -275,15 +279,15 @@ const AppContent = () => {
     }
   }, [handleNew, handleSave, openNewEventModal, resetToInitialPosition]);
   
-  // === TabSystem用のprops（修正版） ===
+  // TabSystem用のprops
   const tabSystemProps = {
     events,
-    timelines: Timelines,  // 確実にTimelinesを渡す
+    timelines: Timelines,
     user,
     onEventUpdate: updateEvent,
     onEventDelete: deleteEvent,
     onTimelineUpdate: (updatedTimelines) => {
-      console.log('AppTest: onTimelineUpdate called', updatedTimelines.length);
+      console.log('App: onTimelineUpdate called', updatedTimelines.length);
       setCreatedTimelines(updatedTimelines);
     },
     onAddEvent: addEvent,
@@ -317,18 +321,17 @@ const AppContent = () => {
     hoveredGroup,
     setHoveredGroup,
     
-    // 検索・年表関連（修正版）
-    onCreateTimeline: handleCreateTimeline,  // 修正された関数を渡す
+    // 検索・年表関連
+    onCreateTimeline: handleCreateTimeline,
     onDeleteTimeline: deleteTimeline,
     getTopTagsFromSearch
   };
 
-  // デバッグログ
-  console.log('AppTest render:', {
+  console.log('App render:', {
     events: events.length,
     timelines: Timelines.length,
     currentTab,
-    highlightedCount: highlightedEvents?.size || 0
+    isMyPageMode
   });
   
   return (
@@ -369,7 +372,7 @@ const AppContent = () => {
         alignItems: 'center'
       }}>
         <div>
-          Timeline統合テスト | 
+          Timeline統合版 | 
           Mode: {currentPageMode} | 
           Tab: {currentTab || 'none'} | 
           Events: {events.length} | 
@@ -385,12 +388,14 @@ const AppContent = () => {
 };
 
 // メインアプリケーションコンポーネント
-const AppTest = () => {
+const App = () => {
   return (
-    <PageModeProvider>
-      <AppContent />
-    </PageModeProvider>
+    // <TimelineErrorBoundary>
+      <PageModeProvider>
+        <AppContent />
+      </PageModeProvider>
+    // </TimelineErrorBoundary>
   );
 };
 
-export default AppTest;
+export default App;

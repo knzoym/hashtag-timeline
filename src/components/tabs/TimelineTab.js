@@ -1,16 +1,15 @@
-// src/components/tabs/TimelineTab.js - 基本機能修正版
+// src/components/tabs/TimelineTab.js - 完全統合版
 import React, { useRef, useCallback, useMemo } from 'react';
 import { SearchPanel } from '../ui/SearchPanel';
 import { TimelineCard } from '../ui/TimelineCard';
 import { EventModal } from '../modals/EventModal';
-import { useTimelineLogic } from '../../hooks/useTimelineLogic';
 import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 import { truncateTitle } from '../../utils/timelineUtils';
 
 const TimelineTab = ({
-  // TabSystemから受け取るprops
-  events: propEvents,
-  timelines: propTimelines,
+  // TabSystemからの必須データ（これが唯一のデータソース）
+  events,
+  timelines,
   user,
   onEventUpdate,
   onEventDelete,
@@ -21,63 +20,50 @@ const TimelineTab = ({
   
   // Timeline固有のprops
   timelineRef: externalTimelineRef,
-  scale: propScale,
-  panX: propPanX,
-  panY: propPanY,
-  currentPixelsPerYear: propCurrentPixelsPerYear,
+  scale,
+  panX,
+  panY,
+  currentPixelsPerYear,
   onWheel,
   onMouseDown,
   onMouseMove,
   onMouseUp,
   onDoubleClick,
-  highlightedEvents: propHighlightedEvents,
+  highlightedEvents,
   onResetView,
   
-  // その他
-  searchTerm: propSearchTerm,
-  onSearchChange
+  // 検索・年表関連
+  searchTerm,
+  onSearchChange,
+  onCreateTimeline,
+  onDeleteTimeline,
+  getTopTagsFromSearch
 }) => {
-  // タイムライン専用の参照
+  // 内部参照のみ
   const internalTimelineRef = useRef(null);
   const timelineRef = externalTimelineRef || internalTimelineRef;
-  
-  // 基本的なLogicを使用
-  const {
-    events,
-    timelines,
-    searchTerm,
-    setSearchTerm,
-    highlightedEvents,
-    setHighlightedEvents,
-    selectedEvent,
-    setSelectedEvent,
-    deleteTimeline,
-    openNewEventModal,
-    openEventModal,
-    handleSearchChange,
-    getTopTagsFromSearch,
-    calculateTextWidth,
-    updateEvent,
-    deleteEvent,
-    modalPosition,
-    setCreatedTimelines
-  } = useTimelineLogic(timelineRef);
 
-  // 最終的なデータを決定（propsが優先）
-  const finalEvents = propEvents || events || [];
-  const finalTimelines = propTimelines || timelines || [];
-  const finalPanX = propPanX !== undefined ? propPanX : 0;
-  const finalPanY = propPanY !== undefined ? propPanY : 0;
-  const finalCurrentPixelsPerYear = propCurrentPixelsPerYear || 50;
-  const finalHighlightedEvents = propHighlightedEvents || highlightedEvents || new Set();
-  const finalSearchTerm = propSearchTerm !== undefined ? propSearchTerm : searchTerm || '';
+  // ローカル状態（UI用のみ）
+  const [selectedEvent, setSelectedEvent] = React.useState(null);
+
+  // データの安全性チェック
+  const safeEvents = events || [];
+  const safeTimelines = timelines || [];
+  const safeHighlightedEvents = highlightedEvents || new Set();
+  const safeSearchTerm = searchTerm || '';
+  
+  // 座標系のデフォルト値
+  const finalPanX = panX !== undefined ? panX : 0;
+  const finalPanY = panY !== undefined ? panY : 0;
+  const finalCurrentPixelsPerYear = currentPixelsPerYear || 50;
 
   console.log('TimelineTab render:', {
-    events: finalEvents.length,
-    timelines: finalTimelines.length,
+    events: safeEvents.length,
+    timelines: safeTimelines.length,
     panX: finalPanX,
     panY: finalPanY,
-    pixelsPerYear: finalCurrentPixelsPerYear
+    pixelsPerYear: finalCurrentPixelsPerYear,
+    highlighted: safeHighlightedEvents.size || safeHighlightedEvents.length || 0
   });
 
   // 年からX座標を計算
@@ -85,19 +71,25 @@ const TimelineTab = ({
     return (year - 1900) * finalCurrentPixelsPerYear + finalPanX;
   }, [finalCurrentPixelsPerYear, finalPanX]);
 
+  // テキスト幅計算
+  const calculateTextWidth = useCallback((text, fontSize = 11) => {
+    try {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      context.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+      return context.measureText(text || '').width;
+    } catch (error) {
+      console.warn('calculateTextWidth エラー:', error);
+      return (text?.length || 0) * 8;
+    }
+  }, []);
+
   // 年マーカー生成
   const generateYearMarkers = useCallback(() => {
     const markers = [];
     const viewportWidth = window.innerWidth;
     const startYear = Math.floor((0 - finalPanX) / finalCurrentPixelsPerYear) - 1;
     const endYear = Math.floor((viewportWidth - finalPanX) / finalCurrentPixelsPerYear) + 1;
-    
-    console.log('年マーカー生成:', {
-      startYear,
-      endYear,
-      pixelsPerYear: finalCurrentPixelsPerYear,
-      panX: finalPanX
-    });
     
     for (let year = Math.max(1800, Math.floor(startYear / 10) * 10); 
          year <= Math.min(2100, endYear); 
@@ -132,20 +124,29 @@ const TimelineTab = ({
     return markers;
   }, [getXFromYear, finalPanX, finalCurrentPixelsPerYear]);
 
-  // 基本的なイベントレイアウト
+  // イベントレイアウト計算
   const layoutEvents = useMemo(() => {
-    if (!finalEvents || finalEvents.length === 0) {
+    if (!safeEvents || safeEvents.length === 0) {
       console.log('イベントなし');
       return [];
     }
 
-    console.log(`イベントレイアウト開始: ${finalEvents.length}件`);
+    console.log(`イベントレイアウト開始: ${safeEvents.length}件`);
     
     const results = [];
     const occupiedPositions = new Map();
 
-    // 日付でソート
-    const sortedEvents = [...finalEvents].sort((a, b) => {
+    // 年表に属するイベントIDを収集
+    const timelineEventIds = new Set();
+    safeTimelines.forEach(timeline => {
+      if (timeline.isVisible !== false) {
+        (timeline.events || []).forEach(event => timelineEventIds.add(event.id));
+        (timeline.temporaryEvents || []).forEach(event => timelineEventIds.add(event.id));
+      }
+    });
+
+    // 全イベントを処理
+    const sortedEvents = [...safeEvents].sort((a, b) => {
       if (!a.startDate || !b.startDate) return 0;
       return new Date(a.startDate) - new Date(b.startDate);
     });
@@ -158,63 +159,84 @@ const TimelineTab = ({
 
       const eventDate = new Date(event.startDate);
       const eventX = getXFromYear(eventDate.getFullYear());
-      const textWidth = calculateTextWidth ? calculateTextWidth(event.title || "") : 80;
+      const textWidth = calculateTextWidth(event.title || "", 11);
       const eventWidth = Math.max(80, textWidth + 20);
 
-      // 重複回避のためのY位置調整
-      let level = 0;
-      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
-      
-      while (level < 10) {
-        const testY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * 60;
-        const levelEvents = occupiedPositions.get(testY) || [];
-        
-        const hasCollision = levelEvents.some(occupied => 
-          Math.abs(eventX - occupied.x) < (eventWidth + occupied.width) / 2 + 30
-        );
-        
-        if (!hasCollision) {
-          eventY = testY;
-          if (!occupiedPositions.has(testY)) {
-            occupiedPositions.set(testY, []);
-          }
-          occupiedPositions.get(testY).push({ x: eventX, width: eventWidth });
-          break;
+      let eventY;
+      let timelineIndex = -1;
+
+      // 年表に属するかチェック
+      if (timelineEventIds.has(event.id)) {
+        // 属する年表のインデックスを取得
+        timelineIndex = safeTimelines.findIndex(timeline => {
+          if (timeline.isVisible === false) return false;
+          return (timeline.events || []).some(e => e.id === event.id) ||
+                 (timeline.temporaryEvents || []).some(e => e.id === event.id);
+        });
+
+        if (timelineIndex >= 0) {
+          // 年表線の位置に配置
+          eventY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
+          console.log(`年表イベント "${event.title}" → 年表 ${timelineIndex} (Y=${eventY})`);
+        } else {
+          // 年表に属しているはずだが見つからない場合はメイン線に
+          eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
         }
-        level++;
+      } else {
+        // メインタイムライン上で重複回避
+        let level = 0;
+        while (level < 10) {
+          const testY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * 60;
+          const levelEvents = occupiedPositions.get(testY) || [];
+          
+          const hasCollision = levelEvents.some(occupied => 
+            Math.abs(eventX - occupied.x) < (eventWidth + occupied.width) / 2 + 30
+          );
+          
+          if (!hasCollision) {
+            eventY = testY;
+            if (!occupiedPositions.has(testY)) {
+              occupiedPositions.set(testY, []);
+            }
+            occupiedPositions.get(testY).push({ x: eventX, width: eventWidth });
+            break;
+          }
+          level++;
+        }
+        console.log(`メインイベント "${event.title}" → level ${level} (Y=${eventY})`);
       }
 
       results.push({
         ...event,
         adjustedPosition: { x: eventX, y: eventY },
         calculatedWidth: eventWidth,
-        level
+        timelineIndex,
+        isOnTimeline: timelineIndex >= 0
       });
-
-      console.log(`イベント配置: "${event.title}" → (${eventX}, ${eventY})`);
     });
 
     console.log(`レイアウト完了: ${results.length}件`);
     return results;
-  }, [finalEvents, getXFromYear, calculateTextWidth]);
+  }, [safeEvents, safeTimelines, getXFromYear, calculateTextWidth]);
 
   // 年表軸の計算
   const timelineAxes = useMemo(() => {
-    if (!finalTimelines || finalTimelines.length === 0) {
+    if (!safeTimelines || safeTimelines.length === 0) {
       console.log('年表なし');
       return [];
     }
 
-    const axes = finalTimelines
+    const axes = safeTimelines
       .filter(timeline => {
-        const hasEvents = (timeline.events?.length || 0) > 0;
+        const hasEvents = (timeline.events?.length || 0) > 0 || 
+                         (timeline.temporaryEvents?.length || 0) > 0;
         const isVisible = timeline.isVisible !== false;
         return hasEvents && isVisible;
       })
       .map((timeline, index) => {
         const axisY = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
         
-        const allEvents = timeline.events || [];
+        const allEvents = [...(timeline.events || []), ...(timeline.temporaryEvents || [])];
         if (allEvents.length === 0) return null;
         
         const years = allEvents.map(e => new Date(e.startDate).getFullYear());
@@ -240,20 +262,20 @@ const TimelineTab = ({
 
     console.log(`年表軸 ${axes.length}件生成`);
     return axes;
-  }, [finalTimelines, getXFromYear]);
+  }, [safeTimelines, getXFromYear]);
 
   // 年表作成ハンドラー
   const handleCreateTimeline = useCallback(() => {
     console.log('年表作成開始');
     
     let highlightedEventsList = [];
-    if (finalHighlightedEvents?.has) {
-      highlightedEventsList = finalEvents.filter(event => 
-        finalHighlightedEvents.has(event.id)
+    if (safeHighlightedEvents?.has) {
+      highlightedEventsList = safeEvents.filter(event => 
+        safeHighlightedEvents.has(event.id)
       );
-    } else if (Array.isArray(finalHighlightedEvents)) {
-      highlightedEventsList = finalEvents.filter(event => 
-        finalHighlightedEvents.includes(event.id)
+    } else if (Array.isArray(safeHighlightedEvents)) {
+      highlightedEventsList = safeEvents.filter(event => 
+        safeHighlightedEvents.includes(event.id)
       );
     }
     
@@ -264,85 +286,25 @@ const TimelineTab = ({
       return;
     }
 
-    const topTags = getTopTagsFromSearch ? 
-      getTopTagsFromSearch(highlightedEventsList) : [];
-    const timelineName = topTags.length > 0 ? 
-      `#${topTags[0]}` : "新しい年表";
-
-    const newTimeline = {
-      id: Date.now(),
-      name: timelineName,
-      color: `hsl(${Math.random() * 360}, 70%, 50%)`,
-      events: highlightedEventsList,
-      temporaryEvents: [],
-      removedEvents: [],
-      isVisible: true,
-      createdAt: new Date(),
-      tags: topTags
-    };
-
-    console.log('年表作成:', newTimeline);
-
-    if (propTimelines && onTimelineUpdate) {
-      onTimelineUpdate([...finalTimelines, newTimeline]);
-    } else {
-      setCreatedTimelines(prev => [...prev, newTimeline]);
+    // 上位コンポーネントの年表作成関数を呼び出し
+    if (onCreateTimeline) {
+      onCreateTimeline(highlightedEventsList);
     }
-
-    // 検索クリア
-    if (onSearchChange) {
-      onSearchChange({ target: { value: '' } });
-    } else {
-      setSearchTerm('');
-      setHighlightedEvents(new Set());
-    }
-
-    console.log(`年表作成完了: ${timelineName}`);
-  }, [
-    finalEvents, 
-    finalHighlightedEvents, 
-    finalTimelines,
-    getTopTagsFromSearch,
-    propTimelines,
-    onTimelineUpdate,
-    setCreatedTimelines,
-    onSearchChange,
-    setSearchTerm,
-    setHighlightedEvents
-  ]);
+  }, [safeEvents, safeHighlightedEvents, onCreateTimeline]);
 
   // イベントクリック
   const handleEventClick = useCallback((event) => {
     console.log('イベントクリック:', event.title);
     setSelectedEvent(event);
-  }, [setSelectedEvent]);
+  }, []);
 
   // 追加ボタン
   const handleAddEvent = useCallback(() => {
     console.log('イベント追加');
     if (onAddEvent) {
       onAddEvent();
-    } else {
-      openNewEventModal();
     }
-  }, [onAddEvent, openNewEventModal]);
-
-  // リセットボタン
-  const handleResetView = useCallback(() => {
-    console.log('ビューリセット');
-    if (onResetView) {
-      onResetView();
-    }
-  }, [onResetView]);
-
-  // 検索変更
-  const handleSearchChangeWrapper = useCallback((e) => {
-    if (onSearchChange) {
-      onSearchChange(e);
-    } else {
-      handleSearchChange(e);
-    }
-  }, [onSearchChange, handleSearchChange]);
+  }, [onAddEvent]);
 
   return (
     <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
@@ -407,10 +369,10 @@ const TimelineTab = ({
             }}
           >
             <TimelineCard
-              timeline={finalTimelines.find(t => t.id === axis.id)}
+              timeline={safeTimelines.find(t => t.id === axis.id)}
               compact={true}
               onClick={() => console.log('年表カードクリック')}
-              onToggleVisibility={() => deleteTimeline(axis.id)}
+              onToggleVisibility={() => onDeleteTimeline && onDeleteTimeline(axis.id)}
             />
           </div>
         ))}
@@ -435,16 +397,23 @@ const TimelineTab = ({
               📊 イベントが表示されていません
             </div>
             <div style={{ fontSize: '12px', color: '#6c757d' }}>
-              Events: {finalEvents.length}件読み込み済み
+              Events: {safeEvents.length}件読み込み済み
             </div>
           </div>
         ) : (
           layoutEvents.map((event) => {
             const eventX = event.adjustedPosition.x;
             const eventY = event.adjustedPosition.y + finalPanY;
-            const isHighlighted = finalHighlightedEvents?.has ? 
-              finalHighlightedEvents.has(event.id) : 
-              finalHighlightedEvents?.includes && finalHighlightedEvents.includes(event.id);
+            const isHighlighted = safeHighlightedEvents?.has ? 
+              safeHighlightedEvents.has(event.id) : 
+              safeHighlightedEvents?.includes && safeHighlightedEvents.includes(event.id);
+
+            // 年表に属する場合は年表の色を使用
+            let borderColor = '#6b7280';
+            if (event.isOnTimeline && event.timelineIndex >= 0) {
+              const timeline = safeTimelines[event.timelineIndex];
+              borderColor = timeline?.color || '#6b7280';
+            }
 
             return (
               <div
@@ -456,7 +425,7 @@ const TimelineTab = ({
                   width: `${event.calculatedWidth}px`,
                   height: `${TIMELINE_CONFIG.EVENT_HEIGHT}px`,
                   backgroundColor: isHighlighted ? '#fef3c7' : '#ffffff',
-                  border: `2px solid ${isHighlighted ? '#f59e0b' : '#6b7280'}`,
+                  border: `2px solid ${isHighlighted ? '#f59e0b' : borderColor}`,
                   borderRadius: '6px',
                   display: 'flex',
                   alignItems: 'center',
@@ -483,18 +452,19 @@ const TimelineTab = ({
 
       {/* 検索パネル */}
       <SearchPanel
-        searchTerm={finalSearchTerm}
-        highlightedEvents={finalHighlightedEvents}
-        timelines={finalTimelines}
-        onSearchChange={handleSearchChangeWrapper}
+        searchTerm={safeSearchTerm}
+        highlightedEvents={safeHighlightedEvents}
+        timelines={safeTimelines}
+        onSearchChange={onSearchChange}
         onCreateTimeline={handleCreateTimeline}
-        onDeleteTimeline={deleteTimeline}
+        onDeleteTimeline={onDeleteTimeline}
         getTopTagsFromSearch={() => {
-          const highlightedList = finalEvents.filter(event => 
-            finalHighlightedEvents?.has?.(event.id) || 
-            finalHighlightedEvents?.includes?.(event.id)
+          if (!getTopTagsFromSearch) return [];
+          const highlightedList = safeEvents.filter(event => 
+            safeHighlightedEvents?.has?.(event.id) || 
+            safeHighlightedEvents?.includes?.(event.id)
           );
-          return getTopTagsFromSearch ? getTopTagsFromSearch(highlightedList) : [];
+          return getTopTagsFromSearch(highlightedList);
         }}
         isWikiMode={isWikiMode}
         showAdvancedOptions={true}
@@ -545,7 +515,7 @@ const TimelineTab = ({
               cursor: 'pointer',
               fontSize: '12px'
             }}
-            onClick={handleResetView}
+            onClick={onResetView}
             title="初期位置に戻す"
           >
             🎯 初期位置
@@ -566,11 +536,11 @@ const TimelineTab = ({
         fontFamily: 'monospace',
         zIndex: 100
       }}>
-        📊 Events: {finalEvents.length} | 
-        Timelines: {finalTimelines.length} | 
+        📊 Events: {safeEvents.length} | 
+        Timelines: {safeTimelines.length} | 
         Layout: {layoutEvents.length} | 
         Axes: {timelineAxes.length} | 
-        Highlighted: {finalHighlightedEvents?.size || finalHighlightedEvents?.length || 0}
+        Highlighted: {safeHighlightedEvents?.size || safeHighlightedEvents?.length || 0}
         <br />
         PanX: {Math.round(finalPanX)} | 
         PanY: {Math.round(finalPanY)} | 
@@ -582,11 +552,10 @@ const TimelineTab = ({
         <EventModal
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}
-          onUpdate={propEvents ? onEventUpdate : updateEvent}
-          onDelete={propEvents ? onEventDelete : deleteEvent}
+          onUpdate={onEventUpdate}
+          onDelete={onEventDelete}
           isWikiMode={isWikiMode}
-          position={modalPosition}
-          timelines={finalTimelines}
+          timelines={safeTimelines}
         />
       )}
     </div>
