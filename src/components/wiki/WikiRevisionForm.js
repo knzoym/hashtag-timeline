@@ -1,6 +1,6 @@
 // src/components/WikiRevisionForm.js
 import React, { useState, useEffect } from 'react';
-import { extractTagsFromDescription } from '../utils/timelineUtils';
+import { extractTagsFromDescription } from '../../utils/timelineUtils';
 
 const WikiRevisionForm = ({ 
   eventId, 

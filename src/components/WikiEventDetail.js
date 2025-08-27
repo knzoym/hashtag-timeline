@@ -1,6 +1,6 @@
 // src/components/WikiEventDetail.js
 import React, { useState, useEffect, useCallback } from 'react';
-import WikiRevisionForm from './WikiRevisionForm';
+import WikiRevisionForm from './wiki/WikiRevisionForm';
 import WikiRevisionDiff from './WikiRevisionDiff';
 
 const WikiEventDetail = ({ 
