@@ -1,563 +1,607 @@
-// src/components/tabs/TimelineTab.js - 完全統合版
-import React, { useRef, useCallback, useMemo } from 'react';
-import { SearchPanel } from '../ui/SearchPanel';
-import { TimelineCard } from '../ui/TimelineCard';
-import { EventModal } from '../modals/EventModal';
-import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
-import { truncateTitle } from '../../utils/timelineUtils';
+import React, { useRef, useCallback, useState, useEffect, useMemo } from "react";
+import { SearchPanel } from "../ui/SearchPanel";
+import { TimelineCard } from "../ui/TimelineCard";
+import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
+import { EventModal } from "../modals/EventModal";
+import TimelineModal from "../modals/TimelineModal";
 
-const TimelineTab = ({
-  // TabSystemからの必須データ（これが唯一のデータソース）
-  events,
-  timelines,
-  user,
-  onEventUpdate,
-  onEventDelete,
-  onTimelineUpdate,
-  onAddEvent,
-  isPersonalMode,
-  isWikiMode,
-  
-  // Timeline固有のprops
-  timelineRef: externalTimelineRef,
-  scale,
-  panX,
-  panY,
-  currentPixelsPerYear,
-  onWheel,
-  onMouseDown,
-  onMouseMove,
-  onMouseUp,
-  onDoubleClick,
-  highlightedEvents,
-  onResetView,
-  
-  // 検索・年表関連
-  searchTerm,
-  onSearchChange,
-  onCreateTimeline,
-  onDeleteTimeline,
-  getTopTagsFromSearch
-}) => {
-  // 内部参照のみ
-  const internalTimelineRef = useRef(null);
-  const timelineRef = externalTimelineRef || internalTimelineRef;
+import { useTimelineLogic } from "../../hooks/useTimelineLogic";
+import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
+import { truncateTitle } from "../../utils/timelineUtils";
 
-  // ローカル状態（UI用のみ）
-  const [selectedEvent, setSelectedEvent] = React.useState(null);
-
-  // データの安全性チェック
-  const safeEvents = events || [];
-  const safeTimelines = timelines || [];
-  const safeHighlightedEvents = highlightedEvents || new Set();
-  const safeSearchTerm = searchTerm || '';
-  
-  // 座標系のデフォルト値
-  const finalPanX = panX !== undefined ? panX : 0;
-  const finalPanY = panY !== undefined ? panY : 0;
-  const finalCurrentPixelsPerYear = currentPixelsPerYear || 50;
-
-  console.log('TimelineTab render:', {
-    events: safeEvents.length,
-    timelines: safeTimelines.length,
-    panX: finalPanX,
-    panY: finalPanY,
-    pixelsPerYear: finalCurrentPixelsPerYear,
-    highlighted: safeHighlightedEvents.size || safeHighlightedEvents.length || 0
+// 統合座標管理フック
+const useUnifiedCoordinates = (timelineRef) => {
+  const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
+  const [panX, setPanX] = useState(() => {
+    const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
+    return window.innerWidth - (2080 - (-5000)) * initialPixelsPerYear;
   });
+  const [panY, setPanY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [lastMouse, setLastMouse] = useState({ x: 0, y: 0 });
 
-  // 年からX座標を計算
+  const pixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
+
+  // 年から座標への変換
   const getXFromYear = useCallback((year) => {
-    return (year - 1900) * finalCurrentPixelsPerYear + finalPanX;
-  }, [finalCurrentPixelsPerYear, finalPanX]);
+    return (year - (-5000)) * pixelsPerYear + panX;
+  }, [pixelsPerYear, panX]);
 
-  // テキスト幅計算
-  const calculateTextWidth = useCallback((text, fontSize = 11) => {
-    try {
-      const canvas = document.createElement("canvas");
-      const context = canvas.getContext("2d");
-      context.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
-      return context.measureText(text || '').width;
-    } catch (error) {
-      console.warn('calculateTextWidth エラー:', error);
-      return (text?.length || 0) * 8;
-    }
+  // 座標から年への変換
+  const getYearFromX = useCallback((x) => {
+    return (-5000) + (x - panX) / pixelsPerYear;
+  }, [pixelsPerYear, panX]);
+
+  // ホイールイベント処理
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    if (!timelineRef.current) return;
+    
+    const rect = timelineRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const yearAtMouse = getYearFromX(mouseX);
+    
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.05, Math.min(100, scale * zoomFactor));
+    const newPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * newScale;
+    
+    let newPanX = mouseX - (yearAtMouse - (-5000)) * newPixelsPerYear;
+    
+    const timelineWidth = (5000 - (-5000)) * newPixelsPerYear;
+    const viewportWidth = window.innerWidth;
+    const minPanX = -(timelineWidth - viewportWidth);
+    const maxPanX = 0;
+    newPanX = Math.max(minPanX, Math.min(maxPanX, newPanX));
+    
+    setScale(newScale);
+    setPanX(newPanX);
+  }, [scale, panX, getYearFromX]);
+
+  const handleMouseDown = useCallback((e) => {
+    if (e.target.closest('.no-pan')) return;
+    
+    setIsDragging(true);
+    setLastMouse({ x: e.clientX, y: e.clientY });
+    e.preventDefault();
   }, []);
 
-  // 年マーカー生成
-  const generateYearMarkers = useCallback(() => {
-    const markers = [];
-    const viewportWidth = window.innerWidth;
-    const startYear = Math.floor((0 - finalPanX) / finalCurrentPixelsPerYear) - 1;
-    const endYear = Math.floor((viewportWidth - finalPanX) / finalCurrentPixelsPerYear) + 1;
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging) return;
     
-    for (let year = Math.max(1800, Math.floor(startYear / 10) * 10); 
-         year <= Math.min(2100, endYear); 
-         year += 10) {
-      const x = getXFromYear(year);
-      if (x > -50 && x < viewportWidth + 50) {
-        markers.push(
-          <div
-            key={year}
-            style={{
-              position: 'absolute',
-              left: `${x}px`,
-              top: '10px',
-              fontSize: '12px',
-              color: '#6b7280',
-              fontWeight: '500',
-              pointerEvents: 'none',
-              userSelect: 'none',
-              zIndex: 10,
-              backgroundColor: 'rgba(255, 255, 255, 0.9)',
-              padding: '2px 6px',
-              borderRadius: '3px',
-              border: '1px solid rgba(221, 221, 221, 0.7)'
-            }}
-          >
-            {year}
-          </div>
-        );
-      }
-    }
-    console.log(`年マーカー ${markers.length}件生成`);
-    return markers;
-  }, [getXFromYear, finalPanX, finalCurrentPixelsPerYear]);
+    const deltaX = e.clientX - lastMouse.x;
+    const deltaY = e.clientY - lastMouse.y;
+    
+    let newPanX = panX + deltaX;
+    const newPanY = panY + deltaY;
+    
+    const timelineWidth = (5000 - (-5000)) * pixelsPerYear;
+    const viewportWidth = window.innerWidth;
+    const minPanX = -(timelineWidth - viewportWidth);
+    const maxPanX = 0;
+    newPanX = Math.max(minPanX, Math.min(maxPanX, newPanX));
+    
+    setPanX(newPanX);
+    setPanY(newPanY);
+    setLastMouse({ x: e.clientX, y: e.clientY });
+  }, [isDragging, lastMouse, panX, panY, pixelsPerYear]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  const resetToInitialPosition = useCallback(() => {
+    const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
+    const initialPanX = window.innerWidth - (2080 - (-5000)) * initialPixelsPerYear;
+    
+    setScale(TIMELINE_CONFIG.DEFAULT_SCALE);
+    setPanX(initialPanX);
+    setPanY(0);
+  }, []);
+
+  return {
+    scale, panX, panY, pixelsPerYear, isDragging,
+    getXFromYear, getYearFromX,
+    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
+    resetToInitialPosition
+  };
+};
+
+// 統合レイアウト管理フック
+const useUnifiedLayout = (events, timelines, coordinates, calculateTextWidth) => {
+  const { scale, panX, panY, pixelsPerYear, getXFromYear } = coordinates;
 
   // イベントレイアウト計算
   const layoutEvents = useMemo(() => {
-    if (!safeEvents || safeEvents.length === 0) {
-      console.log('イベントなし');
-      return [];
-    }
+    if (!events || events.length === 0) return [];
 
-    console.log(`イベントレイアウト開始: ${safeEvents.length}件`);
-    
-    const results = [];
-    const occupiedPositions = new Map();
+    const layoutResults = [];
+    const occupiedPositions = new Map(); // Y座標 -> 配置されたイベントの配列
 
-    // 年表に属するイベントIDを収集
-    const timelineEventIds = new Set();
-    safeTimelines.forEach(timeline => {
-      if (timeline.isVisible !== false) {
-        (timeline.events || []).forEach(event => timelineEventIds.add(event.id));
-        (timeline.temporaryEvents || []).forEach(event => timelineEventIds.add(event.id));
-      }
+    // 年によってソートされたイベント
+    const sortedEvents = [...events].sort((a, b) => {
+      const aYear = a.startDate ? a.startDate.getFullYear() : 2000;
+      const bYear = b.startDate ? b.startDate.getFullYear() : 2000;
+      return aYear - bYear;
     });
 
-    // 全イベントを処理
-    const sortedEvents = [...safeEvents].sort((a, b) => {
-      if (!a.startDate || !b.startDate) return 0;
-      return new Date(a.startDate) - new Date(b.startDate);
-    });
+    sortedEvents.forEach((event) => {
+      const eventX = event.startDate ? getXFromYear(event.startDate.getFullYear()) : 100;
+      const textWidth = calculateTextWidth ? calculateTextWidth(event.title || '') : 60;
+      const eventWidth = Math.max(60, textWidth + 20);
+      
+      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
+      let level = 0;
 
-    sortedEvents.forEach((event, index) => {
-      if (!event.startDate) {
-        console.warn(`イベント "${event.title}" に開始日がありません`);
-        return;
-      }
+      // 重複回避のためのY位置調整
+      while (level < 20) {
+        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 15);
+        const occupiedAtThisY = occupiedPositions.get(currentY) || [];
 
-      const eventDate = new Date(event.startDate);
-      const eventX = getXFromYear(eventDate.getFullYear());
-      const textWidth = calculateTextWidth(event.title || "", 11);
-      const eventWidth = Math.max(80, textWidth + 20);
-
-      let eventY;
-      let timelineIndex = -1;
-
-      // 年表に属するかチェック
-      if (timelineEventIds.has(event.id)) {
-        // 属する年表のインデックスを取得
-        timelineIndex = safeTimelines.findIndex(timeline => {
-          if (timeline.isVisible === false) return false;
-          return (timeline.events || []).some(e => e.id === event.id) ||
-                 (timeline.temporaryEvents || []).some(e => e.id === event.id);
+        // 同じY座標の他のイベントとの重なりチェック
+        const hasCollision = occupiedAtThisY.some((occupiedEvent) => {
+          const distance = Math.abs(eventX - occupiedEvent.x);
+          const minDistance = (eventWidth + occupiedEvent.width) / 2 + 10;
+          return distance < minDistance;
         });
 
-        if (timelineIndex >= 0) {
-          // 年表線の位置に配置
-          eventY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * TIMELINE_CONFIG.ROW_HEIGHT;
-          console.log(`年表イベント "${event.title}" → 年表 ${timelineIndex} (Y=${eventY})`);
-        } else {
-          // 年表に属しているはずだが見つからない場合はメイン線に
-          eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
-        }
-      } else {
-        // メインタイムライン上で重複回避
-        let level = 0;
-        while (level < 10) {
-          const testY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * 60;
-          const levelEvents = occupiedPositions.get(testY) || [];
-          
-          const hasCollision = levelEvents.some(occupied => 
-            Math.abs(eventX - occupied.x) < (eventWidth + occupied.width) / 2 + 30
-          );
-          
-          if (!hasCollision) {
-            eventY = testY;
-            if (!occupiedPositions.has(testY)) {
-              occupiedPositions.set(testY, []);
-            }
-            occupiedPositions.get(testY).push({ x: eventX, width: eventWidth });
-            break;
+        if (!hasCollision) {
+          eventY = currentY;
+          // 占有位置を記録
+          if (!occupiedPositions.has(currentY)) {
+            occupiedPositions.set(currentY, []);
           }
-          level++;
+          occupiedPositions.get(currentY).push({
+            x: eventX,
+            width: eventWidth,
+            eventId: event.id
+          });
+          break;
         }
-        console.log(`メインイベント "${event.title}" → level ${level} (Y=${eventY})`);
+        level++;
       }
 
-      results.push({
+      layoutResults.push({
         ...event,
         adjustedPosition: { x: eventX, y: eventY },
         calculatedWidth: eventWidth,
-        timelineIndex,
-        isOnTimeline: timelineIndex >= 0
+        hiddenByGroup: false,
+        isGroup: false,
+        level
       });
     });
 
-    console.log(`レイアウト完了: ${results.length}件`);
-    return results;
-  }, [safeEvents, safeTimelines, getXFromYear, calculateTextWidth]);
+    return layoutResults;
+  }, [events, getXFromYear, calculateTextWidth]);
 
-  // 年表軸の計算
+  // 年表軸の情報を計算
   const timelineAxes = useMemo(() => {
-    if (!safeTimelines || safeTimelines.length === 0) {
-      console.log('年表なし');
-      return [];
-    }
-
-    const axes = safeTimelines
-      .filter(timeline => {
-        const hasEvents = (timeline.events?.length || 0) > 0 || 
-                         (timeline.temporaryEvents?.length || 0) > 0;
-        const isVisible = timeline.isVisible !== false;
-        return hasEvents && isVisible;
-      })
+    return timelines.filter(timeline => timeline.isVisible && timeline.events?.length > 0)
       .map((timeline, index) => {
-        const axisY = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
-        
-        const allEvents = [...(timeline.events || []), ...(timeline.temporaryEvents || [])];
-        if (allEvents.length === 0) return null;
-        
-        const years = allEvents.map(e => new Date(e.startDate).getFullYear());
+        const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
+        const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
+
+        const years = timeline.events.map(e => e.startDate.getFullYear());
         const minYear = Math.min(...years);
         const maxYear = Math.max(...years);
+
         const startX = getXFromYear(minYear);
         const endX = getXFromYear(maxYear);
-
-        console.log(`年表軸: "${timeline.name}" ${minYear}-${maxYear} → X:${startX}-${endX}, Y:${axisY}`);
 
         return {
           id: timeline.id,
           name: timeline.name,
-          color: timeline.color || '#e5e7eb',
+          color: timeline.color,
           yPosition: axisY,
           startX,
           endX,
-          cardX: Math.max(50, startX - 100),
-          eventCount: allEvents.length
+          minYear,
+          maxYear,
+          cardX: Math.max(20, startX - 120),
         };
-      })
-      .filter(Boolean);
+      });
+  }, [timelines, getXFromYear]);
 
-    console.log(`年表軸 ${axes.length}件生成`);
-    return axes;
-  }, [safeTimelines, getXFromYear]);
+  return {
+    layoutEvents,
+    timelineAxes
+  };
+};
 
-  // 年表作成ハンドラー
-  const handleCreateTimeline = useCallback(() => {
-    console.log('年表作成開始');
-    
-    let highlightedEventsList = [];
-    if (safeHighlightedEvents?.has) {
-      highlightedEventsList = safeEvents.filter(event => 
-        safeHighlightedEvents.has(event.id)
-      );
-    } else if (Array.isArray(safeHighlightedEvents)) {
-      highlightedEventsList = safeEvents.filter(event => 
-        safeHighlightedEvents.includes(event.id)
-      );
+const TimelineTab = ({ isPersonalMode, isWikiMode, currentPageMode }) => {
+  const timelineRef = useRef(null);
+
+  // 統合座標管理
+  const coordinates = useUnifiedCoordinates(timelineRef);
+  const {
+    scale, panX, panY, pixelsPerYear, isDragging,
+    getXFromYear, getYearFromX,
+    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp,
+    resetToInitialPosition
+  } = coordinates;
+
+  // データ管理（useTimelineLogicから座標系を除いて使用）
+  const timelineData = useTimelineLogic(
+    timelineRef,
+    { current: false },
+    { current: 0 },
+    { current: 0 },
+    false
+  );
+
+  const {
+    events,
+    Timelines,
+    setCreatedTimelines,
+    searchTerm,
+    highlightedEvents,
+    selectedEvent,
+    selectedTimeline,
+    hoveredGroup,
+    setHoveredGroup,
+    createTimeline,
+    deleteTimeline,
+    openNewEventModal,
+    openEventModal,
+    closeEventModal,
+    openTimelineModal,
+    closeTimelineModal,
+    handleSearchChange,
+    getTopTagsFromSearch,
+    calculateTextWidth,
+    updateEvent,
+    deleteEvent,
+    isModalOpen,
+    modalPosition,
+    expandedGroups,
+    toggleEventGroup,
+  } = timelineData;
+
+  // 統合レイアウト管理
+  const { layoutEvents, timelineAxes } = useUnifiedLayout(
+    events, 
+    Timelines, 
+    coordinates, 
+    calculateTextWidth
+  );
+
+  // グローバルマウスイベント
+  useEffect(() => {
+    const handleGlobalMouseMove = (e) => {
+      if (isDragging) handleMouseMove(e);
+    };
+    const handleGlobalMouseUp = () => {
+      if (isDragging) handleMouseUp();
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
     }
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  // 年マーカー生成
+  const generateYearMarkers = useCallback(() => {
+    const markers = [];
     
-    console.log(`ハイライト済みイベント: ${highlightedEventsList.length}件`);
+    let yearInterval;
+    if (scale >= 10) yearInterval = 1;
+    else if (scale >= 5) yearInterval = 5;
+    else if (scale >= 2) yearInterval = 10;
+    else if (scale >= 1) yearInterval = 25;
+    else if (scale >= 0.5) yearInterval = 50;
+    else if (scale >= 0.2) yearInterval = 100;
+    else if (scale >= 0.1) yearInterval = 200;
+    else if (scale >= 0.05) yearInterval = 500;
+    else yearInterval = 1000;
     
-    if (highlightedEventsList.length === 0) {
-      alert("検索でイベントを選択してから年表を作成してください");
-      return;
+    const viewportStart = (-panX) / pixelsPerYear - 5000;
+    const viewportEnd = (window.innerWidth - panX) / pixelsPerYear - 5000;
+    const startYear = Math.floor(viewportStart / yearInterval) * yearInterval;
+    const endYear = Math.ceil(viewportEnd / yearInterval) * yearInterval;
+    
+    for (let year = Math.max(-5000, startYear); year <= Math.min(5000, endYear); year += yearInterval) {
+      const x = getXFromYear(year);
+      if (x > -200 && x < window.innerWidth + 200) {
+        const fontSize = Math.max(10, Math.min(14, 12 + Math.log10(Math.max(0.01, scale)) * 2));
+        
+        markers.push(
+          <div key={year} style={{
+            position: 'absolute', left: `${x}px`, top: '0px', height: '100%',
+            borderLeft: '1px solid #ddd', pointerEvents: 'none', zIndex: 10
+          }}>
+            <span style={{
+              position: 'absolute', top: '10px', left: '5px',
+              fontSize: `${fontSize}px`, color: '#666', fontWeight: '500',
+              userSelect: 'none', backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: '2px 6px', borderRadius: '3px',
+              border: '1px solid rgba(221, 221, 221, 0.7)',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
+            }}>{year}</span>
+            
+            <span style={{
+              position: 'absolute', bottom: '10px', left: '5px',
+              fontSize: `${fontSize}px`, color: '#666', fontWeight: '500',
+              userSelect: 'none', backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              padding: '2px 6px', borderRadius: '3px',
+              border: '1px solid rgba(221, 221, 221, 0.7)',
+              boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
+            }}>{year}</span>
+          </div>
+        );
+      }
     }
+    return markers;
+  }, [scale, pixelsPerYear, panX, getXFromYear]);
 
-    // 上位コンポーネントの年表作成関数を呼び出し
-    if (onCreateTimeline) {
-      onCreateTimeline(highlightedEventsList);
-    }
-  }, [safeEvents, safeHighlightedEvents, onCreateTimeline]);
+  // イベント処理関数
+  const handleEventDoubleClick = useCallback((event) => {
+    console.log("Event double click:", event.title);
+    if (openEventModal) openEventModal(event);
+  }, [openEventModal]);
 
-  // イベントクリック
-  const handleEventClick = useCallback((event) => {
-    console.log('イベントクリック:', event.title);
-    setSelectedEvent(event);
-  }, []);
-
-  // 追加ボタン
   const handleAddEvent = useCallback(() => {
-    console.log('イベント追加');
-    if (onAddEvent) {
-      onAddEvent();
+    console.log("Add event button clicked");
+    if (openNewEventModal) openNewEventModal();
+  }, [openNewEventModal]);
+
+  const handleCreateTimeline = useCallback(() => {
+    console.log("Create timeline clicked, highlighted:", highlightedEvents?.size || 0);
+    if (createTimeline) createTimeline();
+  }, [createTimeline, highlightedEvents]);
+
+  const handleTimelineDoubleClick = useCallback((e) => {
+    if (!e.target.closest("[data-event-id]")) {
+      handleAddEvent();
     }
-  }, [onAddEvent]);
+  }, [handleAddEvent]);
+
+  const safeSetHoveredGroup = setHoveredGroup || (() => {});
+  const handleGroupHover = useCallback((groupId, groupData) => {
+    safeSetHoveredGroup(groupId ? { id: groupId, data: groupData } : null);
+  }, [safeSetHoveredGroup]);
+
+  console.log("TimelineTab render:", {
+    events: events?.length || 0,
+    timelines: Timelines?.length || 0,
+    layoutEvents: layoutEvents?.length || 0,
+    scale: scale?.toFixed(2),
+    panX: Math.round(panX || 0),
+    panY: Math.round(panY || 0),
+    isDragging,
+    pixelsPerYear: Math.round(pixelsPerYear || 0)
+  });
 
   return (
-    <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+    <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
       {/* メインタイムライン表示エリア */}
       <div
         ref={timelineRef}
         style={{
-          width: '100%',
-          height: '100%',
-          position: 'relative',
-          overflow: 'hidden',
-          cursor: 'grab',
-          backgroundColor: '#f8fafc'
+          width: "100%",
+          height: "100%",
+          position: "relative",
+          overflow: "hidden",
+          cursor: isDragging ? "grabbing" : "grab",
+          backgroundColor: "#f8fafc",
         }}
-        onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onDoubleClick={onDoubleClick}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onDoubleClick={handleTimelineDoubleClick}
       >
         {/* 年マーカー */}
         {generateYearMarkers()}
 
         {/* メインタイムライン線 */}
-        <div
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: `${TIMELINE_CONFIG.MAIN_TIMELINE_Y + finalPanY}px`,
-            height: '3px',
-            backgroundColor: '#374151',
-            zIndex: 1
-          }}
-        />
+        <div style={{
+          position: "absolute", left: 0, right: 0,
+          top: `${TIMELINE_CONFIG.MAIN_TIMELINE_Y + panY}px`,
+          height: "3px", backgroundColor: "#374151", zIndex: 1
+        }} />
 
         {/* 年表線 */}
         {timelineAxes.map((axis) => (
-          <div
-            key={`timeline-axis-${axis.id}`}
-            style={{
-              position: 'absolute',
-              left: `${axis.startX}px`,
-              top: `${axis.yPosition + finalPanY}px`,
-              width: `${Math.max(100, axis.endX - axis.startX)}px`,
-              height: '3px',
-              backgroundColor: axis.color,
-              zIndex: 2
+          <div key={`timeline-axis-${axis.id}`} style={{
+            position: "absolute",
+            left: `${axis.startX}px`,
+            top: `${axis.yPosition + panY}px`,
+            width: `${Math.max(100, axis.endX - axis.startX)}px`,
+            height: "3px",
+            backgroundColor: axis.color,
+            zIndex: 2,
+          }} />
+        ))}
+
+        {/* イベント表示（統合レイアウト使用） */}
+        {layoutEvents.map((event, index) => {
+          const eventX = event.adjustedPosition.x;
+          const eventY = event.adjustedPosition.y + panY;
+          const isHighlighted = highlightedEvents?.has ? highlightedEvents.has(event.id) : false;
+          const eventWidth = event.calculatedWidth;
+
+          return (
+            <React.Fragment key={`event-${event.id}-${index}`}>
+              {/* 年号表示 */}
+              <div style={{
+                position: "absolute",
+                left: `${eventX}px`,
+                top: `${eventY - 20}px`,
+                transform: "translateX(-50%)",
+                fontSize: "10px",
+                color: event.timelineColor || "#999",
+                fontWeight: "500",
+                textAlign: "center",
+                pointerEvents: "none",
+                zIndex: 15,
+              }}>
+                {event.startDate?.getFullYear()}
+              </div>
+
+              {/* イベントカード */}
+              <div
+                data-event-id={event.id}
+                className="no-pan" // パン操作を無効化
+                style={{
+                  position: "absolute",
+                  left: `${eventX - eventWidth / 2}px`,
+                  top: `${eventY - TIMELINE_CONFIG.EVENT_HEIGHT / 2}px`,
+                  width: `${eventWidth}px`,
+                  height: `${TIMELINE_CONFIG.EVENT_HEIGHT}px`,
+                  backgroundColor: isHighlighted ? "#fef3c7" : "#ffffff",
+                  border: `2px solid ${isHighlighted ? "#f59e0b" : event.timelineColor || "#e5e7eb"}`,
+                  borderRadius: "6px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  fontSize: "11px",
+                  fontWeight: "500",
+                  color: "#374151",
+                  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)",
+                  zIndex: isHighlighted ? 20 : 10,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  padding: "0 8px",
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  handleEventDoubleClick(event);
+                }}
+                title={`${event.title}\n${event.startDate?.toLocaleDateString("ja-JP") || ""}\nダブルクリックで編集`}
+              >
+                {truncateTitle ? truncateTitle(event.title, 12) : event.title}
+              </div>
+            </React.Fragment>
+          );
+        })}
+
+        {/* 年表概要カード */}
+        {timelineAxes.map((axis) => (
+          <TimelineCard
+            key={`timeline-card-${axis.id}`}
+            timeline={Timelines.find((t) => t.id === axis.id)}
+            position={{ x: axis.cardX, y: axis.yPosition + panY - 30 }}
+            onEdit={() => {
+              const timeline = Timelines.find((t) => t.id === axis.id);
+              if (timeline && openTimelineModal) openTimelineModal(timeline);
             }}
+            onDelete={() => deleteTimeline(axis.id)}
+            onToggleVisibility={(timelineId) => {
+              setCreatedTimelines((prev) =>
+                prev.map((t) => t.id === timelineId ? { ...t, isVisible: !t.isVisible } : t)
+              );
+            }}
+            style={{
+              position: "absolute",
+              left: `${axis.cardX}px`,
+              top: `${axis.yPosition + panY - 30}px`,
+              zIndex: 25,
+            }}
+            className="no-pan"
           />
         ))}
 
-        {/* 年表カード */}
-        {timelineAxes.map((axis) => (
-          <div
-            key={`timeline-card-${axis.id}`}
-            style={{
-              position: 'absolute',
-              left: `${axis.cardX}px`,
-              top: `${axis.yPosition + finalPanY - 25}px`,
-              zIndex: 15
-            }}
-          >
-            <TimelineCard
-              timeline={safeTimelines.find(t => t.id === axis.id)}
-              compact={true}
-              onClick={() => console.log('年表カードクリック')}
-              onToggleVisibility={() => onDeleteTimeline && onDeleteTimeline(axis.id)}
-            />
-          </div>
-        ))}
-
-        {/* イベント表示 */}
-        {layoutEvents.length === 0 ? (
-          <div
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              padding: '20px',
-              backgroundColor: '#fff3cd',
-              border: '1px solid #ffeaa7',
-              borderRadius: '8px',
-              textAlign: 'center',
-              zIndex: 30
-            }}
-          >
-            <div style={{ fontSize: '16px', color: '#856404', marginBottom: '8px' }}>
-              📊 イベントが表示されていません
-            </div>
-            <div style={{ fontSize: '12px', color: '#6c757d' }}>
-              Events: {safeEvents.length}件読み込み済み
-            </div>
-          </div>
-        ) : (
-          layoutEvents.map((event) => {
-            const eventX = event.adjustedPosition.x;
-            const eventY = event.adjustedPosition.y + finalPanY;
-            const isHighlighted = safeHighlightedEvents?.has ? 
-              safeHighlightedEvents.has(event.id) : 
-              safeHighlightedEvents?.includes && safeHighlightedEvents.includes(event.id);
-
-            // 年表に属する場合は年表の色を使用
-            let borderColor = '#6b7280';
-            if (event.isOnTimeline && event.timelineIndex >= 0) {
-              const timeline = safeTimelines[event.timelineIndex];
-              borderColor = timeline?.color || '#6b7280';
-            }
-
-            return (
-              <div
-                key={event.id}
-                style={{
-                  position: 'absolute',
-                  left: `${eventX - event.calculatedWidth / 2}px`,
-                  top: `${eventY}px`,
-                  width: `${event.calculatedWidth}px`,
-                  height: `${TIMELINE_CONFIG.EVENT_HEIGHT}px`,
-                  backgroundColor: isHighlighted ? '#fef3c7' : '#ffffff',
-                  border: `2px solid ${isHighlighted ? '#f59e0b' : borderColor}`,
-                  borderRadius: '6px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '11px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  zIndex: 20,
-                  transition: 'all 0.2s ease',
-                  boxShadow: isHighlighted ? 
-                    '0 2px 8px rgba(245, 158, 11, 0.3)' : 
-                    '0 1px 3px rgba(0, 0, 0, 0.1)'
-                }}
-                onClick={() => handleEventClick(event)}
-                title={`${event.title} (${event.startDate ? new Date(event.startDate).getFullYear() : '?'})`}
-              >
-                {truncateTitle(event.title || '無題', event.calculatedWidth - 20)}
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* 検索パネル */}
-      <SearchPanel
-        searchTerm={safeSearchTerm}
-        highlightedEvents={safeHighlightedEvents}
-        timelines={safeTimelines}
-        onSearchChange={onSearchChange}
-        onCreateTimeline={handleCreateTimeline}
-        onDeleteTimeline={onDeleteTimeline}
-        getTopTagsFromSearch={() => {
-          if (!getTopTagsFromSearch) return [];
-          const highlightedList = safeEvents.filter(event => 
-            safeHighlightedEvents?.has?.(event.id) || 
-            safeHighlightedEvents?.includes?.(event.id)
-          );
-          return getTopTagsFromSearch(highlightedList);
-        }}
-        isWikiMode={isWikiMode}
-        showAdvancedOptions={true}
-      />
-
-      {/* 追加ボタン */}
-      <div style={{
-        position: 'absolute',
-        top: '20px',
-        right: '20px',
-        zIndex: 100
-      }}>
-        <button
-          style={{
-            padding: '12px 16px',
-            backgroundColor: '#10b981',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            fontWeight: '500',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-          }}
-          onClick={handleAddEvent}
-          onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
-          onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
-        >
-          + イベント追加
-        </button>
-      </div>
-      
-      {/* リセットボタン */}
-      {onResetView && (
+        {/* 現在線 */}
         <div style={{
-          position: 'absolute',
-          top: '20px',
-          right: '180px',
-          zIndex: 100
+          position: "absolute",
+          left: `${getXFromYear(2025)}px`,
+          top: "0", height: "100%",
+          borderLeft: "2px solid #f59e0b",
+          pointerEvents: "none", opacity: 0.8, zIndex: 12
         }}>
-          <button
-            style={{
-              padding: '8px 16px',
-              backgroundColor: '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px'
-            }}
-            onClick={onResetView}
-            title="初期位置に戻す"
-          >
-            🎯 初期位置
-          </button>
+          <div style={{
+            position: "absolute", left: "5px", top: "30px",
+            fontSize: "11px", color: "#f59e0b",
+            backgroundColor: "rgba(255,255,255,0.9)",
+            padding: "2px 6px", borderRadius: "3px", fontWeight: "600"
+          }}>現在 (2025)</div>
         </div>
-      )}
+      </div>
 
-      {/* デバッグ情報 */}
-      <div style={{
-        position: 'absolute',
-        bottom: '20px',
-        left: '20px',
-        padding: '8px 12px',
-        backgroundColor: 'rgba(0,0,0,0.8)',
-        color: 'white',
-        borderRadius: '4px',
-        fontSize: '10px',
-        fontFamily: 'monospace',
-        zIndex: 100
+      {/* フローティングパネル */}
+      <div className="search-panel no-pan" style={{
+        position: "absolute", left: "20px", top: "20px",
+        zIndex: 30, pointerEvents: "auto"
       }}>
-        📊 Events: {safeEvents.length} | 
-        Timelines: {safeTimelines.length} | 
-        Layout: {layoutEvents.length} | 
-        Axes: {timelineAxes.length} | 
-        Highlighted: {safeHighlightedEvents?.size || safeHighlightedEvents?.length || 0}
-        <br />
-        PanX: {Math.round(finalPanX)} | 
-        PanY: {Math.round(finalPanY)} | 
-        PixelsPerYear: {finalCurrentPixelsPerYear}
+        <SearchPanel
+          searchTerm={searchTerm}
+          highlightedEvents={highlightedEvents}
+          onSearchChange={handleSearchChange}
+          onCreateTimeline={handleCreateTimeline}
+          onDeleteTimeline={deleteTimeline}
+          getTopTagsFromSearch={getTopTagsFromSearch}
+          styles={{}}
+        />
+      </div>
+
+      {/* ボタン群 */}
+      <div className="no-pan" style={{
+        position: "absolute", right: "20px", bottom: "20px", zIndex: 30
+      }}>
+        <button onClick={handleAddEvent} style={{
+          backgroundColor: "#3b82f6", color: "white", border: "none",
+          borderRadius: "50%", width: "56px", height: "56px",
+          fontSize: "24px", cursor: "pointer",
+          boxShadow: "0 4px 12px rgba(59, 130, 246, 0.4)",
+          display: "flex", alignItems: "center", justifyContent: "center"
+        }} title="イベントを追加">+</button>
+      </div>
+
+      <div className="no-pan" style={{
+        position: "absolute", right: "90px", bottom: "20px", zIndex: 30
+      }}>
+        <button onClick={resetToInitialPosition} style={{
+          backgroundColor: "#6b7280", color: "white", border: "none",
+          borderRadius: "8px", padding: "8px 12px", fontSize: "12px",
+          cursor: "pointer", boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)"
+        }} title="初期位置に戻す">初期位置</button>
       </div>
 
       {/* モーダル */}
       {selectedEvent && (
         <EventModal
           event={selectedEvent}
-          onClose={() => setSelectedEvent(null)}
-          onUpdate={onEventUpdate}
-          onDelete={onEventDelete}
+          onClose={closeEventModal}
+          onUpdate={updateEvent}
+          onDelete={deleteEvent}
           isWikiMode={isWikiMode}
-          timelines={safeTimelines}
+          position={modalPosition}
+          timelines={Timelines || []}
         />
       )}
+
+      {selectedTimeline && (
+        <TimelineModal
+          timeline={selectedTimeline}
+          onClose={closeTimelineModal}
+          onUpdate={() => {}}
+          onDelete={deleteTimeline}
+          isWikiMode={isWikiMode}
+        />
+      )}
+
+      {/* デバッグ情報 */}
+      <div style={{
+        position: "absolute", bottom: "20px", left: "20px",
+        padding: "8px 12px", backgroundColor: "rgba(0,0,0,0.8)",
+        color: "white", borderRadius: "6px", fontSize: "10px",
+        fontFamily: "monospace", zIndex: 100, maxWidth: "400px"
+      }}>
+        統合Timeline状況:<br />
+        Events: {events?.length || 0} | Layout: {layoutEvents?.length || 0} | 
+        Timelines: {Timelines?.length || 0}<br />
+        Scale: {scale?.toFixed(2)} | Pan: ({Math.round(panX || 0)}, {Math.round(panY || 0)})<br />
+        PixelsPerYear: {Math.round(pixelsPerYear || 0)} | Dragging: {isDragging ? "Yes" : "No"}<br />
+        Search: "{searchTerm || ""}" | Highlighted: {highlightedEvents?.size || 0}
+      </div>
     </div>
   );
 };
