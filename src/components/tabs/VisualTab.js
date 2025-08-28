@@ -73,6 +73,17 @@ const VisualTab = ({
     return Math.min(Math.max(60, text.length * 8), 200);
   }, []);
 
+  // 段配置チェック関数 - useMemoより前に定義
+  const canPlaceInTier = useCallback((tier, eventX, eventWidth) => {
+    const eventStart = eventX - eventWidth / 2;
+    const eventEnd = eventX + eventWidth / 2;
+    const gap = 15;
+
+    return !tier.some(occupied => 
+      !(eventEnd + gap < occupied.startX || eventStart - gap > occupied.endX)
+    );
+  }, []);
+
   // 表示用の統合年表データ
   const displayTimelines = useMemo(() => {
     if (isWikiMode) {
@@ -273,18 +284,7 @@ const VisualTab = ({
     });
 
     return results;
-  }, [events, timelineAxes, getXFromYear, calculateTextWidth]);
-
-  // 段配置チェック関数
-  const canPlaceInTier = (tier, eventX, eventWidth) => {
-    const eventStart = eventX - eventWidth / 2;
-    const eventEnd = eventX + eventWidth / 2;
-    const gap = 15;
-
-    return !tier.some(occupied => 
-      !(eventEnd + gap < occupied.startX || eventStart - gap > occupied.endX)
-    );
-  };
+  }, [events, timelineAxes, getXFromYear, calculateTextWidth, canPlaceInTier]);
 
   // ネットワーク接続線データ生成
   const networkConnections = useMemo(() => {

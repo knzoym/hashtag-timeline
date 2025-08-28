@@ -394,7 +394,7 @@ const AppContent = () => {
   );
 };
 
-// ErrorBoundary コンポーネント
+// ErrorBoundary コンポーネント - null チェック修正版
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -409,7 +409,7 @@ class ErrorBoundary extends React.Component {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({
       error: error,
-      errorInfo: errorInfo,
+      errorInfo: errorInfo || null, // null の可能性を明示的に処理
     });
   }
 
@@ -461,7 +461,10 @@ class ErrorBoundary extends React.Component {
             >
               {this.state.error && this.state.error.toString()}
               <br />
-              {this.state.errorInfo.componentStack}
+              {/* null チェックを追加してcomponentStackエラーを修正 */}
+              {this.state.errorInfo && this.state.errorInfo.componentStack
+                ? this.state.errorInfo.componentStack
+                : "詳細なスタック情報は利用できません"}
             </pre>
           </details>
           <button
