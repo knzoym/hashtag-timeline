@@ -1,20 +1,18 @@
-// src/pages/App.js - 完全復活版
-import React, { useRef, useCallback, useState, useEffect } from 'react';
+// App.js - 既存構造を活用し、インポートエラーを解決
+import React, { useRef, useCallback, useState } from 'react';
 import { PageModeProvider, usePageMode } from './contexts/PageModeContext';
 import Header from './components/common/Header';
 import TabSystem from './components/common/TabSystem';
 import MyPage from './components/personal/MyPage';
 
-// フック類
+// 修正済みフック
+import { useUnifiedCoordinates } from './hooks/useUnifiedCoordinates';
 import { useTimelineLogic } from './hooks/useTimelineLogic';
 import { useDragDrop } from './hooks/useDragDrop';
 import { useAuth } from './hooks/useAuth';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
 import { useWikiData } from './hooks/useWikiData';
 import { useIsDesktop } from './hooks/useMediaQuery';
-
-// // エラーバウンダリ
-// import TimelineErrorBoundary from '../components/common/TimelineErrorBoundary';
 
 const AppContent = () => {
   const {
@@ -24,8 +22,7 @@ const AppContent = () => {
     changePageMode,
     changeTab,
     updateFileName,
-    getPageModeInfo,
-    PAGE_MODES
+    getPageModeInfo
   } = usePageMode();
   
   const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo();
@@ -50,71 +47,37 @@ const AppContent = () => {
   const timelineRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
   
-  // タイムラインロジック（単一のデータソース）
+  // 統合座標管理
+  const coordinates = useUnifiedCoordinates(timelineRef);
   const {
-    events,
-    setEvents,
-    timelines: Timelines,
-    setCreatedTimelines,
-    scale,
-    setScale,
-    panX,
-    setPanX,
-    panY,
-    setPanY,
-    currentPixelsPerYear,
-    searchTerm,
-    setSearchTerm,
-    highlightedEvents,
-    setHighlightedEvents,
-    selectedEvent,
-    setSelectedEvent,
-    selectedTimeline,
-    setSelectedTimeline,
-    hoveredGroup,
-    setHoveredGroup,
-    
-    // 関数
-    addEvent,
-    updateEvent,
-    deleteEvent,
-    createTimeline: baseCreateTimeline,
-    deleteTimeline,
-    updateTimeline,
-    openNewEventModal,
-    openEventModal,
-    closeEventModal,
-    openTimelineModal,
-    closeTimelineModal,
-    resetToInitialPosition,
-    handleSearchChange,
-    getTopTagsFromSearch,
+    scale, setScale, panX, setPanX, panY, setPanY, 
+    currentPixelsPerYear, resetToInitialPosition,
+    handleWheel, handleMouseDown, handleMouseMove, handleMouseUp
+  } = coordinates;
+  
+  // タイムラインデータ管理
+  const timelineLogic = useTimelineLogic(timelineRef, coordinates);
+  const {
+    events, setEvents, timelines, setCreatedTimelines,
+    searchTerm, highlightedEvents, selectedEvent, selectedTimeline, hoveredGroup,
+    setHoveredGroup, addEvent, updateEvent, deleteEvent, createTimeline: baseCreateTimeline,
+    deleteTimeline, updateTimeline, openNewEventModal, openEventModal, closeEventModal,
+    openTimelineModal, closeTimelineModal, handleSearchChange, getTopTagsFromSearch,
     calculateTextWidth
-  } = useTimelineLogic(timelineRef);
+  } = timelineLogic;
 
   // ドラッグ&ドロップ機能
-  const {
-    handleWheel,
-    handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
-    handleDoubleClick
-  } = useDragDrop({
-    scale,
-    setScale,
-    panX,
-    setPanX,
-    panY,
-    setPanY,
-    openNewEventModal,
-    openEventModal
+  const dragDropHandlers = useDragDrop({
+    scale, setScale, panX, setPanX, panY, setPanY,
+    openNewEventModal, openEventModal
   });
+  const { handleDoubleClick } = dragDropHandlers;
 
-  // 年表作成処理（修正版）
+  // 年表作成処理（拡張版）
   const handleCreateTimeline = useCallback((highlightedEventsList) => {
     console.log('App: 年表作成開始', {
       eventsCount: highlightedEventsList?.length || 0,
-      currentTimelines: Timelines.length,
+      currentTimelines: timelines.length,
       highlightedType: typeof highlightedEventsList
     });
 
@@ -162,10 +125,6 @@ const AppContent = () => {
         return updatedTimelines;
       });
 
-      // 検索クリア
-      setSearchTerm('');
-      setHighlightedEvents(new Set());
-
       console.log('App: 年表作成完了', timelineName);
       return newTimeline;
     } else {
@@ -173,11 +132,11 @@ const AppContent = () => {
       console.log('App: ベース年表作成処理を呼び出し');
       return baseCreateTimeline();
     }
-  }, [Timelines.length, setCreatedTimelines, setSearchTerm, setHighlightedEvents, baseCreateTimeline]);
+  }, [timelines.length, setCreatedTimelines, baseCreateTimeline]);
 
   // ファイル操作
   const handleNew = useCallback(() => {
-    if (events.length > 0 || Timelines.length > 0) {
+    if (events.length > 0 || timelines.length > 0) {
       if (!window.confirm('現在の作業内容が失われますが、よろしいですか？')) {
         return;
       }
@@ -187,7 +146,7 @@ const AppContent = () => {
     setCreatedTimelines([]);
     updateFileName(null);
     resetToInitialPosition();
-  }, [events.length, Timelines.length, setEvents, setCreatedTimelines, updateFileName, resetToInitialPosition]);
+  }, [events.length, timelines.length, setEvents, setCreatedTimelines, updateFileName, resetToInitialPosition]);
   
   const handleSave = useCallback(async () => {
     if (!isAuthenticated || isSaving) return;
@@ -196,7 +155,7 @@ const AppContent = () => {
     try {
       const timelineData = {
         events: events,
-        timelines: Timelines,
+        timelines: timelines,
         version: "1.0",
         savedAt: new Date().toISOString(),
       };
@@ -213,7 +172,7 @@ const AppContent = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [isAuthenticated, events, Timelines, currentFileName, saveTimelineData, updateFileName, isSaving]);
+  }, [isAuthenticated, events, timelines, currentFileName, saveTimelineData, updateFileName, isSaving]);
   
   const handleLoadTimeline = useCallback((timelineData) => {
     if (timelineData.events) {
@@ -238,27 +197,14 @@ const AppContent = () => {
           startDate: new Date(event.startDate),
           endDate: new Date(event.endDate),
         })) || [],
-        removedEvents: timeline.removedEvents?.map((event) => ({
-          ...event,
-          startDate: new Date(event.startDate),
-          endDate: new Date(event.endDate),
-        })) || [],
       }));
       setCreatedTimelines(timelinesWithDates);
     }
     
-    if (timelineData.fileName) {
-      updateFileName(timelineData.fileName);
-    }
-    
-    changePageMode(PAGE_MODES.PERSONAL);
-  }, [setEvents, setCreatedTimelines, updateFileName, changePageMode, PAGE_MODES.PERSONAL]);
-  
-  // Wikiイベントインポート
-  const handleWikiEventImport = useCallback((wikiEvent) => {
-    setEvents((prevEvents) => [...prevEvents, wikiEvent]);
-  }, [setEvents]);
-  
+    resetToInitialPosition();
+    console.log('年表データを読み込みました');
+  }, [setEvents, setCreatedTimelines, resetToInitialPosition]);
+
   // メニューアクション処理
   const handleMenuAction = useCallback((actionId) => {
     switch (actionId) {
@@ -282,7 +228,7 @@ const AppContent = () => {
   // TabSystem用のprops
   const tabSystemProps = {
     events,
-    timelines: Timelines,
+    timelines,
     user,
     onEventUpdate: updateEvent,
     onEventDelete: deleteEvent,
@@ -292,17 +238,9 @@ const AppContent = () => {
     },
     onAddEvent: addEvent,
     
-    // Timeline/Network固有
+    // Timeline/Network固有の座標系（統合版）
     timelineRef,
-    scale,
-    panX,
-    panY,
-    currentPixelsPerYear,
-    onWheel: handleWheel,
-    onMouseDown: handleMouseDown,
-    onMouseMove: handleMouseMove,
-    onMouseUp: handleMouseUp,
-    onDoubleClick: handleDoubleClick,
+    coordinates, // 統合座標管理オブジェクト
     highlightedEvents,
     searchTerm,
     onSearchChange: handleSearchChange,
@@ -329,7 +267,7 @@ const AppContent = () => {
 
   console.log('App render:', {
     events: events.length,
-    timelines: Timelines.length,
+    timelines: timelines.length,
     currentTab,
     isMyPageMode
   });
@@ -351,50 +289,32 @@ const AppContent = () => {
         {isMyPageMode ? (
           <MyPage
             user={user}
-            supabaseSync={{ getUserTimelines, deleteTimelineFile }}
+            isAuthenticated={isAuthenticated}
             onLoadTimeline={handleLoadTimeline}
-            onBackToTimeline={() => changePageMode(PAGE_MODES.PERSONAL)}
+            getUserTimelines={getUserTimelines}
+            deleteTimelineFile={deleteTimelineFile}
           />
         ) : (
-          <TabSystem {...tabSystemProps} />
+          <TabSystem
+            {...tabSystemProps}
+            currentPageMode={currentPageMode}
+            currentTab={currentTab}
+            isPersonalMode={isPersonalMode}
+            isWikiMode={isWikiMode}
+            onTabChange={changeTab}
+          />
         )}
-      </div>
-      
-      {/* デバッグ情報 */}
-      <div style={{
-        padding: '8px 16px',
-        backgroundColor: '#1f2937',
-        color: 'white',
-        fontSize: '12px',
-        fontFamily: 'monospace',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <div>
-          Timeline統合版 | 
-          Mode: {currentPageMode} | 
-          Tab: {currentTab || 'none'} | 
-          Events: {events.length} | 
-          Timelines: {Timelines.length}
-        </div>
-        <div>
-          {isAuthenticated && `${user?.email?.split('@')[0]}`}
-          {isSaving && ' | 保存中...'}
-        </div>
       </div>
     </div>
   );
 };
 
-// メインアプリケーションコンポーネント
+// PageModeProvider でラップして提供
 const App = () => {
   return (
-    // <TimelineErrorBoundary>
-      <PageModeProvider>
-        <AppContent />
-      </PageModeProvider>
-    // </TimelineErrorBoundary>
+    <PageModeProvider>
+      <AppContent />
+    </PageModeProvider>
   );
 };
 
