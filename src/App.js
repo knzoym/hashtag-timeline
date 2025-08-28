@@ -1,10 +1,10 @@
 // src/App.js - 根本的問題修正版
-import React, { 
-  useRef, 
-  useCallback, 
-  useState, 
-  useMemo, 
-  useEffect 
+import React, {
+  useRef,
+  useCallback,
+  useState,
+  useMemo,
+  useEffect,
 } from "react";
 import { PageModeProvider, usePageMode } from "./contexts/PageModeContext";
 import Header from "./components/common/Header";
@@ -58,111 +58,186 @@ const AppContent = () => {
   const [wikiLoading, setWikiLoading] = useState(false);
 
   // 検索機能
-  const { 
-    searchTerm, 
-    highlightedEvents, 
-    handleSearchChange, 
-    getTopTagsFromSearch 
+  const {
+    searchTerm,
+    highlightedEvents,
+    handleSearchChange,
+    getTopTagsFromSearch,
   } = useTimelineSearch(isWikiMode ? wikiEvents : events);
 
   // Wiki/個人イベントの表示切り替え
   const displayEvents = useMemo(() => {
     try {
       if (isWikiMode) {
-        return showPendingEvents ? 
-          [...wikiEvents, ...tempTimelines.flatMap(t => t.events || [])] : 
-          wikiEvents;
+        return showPendingEvents
+          ? [...wikiEvents, ...tempTimelines.flatMap((t) => t.events || [])]
+          : wikiEvents;
       }
       return events;
     } catch (error) {
-      console.error('イベント表示エラー:', error);
+      console.error("イベント表示エラー:", error);
       return [];
     }
   }, [isWikiMode, wikiEvents, events, showPendingEvents, tempTimelines]);
 
   // === イベント操作 ===
-  const handleAddEvent = useCallback((eventData) => {
-    try {
-      const newEvent = {
-        id: Date.now(),
-        title: eventData?.title || "新規イベント",
-        startDate: eventData?.startDate || new Date(),
-        endDate: eventData?.endDate || new Date(),
-        description: eventData?.description || "",
-        tags: eventData?.tags || [],
-        timelineInfos: [],
-        ...eventData
-      };
+  const handleAddEvent = useCallback(
+    (eventData) => {
+      try {
+        const newEvent = {
+          id: Date.now(),
+          title: eventData?.title || "新規イベント",
+          startDate: eventData?.startDate || new Date(),
+          endDate: eventData?.endDate || new Date(),
+          description: eventData?.description || "",
+          tags: eventData?.tags || [],
+          timelineInfos: [],
+          ...eventData,
+        };
 
-      if (isWikiMode) {
-        // Wiki編集フォームを開く
-        console.log('Wikiイベント作成フォームを開く');
-      } else {
-        setEvents(prev => [...prev, newEvent]);
+        if (isWikiMode) {
+          // Wiki編集フォームを開く
+          console.log("Wikiイベント作成フォームを開く");
+        } else {
+          setEvents((prev) => [...prev, newEvent]);
+        }
+      } catch (error) {
+        console.error("イベント追加エラー:", error);
       }
-    } catch (error) {
-      console.error('イベント追加エラー:', error);
-    }
-  }, [isWikiMode]);
+    },
+    [isWikiMode]
+  );
 
   const updateEvent = useCallback((eventId, updateData) => {
     try {
-      setEvents(prev => 
-        prev.map(event => 
-          event.id === eventId 
-            ? { ...event, ...updateData }
-            : event
+      setEvents((prev) =>
+        prev.map((event) =>
+          event.id === eventId ? { ...event, ...updateData } : event
         )
       );
     } catch (error) {
-      console.error('イベント更新エラー:', error);
+      console.error("イベント更新エラー:", error);
     }
   }, []);
 
   const deleteEvent = useCallback((eventId) => {
     try {
-      setEvents(prev => prev.filter(event => event.id !== eventId));
+      setEvents((prev) => prev.filter((event) => event.id !== eventId));
     } catch (error) {
-      console.error('イベント削除エラー:', error);
+      console.error("イベント削除エラー:", error);
     }
   }, []);
 
-  // === 年表操作 ===
-  const handleCreateTimeline = useCallback((timelineData) => {
+  // === 年表操作（修正版） ===
+  const handleCreateTimeline = useCallback(() => {
     try {
+      if (!highlightedEvents || highlightedEvents.size === 0) {
+        console.log("年表作成: ハイライトされたイベントがありません");
+        return;
+      }
+
+      // 検索テキストをデフォルト年表名として使用
+      const defaultName = searchTerm.trim() || "新しい年表";
+      const timelineName = prompt(`年表名を入力してください:`, defaultName);
+      if (!timelineName) return;
+
+      const newTimelineId = `timeline_${Date.now()}`;
+      const selectedEventIds = Array.from(highlightedEvents);
+
+      // 新しい年表を作成
       const newTimeline = {
-        id: Date.now(),
-        title: timelineData?.title || "新規年表",
-        tags: timelineData?.tags || [],
-        events: timelineData?.events || [],
-        ...timelineData
+        id: newTimelineId,
+        name: timelineName,
+        color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
+        isVisible: true,
+        createdAt: new Date(),
+        type: "personal",
+        eventIds: selectedEventIds, // イベントID配列を追加
+        eventCount: selectedEventIds.length,
       };
 
-      setTimelines(prev => [...prev, newTimeline]);
+      setTimelines((prev) => [...prev, newTimeline]);
+
+      // 選択されたイベントにtimelineInfosを追加
+      setEvents((prevEvents) =>
+        prevEvents.map((event) =>
+          selectedEventIds.includes(event.id)
+            ? {
+                ...event,
+                timelineInfos: [
+                  ...(event.timelineInfos || []),
+                  { timelineId: newTimelineId, isTemporary: false },
+                ],
+              }
+            : event
+        )
+      );
+
+      console.log("年表作成完了:", newTimeline);
+      // 検索をクリア（handleSearchChangeを使用）
+      handleSearchChange({ target: { value: "" } });
     } catch (error) {
-      console.error('年表作成エラー:', error);
+      console.error("年表作成エラー:", error);
     }
-  }, []);
+  }, [highlightedEvents, searchTerm, handleSearchChange]);
+
+  // 一時年表作成（Wiki専用）
+  const handleCreateTempTimeline = useCallback(() => {
+    try {
+      if (!highlightedEvents || highlightedEvents.size === 0) {
+        console.log("一時年表作成: ハイライトされたイベントがありません");
+        return;
+      }
+
+      // 検索テキストをデフォルト年表名として使用
+      const defaultName = searchTerm.trim() || "一時年表";
+      const timelineName = prompt("一時年表名を入力してください:", defaultName);
+      if (!timelineName) return;
+
+      const newTempTimelineId = `temp_timeline_${Date.now()}`;
+      const selectedEventIds = Array.from(highlightedEvents);
+
+      const newTempTimeline = {
+        id: newTempTimelineId,
+        name: timelineName,
+        color: `hsl(${Math.floor(Math.random() * 360)}, 60%, 60%)`,
+        isVisible: true,
+        createdAt: new Date(),
+        type: "temporary",
+        eventIds: selectedEventIds,
+        eventCount: selectedEventIds.length,
+        createdFrom: "search_result",
+      };
+
+      setTempTimelines((prev) => [...prev, newTempTimeline]);
+      console.log("一時年表作成完了:", newTempTimeline);
+
+      // 検索をクリア
+      handleSearchChange({ target: { value: "" } });
+    } catch (error) {
+      console.error("一時年表作成エラー:", error);
+    }
+  }, [highlightedEvents, searchTerm, handleSearchChange]);
 
   const updateTimeline = useCallback((timelineId, updateData) => {
     try {
-      setTimelines(prev => 
-        prev.map(timeline => 
-          timeline.id === timelineId 
-            ? { ...timeline, ...updateData }
-            : timeline
+      setTimelines((prev) =>
+        prev.map((timeline) =>
+          timeline.id === timelineId ? { ...timeline, ...updateData } : timeline
         )
       );
     } catch (error) {
-      console.error('年表更新エラー:', error);
+      console.error("年表更新エラー:", error);
     }
   }, []);
 
   const deleteTimeline = useCallback((timelineId) => {
     try {
-      setTimelines(prev => prev.filter(timeline => timeline.id !== timelineId));
+      setTimelines((prev) =>
+        prev.filter((timeline) => timeline.id !== timelineId)
+      );
     } catch (error) {
-      console.error('年表削除エラー:', error);
+      console.error("年表削除エラー:", error);
     }
   }, []);
 
@@ -175,7 +250,7 @@ const AppContent = () => {
       const events = await wikiData.getWikiEvents();
       setWikiEvents(events);
     } catch (err) {
-      console.error('Wikiイベント取得エラー:', err);
+      console.error("Wikiイベント取得エラー:", err);
     } finally {
       setWikiLoading(false);
     }
@@ -216,25 +291,30 @@ const AppContent = () => {
     }
   }, [user, isWikiMode, events, timelines, currentFileName, saveTimelineData]);
 
-  const handleMenuAction = useCallback((actionId) => {
-    switch (actionId) {
-      case "save":
-        handleSave();
-        break;
-      case "add-event":
-        handleAddEvent({ title: "新規イベント" });
-        break;
-      default:
-        console.log("Menu action:", actionId);
-    }
-  }, [handleSave, handleAddEvent]);
+  const handleMenuAction = useCallback(
+    (actionId) => {
+      switch (actionId) {
+        case "save":
+          handleSave();
+          break;
+        case "add-event":
+          handleAddEvent({ title: "新規イベント" });
+          break;
+        default:
+          console.log("Menu action:", actionId);
+      }
+    },
+    [handleSave, handleAddEvent]
+  );
 
   // === JSXレンダリング ===
-  
+
   // マイページモードの場合
   if (isMyPageMode) {
     return (
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div
+        style={{ height: "100vh", display: "flex", flexDirection: "column" }}
+      >
         <Header
           user={user}
           isAuthenticated={!!user}
@@ -255,7 +335,7 @@ const AppContent = () => {
 
   // 通常のタブシステム
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       <Header
         user={user}
         isAuthenticated={!!user}
@@ -264,38 +344,36 @@ const AppContent = () => {
         onMenuAction={handleMenuAction}
         isSaving={isSaving}
       />
-      
-      <main style={{ 
-        flex: 1, 
-        display: 'flex', 
-        flexDirection: 'column',
-        overflow: 'hidden',
-        backgroundColor: '#f9fafb'
-      }}>
+
+      <main
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          backgroundColor: "#f9fafb",
+        }}
+      >
         <TabSystem
           // 基本データ
           events={displayEvents}
           timelines={timelines}
           tempTimelines={tempTimelines}
           user={user}
-          
           // イベント操作
           onEventUpdate={updateEvent}
           onEventDelete={deleteEvent}
           onEventAdd={handleAddEvent}
-          
           // 年表操作
           onTimelineUpdate={updateTimeline}
           onTimelineCreate={handleCreateTimeline}
           onTimelineDelete={deleteTimeline}
-          
           // 検索・表示
           timelineRef={timelineRef}
           highlightedEvents={highlightedEvents}
           searchTerm={searchTerm}
           onSearchChange={handleSearchChange}
           getTopTagsFromSearch={getTopTagsFromSearch}
-          
           // モーダル管理
           selectedEvent={selectedEvent}
           selectedTimeline={selectedTimeline}
@@ -305,11 +383,9 @@ const AppContent = () => {
           onCloseTimelineModal={() => setSelectedTimeline(null)}
           hoveredGroup={hoveredGroup}
           setHoveredGroup={setHoveredGroup}
-          
           // Wiki関連
           wikiData={wikiData}
           showPendingEvents={showPendingEvents}
-          
           // その他
           onMenuAction={handleMenuAction}
         />
@@ -330,63 +406,75 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({
       error: error,
-      errorInfo: errorInfo
+      errorInfo: errorInfo,
     });
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{
-          padding: '40px',
-          textAlign: 'center',
-          backgroundColor: '#fef2f2',
-          height: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}>
-          <h1 style={{ color: '#dc2626', marginBottom: '20px' }}>
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+            backgroundColor: "#fef2f2",
+            height: "100vh",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <h1 style={{ color: "#dc2626", marginBottom: "20px" }}>
             アプリケーションエラーが発生しました
           </h1>
-          <details style={{ 
-            maxWidth: '600px', 
-            textAlign: 'left',
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            border: '1px solid #fecaca'
-          }}>
-            <summary style={{ cursor: 'pointer', fontWeight: 'bold', marginBottom: '10px' }}>
+          <details
+            style={{
+              maxWidth: "600px",
+              textAlign: "left",
+              backgroundColor: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              border: "1px solid #fecaca",
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                fontWeight: "bold",
+                marginBottom: "10px",
+              }}
+            >
               エラー詳細を表示
             </summary>
-            <pre style={{ 
-              fontSize: '12px', 
-              overflow: 'auto',
-              backgroundColor: '#f9fafb',
-              padding: '10px',
-              borderRadius: '4px'
-            }}>
+            <pre
+              style={{
+                fontSize: "12px",
+                overflow: "auto",
+                backgroundColor: "#f9fafb",
+                padding: "10px",
+                borderRadius: "4px",
+              }}
+            >
               {this.state.error && this.state.error.toString()}
               <br />
               {this.state.errorInfo.componentStack}
             </pre>
           </details>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             style={{
-              marginTop: '20px',
-              padding: '10px 20px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px'
+              marginTop: "20px",
+              padding: "10px 20px",
+              backgroundColor: "#3b82f6",
+              color: "white",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "14px",
             }}
           >
             ページを再読み込み
