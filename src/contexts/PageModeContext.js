@@ -1,4 +1,4 @@
-// src/contexts/PageModeContext.js
+// src/contexts/PageModeContext.js - getPageModeInfo完全修正版
 import React, { createContext, useContext, useState, useCallback } from 'react';
 import { APP_CONFIG } from '../constants/appConfig';
 
@@ -67,7 +67,7 @@ export const PageModeProvider = ({ children }) => {
     setCurrentFileName(fileName);
   }, []);
   
-  // ページモード情報を取得
+  // ページモード情報を取得 - 修正版（関数として実装）
   const getPageModeInfo = useCallback(() => {
     return {
       isPersonalMode: currentPageMode === APP_CONFIG.PAGE_MODES.PERSONAL,
@@ -111,7 +111,7 @@ export const PageModeProvider = ({ children }) => {
     updateFileName,
     togglePendingEvents,
     
-    // ヘルパー関数
+    // ヘルパー関数（関数として提供）
     getPageModeInfo,
     getAvailableTabs,
     

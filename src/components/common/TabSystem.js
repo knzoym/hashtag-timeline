@@ -1,4 +1,4 @@
-// src/components/common/TabSystem.js - 無限レンダリング修正版
+// src/components/common/TabSystem.js - getPageModeInfo修正版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -19,7 +19,7 @@ const TabSystem = ({
   onTimelineUpdate,
   onEventAdd,
   
-  // Timeline/Network固有（coordinatesは完全削除）
+  // Timeline/Network固有
   timelineRef,
   highlightedEvents,
   searchTerm,
@@ -32,10 +32,7 @@ const TabSystem = ({
   onMenuAction,
   onSearchChange,
   onTimelineCreate,
-  onCreateTempTimeline,
   onTimelineDelete,
-  onDeleteTempTimeline,
-  onSaveTempTimelineToPersonal,
   getTopTagsFromSearch,
   onEventClick,
   onTimelineClick,
@@ -57,14 +54,14 @@ const TabSystem = ({
     getPageModeInfo
   } = usePageMode();
   
-  const { isPersonalMode, isWikiMode } = getPageModeInfo;
+  // 修正: 関数として呼び出し
+  const { isPersonalMode, isWikiMode } = getPageModeInfo();
   
-  console.log('TabSystem props check:', {
-    onEventAdd: !!onEventAdd,
-    onTimelineCreate: !!onTimelineCreate,
-    onCreateTempTimeline: !!onCreateTempTimeline,
-    tempTimelines: tempTimelines?.length,
-    currentTab
+  console.log('TabSystem rendering:', {
+    currentTab,
+    currentPageMode,
+    eventsCount: events?.length || 0,
+    timelinesCount: timelines?.length || 0
   });
   
   // 現在のタブに応じてコンポーネントを選択
@@ -84,17 +81,13 @@ const TabSystem = ({
     
     // VisualTab（Timeline/Network）共通のprops
     const visualProps = {
-      // App.jsからの操作関数を正しく渡す
+      ...commonProps,
       onAddEvent: onEventAdd,
       onCreateTimeline: onTimelineCreate,
-      onCreateTempTimeline: onCreateTempTimeline,
       onDeleteTimeline: onTimelineDelete,
-      onDeleteTempTimeline: onDeleteTempTimeline,
-      onSaveTempTimelineToPersonal: onSaveTempTimelineToPersonal,
       onEventClick,
       onTimelineClick,
       
-      // coordinatesの代わりにrefのみを渡す
       timelineRef,
       highlightedEvents,
       searchTerm,
@@ -113,98 +106,125 @@ const TabSystem = ({
       onApprovalAction,
     };
     
-    switch (currentTab) {
-      case 'timeline':
-        console.log('TabSystem: timeline tab - passing props:', {
-          onAddEvent: !!visualProps.onAddEvent,
-          onCreateTimeline: !!visualProps.onCreateTimeline,
-          onCreateTempTimeline: !!visualProps.onCreateTempTimeline,
-          tempTimelines: tempTimelines?.length
-        });
-        return (
-          <VisualTab
-            {...commonProps}
-            {...visualProps}
-            viewMode="timeline"
-          />
-        );
-        
-      case 'network':
-        console.log('TabSystem: network tab - passing props:', {
-          onAddEvent: !!visualProps.onAddEvent,
-          onCreateTimeline: !!visualProps.onCreateTimeline,
-          onCreateTempTimeline: !!visualProps.onCreateTempTimeline,
-          tempTimelines: tempTimelines?.length
-        });
-        return (
-          <VisualTab
-            {...commonProps}
-            {...visualProps}
-            viewMode="network"
-          />
-        );
-        
-      case 'table':
-        return (
-          <TableTab
-            {...commonProps}
-            searchTerm={searchTerm}
-            onSearchChange={onSearchChange}
-            highlightedEvents={highlightedEvents}
-            selectedEvent={selectedEvent}
-            selectedTimeline={selectedTimeline}
-            onCloseEventModal={onCloseEventModal}
-            onCloseTimelineModal={onCloseTimelineModal}
-          />
-        );
-        
-      case 'event-edit':
-        return (
-          <EventEditTab
-            {...commonProps}
-            enableLinking={true}
-            showRelatedEvents={true}
-            onMenuAction={onMenuAction}
-          />
-        );
-        
-      case 'revision':
-        return isWikiMode ? (
-          <RevisionTab
-            {...commonProps}
-            wikiData={wikiData}
-            showPendingEvents={showPendingEvents}
-          />
-        ) : (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            height: '400px',
-            color: '#6b7280',
-            fontSize: '16px'
-          }}>
-            更新タブはWikiモードでのみ利用可能です
+    try {
+      switch (currentTab) {
+        case 'timeline':
+          return (
+            <VisualTab
+              {...visualProps}
+              visualMode="timeline"
+            />
+          );
+          
+        case 'network':
+          return (
+            <VisualTab
+              {...visualProps}
+              visualMode="network"
+            />
+          );
+          
+        case 'table':
+          return (
+            <TableTab
+              {...commonProps}
+              onEventClick={onEventClick}
+              onTimelineClick={onTimelineClick}
+            />
+          );
+          
+        case 'event-edit':
+          return (
+            <EventEditTab
+              {...commonProps}
+              selectedEvent={selectedEvent}
+              onEventSelect={onEventClick}
+            />
+          );
+          
+        case 'revision':
+          // Wiki専用タブ
+          if (!isWikiMode) {
+            return (
+              <div style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#6b7280'
+              }}>
+                更新タブはWikiモード専用です
+              </div>
+            );
+          }
+          
+          return (
+            <RevisionTab
+              user={user}
+              wikiData={wikiData}
+              isWikiMode={isWikiMode}
+            />
+          );
+          
+        default:
+          return (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#6b7280',
+              fontSize: '16px'
+            }}>
+              タブ「{currentTab}」が見つかりません
+            </div>
+          );
+      }
+    } catch (error) {
+      console.error('タブレンダリングエラー:', error);
+      return (
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          color: '#dc2626',
+          fontSize: '16px',
+          gap: '10px'
+        }}>
+          <div>タブの表示中にエラーが発生しました</div>
+          <div style={{ fontSize: '14px', color: '#6b7280' }}>
+            {error.message}
           </div>
-        );
-        
-      default:
-        return (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            height: '400px',
-            color: '#6b7280',
-            fontSize: '16px'
-          }}>
-            タブが見つかりません
-          </div>
-        );
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#3b82f6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            再読み込み
+          </button>
+        </div>
+      );
     }
   };
-  
-  return renderCurrentTab();
+
+  return (
+    <div style={{
+      flex: 1,
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden'
+    }}>
+      {renderCurrentTab()}
+    </div>
+  );
 };
 
 export default TabSystem;
