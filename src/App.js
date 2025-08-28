@@ -4,7 +4,6 @@ import { PageModeProvider, usePageMode } from './contexts/PageModeContext';
 import Header from './components/common/Header';
 import TabSystem from './components/common/TabSystem';
 import MyPage from './components/personal/MyPage';
-import Sidebar from './components/layout/Sidebar';
 
 // 修正済みフック
 import { useUnifiedCoordinates } from './hooks/useUnifiedCoordinates';
@@ -322,18 +321,6 @@ const AppContent = () => {
         onSignOut={signOut}
         onMenuAction={handleMenuAction}
         isSaving={isSaving}
-      />
-      
-      <Sidebar 
-        isOpen={false}
-        onToggle={() => {}}
-        onMenuItemClick={handleMenuAction}
-        currentUser={user}
-        isSaving={isSaving}
-        canSave={events.length > 0 || timelines.length > 0}
-        logoSrc="/logo.png"
-        isWikiMode={isWikiMode}
-        currentPageMode={isWikiMode ? 'wiki' : 'personal'}
       />
       
       <TabSystem

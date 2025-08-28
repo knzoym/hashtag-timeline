@@ -1,36 +1,21 @@
-// src/components/modals/EventModal.js
+// src/components/modals/EventModal.js - 重複宣言修正版
 import React, { useState, useEffect, useCallback } from 'react';
-import { WikiImportButton } from '../ui/WikiImportButton';
 
 export const EventModal = ({
   event,
   onClose,
   onUpdate,
   onDelete,
-  user,
+  onImport,
   isWikiMode = false,
   showNetworkInfo = false,
   timelines = [],
-  position = null,
-  onEventImported = null // インポート完了コールバック
+  position = null
 }) => {
   const [editedEvent, setEditedEvent] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  
-  // 単体イベントのインポート処理
-  const handleSingleEventImport = useCallback((importData) => {
-    try {
-      if (importData.type === 'events' && importData.data.length > 0) {
-        const importedEvent = importData.data[0];
-        onEventImported?.(importedEvent);
-        onClose();
-      }
-    } catch (err) {
-      console.error('単体イベントインポートエラー:', err);
-      alert(`インポートエラー: ${err.message}`);
-    }
-  }, [onEventImported, onClose]);
+  const [newTag, setNewTag] = useState('');
   
   useEffect(() => {
     if (event) {
@@ -51,32 +36,47 @@ export const EventModal = ({
     return tagMatches ? tagMatches.map(tag => tag.slice(1)) : [];
   };
 
-  // 単体イベントのインポート処理
-  const handleSingleEventImport = useCallback((importData) => {
+  // インポート処理（重複宣言を解決）
+  const handleImportEvent = useCallback((importData) => {
     try {
       if (importData.type === 'events' && importData.data.length > 0) {
-        const importedEvent = importData.data[0]; // 単体なので最初の要素
-        onEventImported?.(importedEvent);
-        onClose(); // モーダルを閉じる
+        const importedEvent = importData.data[0];
+        
+        // インポートしたイベントを現在の編集データに適用
+        setEditedEvent(prev => ({
+          ...prev,
+          title: importedEvent.title || prev.title,
+          description: importedEvent.description || prev.description,
+          startDate: importedEvent.startDate || prev.startDate,
+          endDate: importedEvent.endDate || prev.endDate,
+          tags: [
+            ...(prev.tags || []),
+            ...(importedEvent.tags || [])
+          ].filter((tag, index, array) => array.indexOf(tag) === index)
+        }));
+        
+        // 親コンポーネントのインポート関数も呼び出し
+        if (onImport) {
+          onImport(importedEvent);
+        }
+        
+        return true;
       }
-    } catch (err) {
-      console.error('単体イベントインポートエラー:', err);
-      alert(`インポートエラー: ${err.message}`);
+      return false;
+    } catch (error) {
+      console.error('インポートエラー:', error);
+      return false;
     }
-  }, [onEventImported, onClose]);
+  }, [onImport]);
   
   const handleSave = () => {
     const updatedEvent = {
       ...editedEvent,
       startDate: editedEvent.startDate ? new Date(editedEvent.startDate) : null,
       endDate: editedEvent.endDate ? new Date(editedEvent.endDate) : null,
-      // タグを自動更新
       tags: [
-        // タイトルからのタグ
         ...(editedEvent.title?.trim() ? [editedEvent.title.trim()] : []),
-        // 説明文からのタグ
         ...extractTagsFromDescription(editedEvent.description || ''),
-        // 手動追加されたタグ（重複除去）
         ...(editedEvent.tags || []).filter(tag => 
           tag !== event.title &&
           !extractTagsFromDescription(event.description || '').includes(tag)
@@ -111,7 +111,36 @@ export const EventModal = ({
     setIsEditing(false);
   };
   
-  // モーダル位置の計算
+  const addTag = () => {
+    if (newTag.trim() && !editedEvent.tags?.includes(newTag.trim())) {
+      setEditedEvent(prev => ({
+        ...prev,
+        tags: [...(prev.tags || []), newTag.trim()]
+      }));
+      setNewTag('');
+    }
+  };
+  
+  const removeTag = (tagToRemove) => {
+    setEditedEvent(prev => ({
+      ...prev,
+      tags: (prev.tags || []).filter(tag => tag !== tagToRemove)
+    }));
+  };
+  
+  const removeFromTimeline = (timelineId) => {
+    if (editedEvent.timelineInfos) {
+      setEditedEvent(prev => ({
+        ...prev,
+        timelineInfos: prev.timelineInfos.map(info => 
+          info.timelineId === timelineId 
+            ? { ...info, isTemporary: true }
+            : info
+        )
+      }));
+    }
+  };
+  
   const getModalStyle = () => {
     const baseStyle = {
       position: "fixed",
@@ -126,7 +155,6 @@ export const EventModal = ({
     };
     
     if (position) {
-      // イベント位置に近い場所に表示
       return {
         ...baseStyle,
         left: Math.min(position.x + 20, window.innerWidth - 420),
@@ -134,7 +162,6 @@ export const EventModal = ({
       };
     }
     
-    // 中央表示
     return {
       ...baseStyle,
       left: "50%",
@@ -199,7 +226,6 @@ export const EventModal = ({
       backgroundColor: "#f9fafb"
     },
     
-    // フォーム要素
     formGroup: {
       marginBottom: "20px"
     },
@@ -224,38 +250,99 @@ export const EventModal = ({
     
     textarea: {
       width: "100%",
-      minHeight: "120px",
-      padding: "12px 14px",
+      padding: "10px 14px",
       border: "1px solid #d1d5db",
       borderRadius: "8px",
       fontSize: "14px",
+      minHeight: "100px",
       resize: "vertical",
-      fontFamily: "inherit",
-      backgroundColor: "#ffffff"
+      fontFamily: "inherit"
     },
     
-    dateRow: {
+    tagContainer: {
       display: "flex",
-      gap: "16px"
+      flexWrap: "wrap",
+      gap: "6px",
+      marginBottom: "8px"
     },
     
-    dateField: {
-      flex: 1
-    },
-    
-    // ボタン
-    buttonGroup: {
+    tag: {
       display: "flex",
-      gap: "12px"
+      alignItems: "center",
+      gap: "4px",
+      padding: "4px 8px",
+      backgroundColor: "#dbeafe",
+      color: "#1e40af",
+      borderRadius: "12px",
+      fontSize: "12px",
+      fontWeight: "500"
+    },
+    
+    tagRemove: {
+      cursor: "pointer",
+      fontSize: "14px",
+      color: "#ef4444"
+    },
+    
+    tagInputContainer: {
+      display: "flex",
+      gap: "8px"
+    },
+    
+    tagInput: {
+      flex: 1,
+      padding: "6px 10px",
+      border: "1px solid #d1d5db",
+      borderRadius: "6px",
+      fontSize: "12px"
+    },
+    
+    tagAddButton: {
+      padding: "6px 12px",
+      backgroundColor: "#10b981",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      fontSize: "12px",
+      cursor: "pointer"
+    },
+    
+    timelineList: {
+      marginTop: "8px"
+    },
+    
+    timelineItem: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "8px 12px",
+      backgroundColor: "#f8fafc",
+      borderRadius: "6px",
+      marginBottom: "4px"
+    },
+    
+    timelineName: {
+      fontSize: "13px",
+      color: "#374151"
+    },
+    
+    removeButton: {
+      padding: "2px 6px",
+      backgroundColor: "#ef4444",
+      color: "white",
+      border: "none",
+      borderRadius: "4px",
+      fontSize: "10px",
+      cursor: "pointer"
     },
     
     button: {
-      padding: "10px 20px",
-      borderRadius: "8px",
+      padding: "8px 16px",
+      borderRadius: "6px",
       fontSize: "14px",
-      fontWeight: "600",
+      fontWeight: "500",
       cursor: "pointer",
-      transition: "all 0.2s",
+      transition: "background-color 0.2s",
       border: "none"
     },
     
@@ -265,9 +352,8 @@ export const EventModal = ({
     },
     
     secondaryButton: {
-      backgroundColor: "#f3f4f6",
-      color: "#374151",
-      border: "1px solid #d1d5db"
+      backgroundColor: "#e5e7eb",
+      color: "#374151"
     },
     
     dangerButton: {
@@ -275,108 +361,81 @@ export const EventModal = ({
       color: "white"
     },
     
-    // 情報表示
-    infoSection: {
-      marginBottom: "16px",
-      padding: "12px",
-      backgroundColor: "#f8fafc",
-      borderRadius: "8px",
-      fontSize: "13px"
-    },
-    
-    tagContainer: {
+    buttonGroup: {
       display: "flex",
-      flexWrap: "wrap",
-      gap: "6px",
-      marginTop: "8px"
-    },
-    
-    tag: {
-      padding: "4px 10px",
-      backgroundColor: "#e0f2fe",
-      color: "#0891b2",
-      borderRadius: "12px",
-      fontSize: "12px",
-      fontWeight: "500"
+      gap: "8px"
     },
     
     closeButton: {
       position: "absolute",
       top: "16px",
       right: "16px",
-      background: "none",
-      border: "none",
-      fontSize: "24px",
-      cursor: "pointer",
-      color: "#6b7280",
       width: "32px",
       height: "32px",
       borderRadius: "50%",
+      border: "none",
+      backgroundColor: "#f3f4f6",
+      color: "#6b7280",
+      fontSize: "18px",
+      cursor: "pointer",
       display: "flex",
       alignItems: "center",
       justifyContent: "center"
     }
   };
-
-  const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
-      onClose();
-    }
-  };
   
   return (
-    <div style={styles.overlay} onClick={handleOverlayClick}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+    <div style={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={styles.modal}>
         {/* 閉じるボタン */}
         <button
           style={styles.closeButton}
           onClick={onClose}
-          onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-          title="閉じる"
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#f3f4f6'}
         >
           ×
         </button>
         
         {isEditing ? (
+          /* 編集モード */
           <>
-            {/* 編集モード */}
             <div style={styles.header}>
-              <div style={styles.title}>
-                ✏️ イベント編集
-              </div>
+              <h2 style={styles.title}>
+                📝 イベントを編集
+              </h2>
             </div>
             
             <div style={styles.editContent}>
               {/* タイトル */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>📝 タイトル</label>
+                <label style={styles.label}>タイトル</label>
                 <input
                   type="text"
                   value={editedEvent.title || ''}
-                  onChange={(e) => setEditedEvent({...editedEvent, title: e.target.value})}
+                  onChange={(e) => setEditedEvent(prev => ({ ...prev, title: e.target.value }))}
                   style={styles.input}
-                  placeholder="イベントタイトル"
+                  placeholder="イベントのタイトルを入力"
                 />
               </div>
               
               {/* 日付 */}
-              <div style={styles.dateRow}>
-                <div style={styles.dateField}>
-                  <label style={styles.label}>📅 開始日</label>
+              <div style={{ display: "flex", gap: "12px", marginBottom: "20px" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>開始日</label>
                   <input
                     type="date"
-                    value={editedEvent.startDate}
-                    onChange={(e) => setEditedEvent({...editedEvent, startDate: e.target.value})}
+                    value={editedEvent.startDate || ''}
+                    onChange={(e) => setEditedEvent(prev => ({ ...prev, startDate: e.target.value }))}
                     style={styles.input}
                   />
                 </div>
-                <div style={styles.dateField}>
-                  <label style={styles.label}>📅 終了日</label>
+                <div style={{ flex: 1 }}>
+                  <label style={styles.label}>終了日（任意）</label>
                   <input
                     type="date"
-                    value={editedEvent.endDate}
-                    onChange={(e) => setEditedEvent({...editedEvent, endDate: e.target.value})}
+                    value={editedEvent.endDate || ''}
+                    onChange={(e) => setEditedEvent(prev => ({ ...prev, endDate: e.target.value }))}
                     style={styles.input}
                   />
                 </div>
@@ -384,34 +443,71 @@ export const EventModal = ({
               
               {/* 説明 */}
               <div style={styles.formGroup}>
-                <label style={styles.label}>📋 説明</label>
+                <label style={styles.label}>説明</label>
                 <textarea
                   value={editedEvent.description || ''}
-                  onChange={(e) => setEditedEvent(prev => ({...prev, description: e.target.value}))}
+                  onChange={(e) => setEditedEvent(prev => ({ ...prev, description: e.target.value }))}
                   style={styles.textarea}
-                  placeholder="イベントの詳細説明。#タグ名 の形式でタグを自動追加できます。"
+                  placeholder="イベントの説明を入力"
                 />
-                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                  💡 #タグ名 の形式で自動的にタグが追加されます
+              </div>
+              
+              {/* タグ管理 */}
+              <div style={styles.formGroup}>
+                <label style={styles.label}>タグ</label>
+                {editedEvent.tags && editedEvent.tags.length > 0 && (
+                  <div style={styles.tagContainer}>
+                    {editedEvent.tags.map(tag => (
+                      <span key={tag} style={styles.tag}>
+                        #{tag}
+                        <span 
+                          style={styles.tagRemove}
+                          onClick={() => removeTag(tag)}
+                        >
+                          ×
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={styles.tagInputContainer}>
+                  <input
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && addTag()}
+                    style={styles.tagInput}
+                    placeholder="新しいタグを追加"
+                  />
+                  <button
+                    onClick={addTag}
+                    style={styles.tagAddButton}
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+                  >
+                    追加
+                  </button>
                 </div>
               </div>
             </div>
             
+            {/* 編集モードフッター */}
             <div style={styles.footer}>
+              <button
+                onClick={handleCancel}
+                style={{ ...styles.button, ...styles.secondaryButton }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = '#d1d5db'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+              >
+                キャンセル
+              </button>
+              
               <div style={styles.buttonGroup}>
-                <button
-                  onClick={handleCancel}
-                  style={{ ...styles.button, ...styles.secondaryButton }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#e5e7eb"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-                >
-                  キャンセル
-                </button>
                 <button
                   onClick={handleSave}
                   style={{ ...styles.button, ...styles.primaryButton }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#2563eb"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "#3b82f6"}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
                 >
                   保存
                 </button>
@@ -419,56 +515,41 @@ export const EventModal = ({
             </div>
           </>
         ) : (
+          /* 表示モード */
           <>
-            {/* 表示モード */}
             <div style={styles.header}>
-              <div style={styles.title}>
-                📅 {event.title || '（無題）'}
-                {isWikiMode && (
-                  <span style={{
-                    fontSize: "12px",
-                    padding: "4px 8px",
-                    backgroundColor: "#dbeafe",
-                    color: "#1d4ed8",
-                    borderRadius: "12px",
-                    fontWeight: "500"
-                  }}>
-                    Wiki
-                  </span>
-                )}
-              </div>
-              
-              {event.startDate && (
-                <div style={styles.subtitle}>
-                  {event.startDate.toLocaleDateString('ja-JP')}
-                  {event.endDate && event.endDate !== event.startDate && 
-                    ` - ${event.endDate.toLocaleDateString('ja-JP')}`
-                  }
-                </div>
-              )}
+              <h2 style={styles.title}>
+                📅 {event.title}
+              </h2>
+              <p style={styles.subtitle}>
+                {event.startDate?.toLocaleDateString('ja-JP')}
+                {event.endDate && event.endDate.getTime() !== event.startDate?.getTime() && 
+                  ` - ${event.endDate.toLocaleDateString('ja-JP')}`}
+              </p>
             </div>
             
             <div style={styles.content}>
-              {/* 説明文 */}
+              {/* 説明 */}
               {event.description && (
-                <div style={{
-                  fontSize: "15px",
-                  lineHeight: "1.6",
-                  color: "#374151",
-                  marginBottom: "20px",
-                  whiteSpace: "pre-wrap"
-                }}>
-                  {event.description}
+                <div style={{ marginBottom: "16px" }}>
+                  <p style={{ 
+                    fontSize: "14px", 
+                    lineHeight: "1.6", 
+                    color: "#374151",
+                    whiteSpace: "pre-wrap" 
+                  }}>
+                    {event.description}
+                  </p>
                 </div>
               )}
               
               {/* タグ */}
               {event.tags && event.tags.length > 0 && (
-                <div style={styles.formGroup}>
-                  <div style={styles.label}>🏷️ タグ</div>
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ ...styles.label, marginBottom: "8px" }}>タグ</label>
                   <div style={styles.tagContainer}>
-                    {event.tags.map((tag, index) => (
-                      <span key={index} style={styles.tag}>
+                    {event.tags.map(tag => (
+                      <span key={tag} style={styles.tag}>
                         #{tag}
                       </span>
                     ))}
@@ -476,91 +557,60 @@ export const EventModal = ({
                 </div>
               )}
               
-              {/* ネットワーク情報 */}
+              {/* 年表情報 */}
               {showNetworkInfo && event.timelineInfos && event.timelineInfos.length > 0 && (
-                <div style={styles.infoSection}>
-                  <div style={{ fontWeight: "600", marginBottom: "8px" }}>🕸️ 接続している年表</div>
-                  {event.timelineInfos.map((info, index) => (
-                    <div key={index} style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "4px 0"
-                    }}>
-                      <span>{info.timelineName || `年表${info.timelineId}`}</span>
-                      <span style={{
-                        fontSize: "11px",
-                        padding: "2px 6px",
-                        backgroundColor: info.isTemporary ? "#fef3c7" : "#dcfce7",
-                        color: info.isTemporary ? "#92400e" : "#166534",
-                        borderRadius: "4px"
-                      }}>
-                        {info.isTemporary ? "仮登録" : "登録済"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Wiki情報 */}
-              {isWikiMode && (
-                <div style={styles.infoSection}>
-                  <div style={{ fontWeight: "600", marginBottom: "8px" }}>ℹ️ Wiki情報</div>
-                  <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                    このイベントはTLwikiから表示されています
+                <div style={{ marginBottom: "16px" }}>
+                  <label style={{ ...styles.label, marginBottom: "8px" }}>含まれる年表</label>
+                  <div style={styles.timelineList}>
+                    {event.timelineInfos.map(info => {
+                      const timeline = timelines.find(t => t.id === info.timelineId);
+                      return timeline ? (
+                        <div key={info.timelineId} style={styles.timelineItem}>
+                          <span style={styles.timelineName}>
+                            {timeline.name}
+                            {info.isTemporary && (
+                              <span style={{ color: '#f59e0b', fontSize: '11px' }}> (仮削除)</span>
+                            )}
+                          </span>
+                          {isEditing && (
+                            <button
+                              onClick={() => removeFromTimeline(info.timelineId)}
+                              style={styles.removeButton}
+                            >
+                              削除
+                            </button>
+                          )}
+                        </div>
+                      ) : null;
+                    })}
                   </div>
                 </div>
               )}
             </div>
             
+            {/* 表示モードフッター */}
             <div style={styles.footer}>
-              {/* Wikiモードの場合のみインポートボタン表示 */}
-              {isWikiMode && (
-                <div style={{ marginRight: 'auto' }}>
-                  <WikiImportButton
-                    wikiEvents={[event]}
-                    user={user}
-                    onImportComplete={handleSingleEventImport}
-                    buttonText="個人ファイルに追加"
-                    variant="secondary"
-                  />
-                </div>
-              )}
+              <button
+                onClick={handleDelete}
+                style={{ 
+                  ...styles.button, 
+                  ...styles.dangerButton,
+                  ...(deleteConfirm ? { backgroundColor: "#991b1b" } : {})
+                }}
+                onMouseEnter={(e) => e.target.style.backgroundColor = deleteConfirm ? '#7f1d1d' : '#dc2626'}
+                onMouseLeave={(e) => e.target.style.backgroundColor = deleteConfirm ? '#991b1b' : '#ef4444'}
+              >
+                {deleteConfirm ? "🗑️ 完全削除" : "削除"}
+              </button>
               
-              {/* 既存のボタン群 */}
-              <div style={{ display: 'flex', gap: '12px' }}>
-                {!isWikiMode && (
-                  <>
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      style={{ ...styles.button, ...styles.primaryButton }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = "#2563eb"}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = "#3b82f6"}
-                    >
-                      編集
-                    </button>
-                    <button
-                      onClick={handleDelete}
-                      style={{ 
-                        ...styles.button, 
-                        ...styles.dangerButton,
-                        backgroundColor: deleteConfirm ? "#dc2626" : "#ef4444"
-                      }}
-                      onMouseEnter={(e) => e.target.style.backgroundColor = "#dc2626"}
-                      onMouseLeave={(e) => e.target.style.backgroundColor = deleteConfirm ? "#dc2626" : "#ef4444"}
-                    >
-                      {deleteConfirm ? "🗑️ 完全削除" : "削除"}
-                    </button>
-                  </>
-                )}
-                
+              <div style={styles.buttonGroup}>
                 <button
-                  onClick={onClose}
-                  style={{ ...styles.button, ...styles.secondaryButton }}
-                  onMouseEnter={(e) => e.target.style.backgroundColor = "#e5e7eb"}
-                  onMouseLeave={(e) => e.target.style.backgroundColor = "#f3f4f6"}
+                  onClick={() => setIsEditing(true)}
+                  style={{ ...styles.button, ...styles.primaryButton }}
+                  onMouseEnter={(e) => e.target.style.backgroundColor = "#2563eb"}
+                  onMouseLeave={(e) => e.target.style.backgroundColor = "#3b82f6"}
                 >
-                  閉じる
+                  編集
                 </button>
               </div>
             </div>
@@ -570,3 +620,5 @@ export const EventModal = ({
     </div>
   );
 };
+
+export default EventModal;
