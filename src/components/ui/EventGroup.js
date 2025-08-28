@@ -40,7 +40,7 @@ export const EventGroupIcon = ({
   
   const baseStyles = {
     position: "absolute",
-    left: position.x + panX,
+    left: position.x,
     top: position.y + panY - 7,
     transform: "translateX(-50%)",
     cursor: "pointer",

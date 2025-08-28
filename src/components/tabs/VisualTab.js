@@ -9,7 +9,7 @@ import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import { truncateTitle } from "../../utils/timelineUtils";
 import { useCoordinate } from "../../hooks/useCoordinate";
-import { IntegratedLayoutManager } from "../../utils/groupLayoutSystem";
+import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem";
 
 const VisualTab = ({
   // データ
@@ -95,7 +95,7 @@ const VisualTab = ({
   // 統合レイアウトマネージャーのインスタンス化
   const layoutManager = useMemo(() => {
     if (!coordinates || !calculateTextWidth) return null;
-    return new IntegratedLayoutManager(coordinates, calculateTextWidth);
+    return new UnifiedLayoutSystem(coordinates, calculateTextWidth);
   }, [coordinates, calculateTextWidth]);
 
   // 表示用の統合年表データ
@@ -547,7 +547,7 @@ const VisualTab = ({
           );
         })}
 
-        {/* イベントグループアイコン（panX補正削除版） */}
+        {/* イベントグループアイコン（過去の正常動作版に復元） */}
         {console.log('グループアイコン描画チェック:', layoutEventsWithGroups.eventGroups) || 
          layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
           console.log(`グループ ${index}:`, groupData);
@@ -561,15 +561,15 @@ const VisualTab = ({
             return null;
           }
           
-          console.log(`  描画位置（panX補正なし）: x=${groupData.position.x.toFixed(0)}, y=${groupData.position.y}`);
+          console.log(`  描画位置: x=${groupData.position.x.toFixed(0)}, y=${groupData.position.y}`);
           
           return (
             <EventGroupIcon
               key={`group-icon-${groupData.id}`}
               groupData={groupData}
-              position={groupData.position}
+              position={groupData.position}  // そのまま渡す（過去の正常動作版）
               panY={panY}
-              panX={panX}
+              panX={panX}  // panXもそのまま渡す
               timelineColor={groupData.timelineColor || '#6b7280'}
               onHover={setHoveredGroup}
               onClick={toggleEventGroup}

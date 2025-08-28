@@ -2,7 +2,7 @@
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 
 /**
- * イベントグループクラス
+ * イベントグループクラス（位置計算は finalizeGroups で実行）
  */
 export class EventGroup {
   constructor(events, timelineId) {
@@ -11,27 +11,8 @@ export class EventGroup {
     this.id = `group_${timelineId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     this.isExpanded = false;
     
-    // グループ内イベントの年号範囲から中央位置を計算
-    this.position = this.calculateCenterPosition();
-  }
-
-  calculateCenterPosition() {
-    if (this.events.length === 0) return { x: 100, y: 100 };
-    
-    const validEvents = this.events.filter(event => event.startDate);
-    if (validEvents.length === 0) return { x: 100, y: 100 };
-
-    const years = validEvents.map(event => event.startDate.getFullYear());
-    const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    const centerYear = (minYear + maxYear) / 2;
-    
-    console.log(`グループ位置計算: 年号範囲 ${minYear}-${maxYear}, 中央: ${centerYear.toFixed(0)}`);
-    
-    return {
-      x: centerYear, // 年号（座標変換は後で行う）
-      y: 0 // Y座標は配置時に決定
-    };
+    // 位置は finalizeGroups で計算するため初期値のみ
+    this.position = { x: 0, y: 0 };
   }
 
   getDisplayCount() {
@@ -44,9 +25,7 @@ export class EventGroup {
 
   addEvent(event) {
     this.events.push(event);
-    const newPosition = this.calculateCenterPosition(); // 位置を再計算
-    this.position.x = newPosition.x; // 年号を更新
-    console.log(`イベント "${event.title}" をグループ ${this.id} に追加。新しい中央年号: ${this.position.x.toFixed(0)}`);
+    console.log(`イベント "${event.title}" をグループ ${this.id} に追加。現在 ${this.events.length}イベント`);
   }
 
   getYearRange() {
@@ -200,16 +179,15 @@ export class ThreeTierLayoutSystem {
     } else {
       // 新規グループ作成
       const newGroup = new EventGroup([event], timeline.id);
-      newGroup.position.y = timelineY + 80; // 下段に配置
       groups.set(groupKey, newGroup);
       console.log(`新規グループ作成: ${groupKey}, ID: ${newGroup.id}`);
     }
   }
 
   /**
-   * グループの最終処理（最早・最遅イベント座標の中間値方式）
+   * グループの最終処理（過去の正常動作版を復元 + 表示時座標変換）
    */
-  finalizeGroups(groups, timeline, timelineY, placedEvents = []) {
+  finalizeGroups(groups, timeline, timelineY) {
     const finalGroups = [];
 
     console.log(`グループ最終処理開始: ${groups.size}個のグループ候補`);
@@ -229,7 +207,10 @@ export class ThreeTierLayoutSystem {
         const earliestEvent = sortedEvents[0];
         const latestEvent = sortedEvents[sortedEvents.length - 1];
         
-        // 各イベントの「グループ化されなかった場合のX座標」を計算
+        console.log(`   最早イベント: "${earliestEvent.title}" (${earliestEvent.startDate?.getFullYear()})`);
+        console.log(`   最遅イベント: "${latestEvent.title}" (${latestEvent.startDate?.getFullYear()})`);
+        
+        // 各々の年号から直接X座標を計算
         const earliestX = this.coordinates.getXFromYear(
           earliestEvent.startDate?.getFullYear() || 2024
         );
@@ -237,45 +218,44 @@ export class ThreeTierLayoutSystem {
           latestEvent.startDate?.getFullYear() || 2024
         );
         
-        // 中間値を計算
+        console.log(`   最早イベントX座標: ${earliestX.toFixed(0)}px`);
+        console.log(`   最遅イベントX座標: ${latestX.toFixed(0)}px`);
+        
+        // 2つの座標の中間値をグループ位置とする
         const centerX = (earliestX + latestX) / 2;
         
-        const finalGroup = {
-          ...group,
-          position: { x: centerX, y: timelineY + 80 }, // Y座標は年表の3段目
-          timelineColor: timeline.color,
-          timelineId: timeline.id,
-          getDisplayCount: function() { return this.events.length; },
-          getMainEvent: function() { return this.events[0]; }
-        };
+        console.log(`   計算された中間値: ${centerX.toFixed(0)}px`);
         
-        finalGroups.push(finalGroup);
-        console.log(`✅ グループ追加: ${finalGroup.id}`);
-        console.log(`   最早イベント: "${earliestEvent.title}" (${earliestEvent.startDate?.getFullYear()}) -> ${earliestX.toFixed(0)}px`);
-        console.log(`   最遅イベント: "${latestEvent.title}" (${latestEvent.startDate?.getFullYear()}) -> ${latestX.toFixed(0)}px`);
-        console.log(`   グループ位置: 中間値 ${centerX.toFixed(0)}px, Y座標 ${timelineY + 80}px`);
+        // 元のグループオブジェクトの位置を直接更新
+        group.position = { x: centerX, y: timelineY + 80 };
+        
+        // 新しいオブジェクトではなく、元のオブジェクトを使用
+        finalGroups.push(group);
+        console.log(`✅ グループ追加完了: ID=${group.id}, 最終位置=(${group.position.x.toFixed(0)}, ${group.position.y}), イベント数=${group.events.length}`);
+        
       } else {
         console.log(`⚠️  グループ除外 (イベント数不足): ${group.events.length}個`);
       }
     });
 
-    console.log(`最終グループ数: ${finalGroups.length}`);
+    console.log(`グループ最終処理完了: ${finalGroups.length}個のグループを生成`);
     return finalGroups;
   }
 }
 
 /**
- * 統合レイアウトマネージャー
+ * 統合レイアウトシステム（メインクラス）
  */
-export class IntegratedLayoutManager {
+export class UnifiedLayoutSystem {
   constructor(coordinates, calculateTextWidth) {
     this.coordinates = coordinates;
     this.calculateTextWidth = calculateTextWidth;
-    this.tierSystem = new ThreeTierLayoutSystem(coordinates, calculateTextWidth);
+    this.layoutSystem = new ThreeTierLayoutSystem(coordinates, calculateTextWidth);
+    console.log('統合レイアウトシステム初期化完了');
   }
 
   /**
-   * メインタイムラインのレイアウト
+   * メインタイムラインのレイアウト（年表に属さないイベント）
    */
   layoutMainTimelineEvents(events, timelineAxes) {
     const results = [];
@@ -284,15 +264,20 @@ export class IntegratedLayoutManager {
     // 年表に属さないイベントを抽出
     const ungroupedEvents = events.filter(event => 
       !event.timelineInfos?.length && 
-      !timelineAxes.some(axis => axis.timeline.eventIds?.includes(event.id))
+      !timelineAxes.some(axis => 
+        (axis.timeline?.eventIds?.includes(event.id)) ||
+        (axis.eventIds?.includes(event.id))
+      )
     );
+
+    console.log(`メインタイムラインイベント: ${ungroupedEvents.length}個`);
 
     // 上方向重なり回避システム
     const mainTimelineOccupied = [];
     
     ungroupedEvents.forEach(event => {
       const eventX = this.coordinates.getXFromYear(event.startDate?.getFullYear() || 2024);
-      const eventWidth = this.tierSystem.getEventWidth(event);
+      const eventWidth = this.layoutSystem.getEventWidth(event);
       
       // 上方向への段階的配置
       let finalY = baselineY;
@@ -338,6 +323,7 @@ export class IntegratedLayoutManager {
       });
     });
 
+    console.log(`メインタイムラインレイアウト完了: ${results.length}イベント`);
     return results;
   }
 
@@ -345,32 +331,32 @@ export class IntegratedLayoutManager {
    * 全体のレイアウト実行
    */
   executeLayout(events, timelineAxes) {
-    const allResults = [];
-    const allGroups = [];
-    const baselineY = window.innerHeight * 0.3;
+    const allEvents = [];
+    const eventGroups = [];
+
+    console.log(`レイアウト実行開始: ${events.length}イベント, ${timelineAxes.length}年表`);
 
     // メインタイムラインのレイアウト
     const mainTimelineResults = this.layoutMainTimelineEvents(events, timelineAxes);
-    allResults.push(...mainTimelineResults);
+    allEvents.push(...mainTimelineResults);
 
     // 年表ごとのレイアウト
     timelineAxes.forEach((axis, index) => {
-      const { events: timelineEvents, groups } = this.tierSystem.layoutTimelineEvents(
-        axis.timeline, 
-        index, 
-        events, 
-        baselineY + 100
+      const timeline = axis.timeline || axis;
+      const result = this.layoutSystem.layoutTimelineEvents(
+        timeline,
+        index,
+        events,
+        TIMELINE_CONFIG.FIRST_ROW_Y
       );
-      
-      allResults.push(...timelineEvents);
-      allGroups.push(...groups);
+
+      allEvents.push(...result.events);
+      eventGroups.push(...result.groups);
+
+      console.log(`年表「${timeline.name}」レイアウト完了: ${result.events.length}イベント, ${result.groups.length}グループ`);
     });
 
-    console.log(`統合レイアウト完了: ${allResults.length}イベント, ${allGroups.length}グループ`);
-    
-    return {
-      allEvents: allResults,
-      eventGroups: allGroups
-    };
+    console.log(`レイアウト実行完了: 合計 ${allEvents.length}イベント, ${eventGroups.length}グループ`);
+    return { allEvents, eventGroups };
   }
 }
