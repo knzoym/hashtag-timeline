@@ -82,29 +82,14 @@ const AppContent = () => {
   const [wikiEvents, setWikiEvents] = useState([]);
   const [wikiLoading, setWikiLoading] = useState(false);
 
-  // Wiki機能の初期化
-  useEffect(() => {
-    const initializeWiki = async () => {
-      if (isWikiMode) {
-        setWikiLoading(true);
-        try {
-          const events = await wikiData.getSharedEvents("", 100);
-          setWikiEvents(events);
-          console.log("✅ Wikiイベント読み込み完了:", events.length);
-        } catch (err) {
-          console.error("Wikiイベント読み込みエラー:", err);
-        } finally {
-          setWikiLoading(false);
-        }
-      }
-    };
-
-    initializeWiki();
-  }, [isWikiMode, wikiData]);
-
   // Wiki承認システム用の状態管理
   const [pendingEventsData, setPendingEventsData] = useState([]);
   const [approvalNotifications, setApprovalNotifications] = useState([]);
+
+  // この定義をApp.js内の適切な位置（使用箇所より前）に配置
+  const displayEventsWithApproval = useMemo(() => {
+    return isWikiMode ? wikiEvents : events;
+  }, [isWikiMode, wikiEvents, events]);
 
   // 承認待ちイベント読み込み - 修正版
   const loadPendingEvents = useCallback(async () => {
@@ -137,24 +122,27 @@ const AppContent = () => {
 
   // 承認待ちイベント読み込み
   useEffect(() => {
-    loadPendingEvents();
-  }, [loadPendingEvents]);
+    if (!isWikiMode) return;
 
-  // 表示用イベントデータの決定（承認待ちを含む）
-  const displayEventsWithApproval = useMemo(() => {
-    if (!isWikiMode) {
-      return events; // 個人モードではそのまま
-    }
+    let mounted = true;
+    const loadWiki = async () => {
+      setWikiLoading(true);
+      try {
+        const data = await wikiData.getSharedEvents("", 100);
+        if (mounted) setWikiEvents(data);
+      } catch (err) {
+        console.error(err);
+        if (mounted) setWikiEvents([]);
+      } finally {
+        if (mounted) setWikiLoading(false);
+      }
+    };
 
-    // Wikiモード：安定版 + 承認待ち（表示オプションON時）
-    let wikiDisplayEvents = [...wikiEvents];
-
-    if (showPendingEvents && pendingEventsData.length > 0) {
-      wikiDisplayEvents = [...wikiDisplayEvents, ...pendingEventsData];
-    }
-
-    return wikiDisplayEvents;
-  }, [isWikiMode, events, wikiEvents, showPendingEvents, pendingEventsData]);
+    loadWiki();
+    return () => {
+      mounted = false;
+    };
+  }, [isWikiMode]);
 
   // 承認通知システム
   const addApprovalNotification = useCallback((message, type = "info") => {
@@ -396,7 +384,7 @@ const AppContent = () => {
     setSearchTerm(""); // 検索をクリア
   }, [highlightedEvents, setSearchTerm]);
 
-  // 新規追加：Wiki一時年表作成
+  // 一時年表作成（Wiki専用）
   const handleCreateTempTimeline = useCallback(() => {
     if (!highlightedEvents || highlightedEvents.size === 0) {
       console.log("一時年表作成: ハイライトされたイベントがありません");
@@ -409,7 +397,6 @@ const AppContent = () => {
     const newTempTimelineId = `temp_timeline_${Date.now()}`;
     const selectedEventIds = Array.from(highlightedEvents);
 
-    // 新しい一時年表を作成
     const newTempTimeline = {
       id: newTempTimelineId,
       name: timelineName,
@@ -417,23 +404,22 @@ const AppContent = () => {
       isVisible: true,
       createdAt: new Date(),
       type: "temporary",
-      eventIds: selectedEventIds, // 一時年表は直接イベントIDを保持
+      eventIds: selectedEventIds,
       createdFrom: "search_result",
     };
 
     setTempTimelines((prev) => [...prev, newTempTimeline]);
-
     console.log("一時年表作成完了:", newTempTimeline);
-    setSearchTerm(""); // 検索をクリア
-  }, [highlightedEvents, setSearchTerm]);
+    setSearchTerm("");
+  }, [highlightedEvents]);
 
-  // 新規追加：一時年表削除
+  // 一時年表削除
   const handleDeleteTempTimeline = useCallback((timelineId) => {
     setTempTimelines((prev) => prev.filter((t) => t.id !== timelineId));
     console.log("一時年表削除:", timelineId);
   }, []);
 
-  // 新規追加：一時年表を個人ファイルに保存
+  // 一時年表を個人ファイルに保存
   const handleSaveTempTimelineToPersonal = useCallback(
     (tempTimeline) => {
       if (!user) {
@@ -441,7 +427,6 @@ const AppContent = () => {
         return;
       }
 
-      // 一時年表を個人年表として変換
       const newPersonalTimelineId = `timeline_${Date.now()}`;
       const personalTimeline = {
         id: newPersonalTimelineId,
@@ -475,11 +460,8 @@ const AppContent = () => {
         )
       );
 
-      // 元の一時年表を削除
       handleDeleteTempTimeline(tempTimeline.id);
-
       alert(`「${tempTimeline.name}」を個人年表として保存しました`);
-      console.log("一時年表→個人年表変換完了:", personalTimeline);
     },
     [user, handleDeleteTempTimeline]
   );
@@ -570,9 +552,93 @@ const AppContent = () => {
     [handleSave, handleAddEvent]
   );
 
+  // TabSystemに渡すprops（完全版）
+  const tabSystemProps = useMemo(
+    () => ({
+      // 共通のデータとハンドラー
+      events: displayEventsWithApproval,
+      timelines,
+      tempTimelines,
+      user,
+      onEventUpdate: updateEvent,
+      onEventDelete: deleteEvent,
+      onTimelineUpdate: updateTimeline,
+      onEventAdd: handleAddEvent,
+
+      // Timeline/Network固有
+      timelineRef,
+      coordinates,
+      highlightedEvents,
+      searchTerm,
+
+      // Wiki関連
+      wikiData,
+      showPendingEvents,
+
+      // その他のハンドラー
+      onResetView: () => coordinates.resetToInitialPosition(),
+      onMenuAction: handleMenuAction,
+      onSearchChange: handleSearchChange,
+      onTimelineCreate: handleCreateTimeline,
+      onCreateTempTimeline: handleCreateTempTimeline,
+      onTimelineDelete: deleteTimeline,
+      onDeleteTempTimeline: handleDeleteTempTimeline,
+      onSaveTempTimelineToPersonal: handleSaveTempTimelineToPersonal,
+      getTopTagsFromSearch,
+      onEventClick: handleEventClick,
+      onTimelineClick: handleTimelineClick,
+
+      // モーダル関連
+      selectedEvent,
+      selectedTimeline,
+      onCloseEventModal: handleCloseEventModal,
+      onCloseTimelineModal: handleCloseTimelineModal,
+      hoveredGroup,
+      setHoveredGroup,
+
+      // 承認システム
+      onApprovalAction: handleApprovalAction,
+    }),
+    [
+      displayEventsWithApproval,
+      timelines,
+      tempTimelines,
+      user,
+      updateEvent,
+      deleteEvent,
+      updateTimeline,
+      handleAddEvent,
+      timelineRef,
+      coordinates,
+      highlightedEvents,
+      searchTerm,
+      wikiData,
+      showPendingEvents,
+      handleMenuAction,
+      handleSearchChange,
+      handleCreateTimeline,
+      handleCreateTempTimeline,
+      deleteTimeline,
+      handleDeleteTempTimeline,
+      handleSaveTempTimelineToPersonal,
+      getTopTagsFromSearch,
+      handleEventClick,
+      handleTimelineClick,
+      selectedEvent,
+      selectedTimeline,
+      handleCloseEventModal,
+      handleCloseTimelineModal,
+      hoveredGroup,
+      setHoveredGroup,
+      handleApprovalAction,
+    ]
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+    <div className="App">
       <Header
+        currentTab={currentTab}
+        currentFileName={currentFileName}
         user={user}
         isAuthenticated={!!user}
         onSignIn={signInWithGoogle}
@@ -592,47 +658,58 @@ const AppContent = () => {
           }}
         />
       ) : (
-        <TabSystem
-          // 共通のデータとハンドラー
-          events={displayEventsWithApproval}
-          timelines={timelines}
-          tempTimelines={tempTimelines} // 新規追加
-          user={user}
-          onEventUpdate={updateEvent}
-          onEventDelete={deleteEvent}
-          onTimelineUpdate={updateTimeline}
-          onEventAdd={handleAddEvent}
-          // Timeline/Network固有
-          timelineRef={timelineRef}
-          coordinates={coordinates}
-          highlightedEvents={highlightedEvents}
-          searchTerm={searchTerm}
-          // Wiki関連
-          wikiData={wikiData}
-          showPendingEvents={showPendingEvents}
-          // その他のハンドラー
-          onResetView={() => coordinates.resetToInitialPosition()}
-          onMenuAction={handleMenuAction}
-          onSearchChange={handleSearchChange}
-          onTimelineCreate={handleCreateTimeline}
-          onCreateTempTimeline={handleCreateTempTimeline} // 新規追加
-          onTimelineDelete={deleteTimeline}
-          onDeleteTempTimeline={handleDeleteTempTimeline} // 新規追加
-          onSaveTempTimelineToPersonal={handleSaveTempTimelineToPersonal} // 新規追加
-          getTopTagsFromSearch={getTopTagsFromSearch}
-          onEventClick={handleEventClick}
-          onTimelineClick={handleTimelineClick}
-          // モーダル関連
-          selectedEvent={selectedEvent}
-          selectedTimeline={selectedTimeline}
-          onCloseEventModal={handleCloseEventModal}
-          onCloseTimelineModal={handleCloseTimelineModal}
-          hoveredGroup={hoveredGroup}
-          setHoveredGroup={setHoveredGroup}
-          // 承認システム
-          onApprovalAction={handleApprovalAction}
-        />
+        <>
+          {/* Wiki初期化中のローディング表示 */}
+          {isWikiMode && wikiLoading && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: "rgba(255, 255, 255, 0.9)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 9999,
+              }}
+            >
+              <div
+                style={{
+                  textAlign: "center",
+                  padding: "40px",
+                  backgroundColor: "white",
+                  borderRadius: "12px",
+                  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "40px",
+                    height: "40px",
+                    border: "4px solid #e5e7eb",
+                    borderTop: "4px solid #3b82f6",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                    margin: "0 auto 16px",
+                  }}
+                ></div>
+                <div>TLwikiデータを読み込み中...</div>
+              </div>
+            </div>
+          )}
+
+          <TabSystem {...tabSystemProps} />
+        </>
       )}
+
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 };

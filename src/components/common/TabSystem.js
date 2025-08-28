@@ -1,4 +1,4 @@
-// src/components/common/TabSystem.js - props接続修正版
+// src/components/common/TabSystem.js - 一時年表対応版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -12,15 +12,16 @@ const TabSystem = ({
   // 共通のデータとハンドラー
   events,
   timelines,
+  tempTimelines, // 新規：一時年表
   user,
   onEventUpdate,
   onEventDelete,
   onTimelineUpdate,
-  onEventAdd, // App.jsからのhandleAddEvent
+  onEventAdd,
   
   // Timeline/Network固有
   timelineRef,
-  coordinates, // 統合座標管理オブジェクト
+  coordinates,
   highlightedEvents,
   searchTerm,
   
@@ -32,8 +33,11 @@ const TabSystem = ({
   onResetView,
   onMenuAction,
   onSearchChange,
-  onTimelineCreate, // App.jsからのhandleCreateTimeline
+  onTimelineCreate,
+  onCreateTempTimeline, // 新規：一時年表作成
   onTimelineDelete,
+  onDeleteTempTimeline, // 新規：一時年表削除
+  onSaveTempTimelineToPersonal, // 新規：個人ファイル保存
   getTopTagsFromSearch,
   onEventClick,
   onTimelineClick,
@@ -57,6 +61,8 @@ const TabSystem = ({
   console.log('TabSystem props check:', {
     onEventAdd: !!onEventAdd,
     onTimelineCreate: !!onTimelineCreate,
+    onCreateTempTimeline: !!onCreateTempTimeline,
+    tempTimelines: tempTimelines?.length,
     currentTab
   });
   
@@ -65,6 +71,7 @@ const TabSystem = ({
     const commonProps = {
       events,
       timelines,
+      tempTimelines,
       user,
       onEventUpdate,
       onEventDelete,
@@ -77,14 +84,17 @@ const TabSystem = ({
     // VisualTab（Timeline/Network）共通のprops
     const visualProps = {
       // App.jsからの操作関数を正しく渡す
-      onAddEvent: onEventAdd, // 修正：onEventAddを使用
-      onCreateTimeline: onTimelineCreate, // 重要：App.jsのhandleCreateTimelineが渡される
+      onAddEvent: onEventAdd,
+      onCreateTimeline: onTimelineCreate,
+      onCreateTempTimeline: onCreateTempTimeline, // 新規追加
       onDeleteTimeline: onTimelineDelete,
+      onDeleteTempTimeline: onDeleteTempTimeline, // 新規追加
+      onSaveTempTimelineToPersonal: onSaveTempTimelineToPersonal, // 新規追加
       onEventClick,
       onTimelineClick,
       
       timelineRef,
-      coordinates, // 統合座標管理を使用
+      coordinates,
       highlightedEvents,
       onResetView,
       searchTerm,
@@ -102,7 +112,9 @@ const TabSystem = ({
       case 'timeline':
         console.log('TabSystem: timeline tab - passing props:', {
           onAddEvent: !!visualProps.onAddEvent,
-          onCreateTimeline: !!visualProps.onCreateTimeline
+          onCreateTimeline: !!visualProps.onCreateTimeline,
+          onCreateTempTimeline: !!visualProps.onCreateTempTimeline,
+          tempTimelines: tempTimelines?.length
         });
         return (
           <VisualTab
@@ -115,7 +127,9 @@ const TabSystem = ({
       case 'network':
         console.log('TabSystem: network tab - passing props:', {
           onAddEvent: !!visualProps.onAddEvent,
-          onCreateTimeline: !!visualProps.onCreateTimeline
+          onCreateTimeline: !!visualProps.onCreateTimeline,
+          onCreateTempTimeline: !!visualProps.onCreateTempTimeline,
+          tempTimelines: tempTimelines?.length
         });
         return (
           <VisualTab
@@ -151,81 +165,41 @@ const TabSystem = ({
         
       case 'revision':
         return isWikiMode ? (
-          <RevisionTab 
+          <RevisionTab
+            {...commonProps}
             wikiData={wikiData}
-            user={user}
-            isWikiMode={isWikiMode}
-            showRevisionHistory={true}
+            showPendingEvents={showPendingEvents}
           />
         ) : (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            height: '400px',
             color: '#6b7280',
-            fontSize: '16px',
-            gap: '16px'
+            fontSize: '16px'
           }}>
-            <div>⚠️ 更新タブはWikiモード専用です</div>
-            <div style={{ fontSize: '14px', textAlign: 'center', maxWidth: '400px' }}>
-              Wikiページに切り替えて、コミュニティの編集履歴を確認してください。
-            </div>
+            更新タブはWikiモードでのみ利用可能です
           </div>
         );
         
       default:
         return (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            color: '#ef4444',
-            fontSize: '16px',
-            gap: '16px'
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            height: '400px',
+            color: '#6b7280',
+            fontSize: '16px'
           }}>
-            <div>❌ 不明なタブ: {currentTab}</div>
-            <div style={{ fontSize: '14px' }}>
-              サポートされていないタブが選択されています
-            </div>
+            タブが見つかりません
           </div>
         );
     }
   };
   
-  const styles = {
-    container: {
-      flex: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-      overflow: 'hidden'
-    }
-  };
-  
-  return (
-    <div style={styles.container}>
-      <React.Suspense 
-        fallback={
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#6b7280',
-            fontSize: '14px'
-          }}>
-            {currentTab === 'network' ? '🕸️ ネットワーク' : currentTab === 'timeline' ? '📊 年表' : currentTab} タブを読み込み中...
-          </div>
-        }
-      >
-        {renderCurrentTab()}
-      </React.Suspense>
-    </div>
-  );
+  return renderCurrentTab();
 };
 
 export default TabSystem;

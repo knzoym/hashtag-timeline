@@ -1,4 +1,4 @@
-// src/components/modals/TimelineModal.js
+// src/components/modals/TimelineModal.js - 一時年表対応版
 import React, { useState, useEffect } from 'react';
 
 const TimelineModal = ({
@@ -6,406 +6,343 @@ const TimelineModal = ({
   onClose,
   onUpdate,
   onDelete,
+  onSaveToPersonal, // 新規：個人ファイルに保存
   isWikiMode = false,
-  position = null
+  isTemporary = false, // 新規：一時年表フラグ
+  user = null
 }) => {
-  const [editedTimeline, setEditedTimeline] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
-  
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#3b82f6');
+  const [description, setDescription] = useState('');
+
   useEffect(() => {
     if (timeline) {
-      setEditedTimeline({
-        ...timeline
-      });
+      setName(timeline.name || '');
+      setColor(timeline.color || '#3b82f6');
+      setDescription(timeline.description || '');
     }
   }, [timeline]);
-  
-  if (!timeline || !editedTimeline) return null;
-  
+
   const handleSave = () => {
-    if (onUpdate) {
-      onUpdate(editedTimeline);
+    if (!name.trim()) {
+      alert('年表名を入力してください');
+      return;
     }
-    setIsEditing(false);
+
+    const updatedTimeline = {
+      ...timeline,
+      name: name.trim(),
+      color,
+      description: description.trim(),
+      updatedAt: new Date()
+    };
+
+    onUpdate?.(updatedTimeline);
+    onClose();
   };
-  
+
   const handleDelete = () => {
-    if (deleteConfirm && onDelete) {
-      onDelete(timeline.id);
+    const confirmMessage = isTemporary 
+      ? `一時年表「${timeline?.name}」を削除しますか？`
+      : `年表「${timeline?.name}」を削除しますか？`;
+      
+    if (window.confirm(confirmMessage)) {
+      onDelete?.(timeline?.id);
       onClose();
-    } else {
-      setDeleteConfirm(true);
-      setTimeout(() => setDeleteConfirm(false), 3000);
     }
   };
-  
-  const handleCancel = () => {
-    setEditedTimeline({ ...timeline });
-    setIsEditing(false);
-  };
-  
-  // モーダル位置の計算
-  const getModalStyle = () => {
-    const baseStyle = {
-      position: "fixed",
-      backgroundColor: "white",
-      borderRadius: "12px",
-      boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
-      zIndex: 10000,
-      minWidth: "400px",
-      maxWidth: "500px",
-      maxHeight: "80vh",
-      overflow: "hidden"
-    };
-    
-    if (position) {
-      return {
-        ...baseStyle,
-        left: Math.min(position.x + 20, window.innerWidth - 420),
-        top: Math.min(position.y, window.innerHeight - 400),
-      };
+
+  const handleSaveToPersonal = () => {
+    if (!user) {
+      alert('個人ファイルへの保存にはログインが必要です');
+      return;
     }
-    
-    return {
-      ...baseStyle,
-      left: "50%",
-      top: "50%",
-      transform: "translate(-50%, -50%)"
-    };
+
+    const confirmMessage = `「${timeline?.name}」を個人ファイルに保存しますか？`;
+    if (window.confirm(confirmMessage)) {
+      onSaveToPersonal?.(timeline);
+      onClose();
+    }
   };
-  
+
+  if (!timeline) return null;
+
   const styles = {
     overlay: {
-      position: "fixed",
+      position: 'fixed',
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.6)",
-      zIndex: 9999,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center"
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
     },
-    
-    modal: getModalStyle(),
-    
+    modal: {
+      backgroundColor: 'white',
+      borderRadius: '12px',
+      padding: '24px',
+      maxWidth: '500px',
+      width: '90%',
+      maxHeight: '80vh',
+      overflow: 'auto',
+      boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+    },
     header: {
-      padding: "24px 24px 0",
-      borderBottom: isEditing ? "none" : "1px solid #e5e7eb"
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: '20px',
+      paddingBottom: '16px',
+      borderBottom: '1px solid #e5e7eb'
     },
-    
     title: {
-      fontSize: "20px",
-      fontWeight: "700",
-      color: "#1f2937",
-      marginBottom: "8px",
-      display: "flex",
-      alignItems: "center",
-      gap: "12px"
+      fontSize: '20px',
+      fontWeight: '600',
+      color: '#1f2937',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
     },
-    
-    content: {
-      padding: "24px",
-      maxHeight: "60vh",
-      overflow: "auto"
-    },
-    
-    editContent: {
-      padding: "16px 24px"
-    },
-    
-    footer: {
-      padding: "16px 24px",
-      borderTop: "1px solid #e5e7eb",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      backgroundColor: "#f9fafb"
-    },
-    
-    // フォーム要素
-    formGroup: {
-      marginBottom: "20px"
-    },
-    
-    label: {
-      display: "block",
-      fontSize: "14px",
-      fontWeight: "600",
-      color: "#374151",
-      marginBottom: "6px"
-    },
-    
-    input: {
-      width: "100%",
-      padding: "10px 14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "8px",
-      fontSize: "14px",
-      backgroundColor: "#ffffff"
-    },
-    
-    textarea: {
-      width: "100%",
-      minHeight: "80px",
-      padding: "10px 14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "8px",
-      fontSize: "14px",
-      resize: "vertical",
-      fontFamily: "inherit",
-      backgroundColor: "#ffffff"
-    },
-    
-    // ボタン
-    buttonGroup: {
-      display: "flex",
-      gap: "12px"
-    },
-    
-    button: {
-      padding: "10px 20px",
-      borderRadius: "8px",
-      fontSize: "14px",
-      fontWeight: "600",
-      cursor: "pointer",
-      transition: "all 0.2s",
-      border: "none"
-    },
-    
-    primaryButton: {
-      backgroundColor: "#3b82f6",
-      color: "white"
-    },
-    
-    secondaryButton: {
-      backgroundColor: "#f3f4f6",
-      color: "#374151",
-      border: "1px solid #d1d5db"
-    },
-    
-    dangerButton: {
-      backgroundColor: "#ef4444",
-      color: "white"
-    },
-    
-    infoSection: {
-      marginBottom: "16px",
-      padding: "12px",
-      backgroundColor: "#f8fafc",
-      borderRadius: "8px",
-      fontSize: "13px"
-    },
-    
     closeButton: {
-      position: "absolute",
-      top: "16px",
-      right: "16px",
-      background: "none",
-      border: "none",
-      fontSize: "24px",
-      cursor: "pointer",
-      color: "#6b7280",
-      width: "32px",
-      height: "32px",
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center"
+      background: 'none',
+      border: 'none',
+      fontSize: '24px',
+      cursor: 'pointer',
+      color: '#6b7280',
+      padding: '4px'
+    },
+    formGroup: {
+      marginBottom: '16px'
+    },
+    label: {
+      display: 'block',
+      fontSize: '14px',
+      fontWeight: '500',
+      color: '#374151',
+      marginBottom: '6px'
+    },
+    input: {
+      width: '100%',
+      padding: '10px 12px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      fontSize: '14px',
+      boxSizing: 'border-box'
+    },
+    textarea: {
+      width: '100%',
+      padding: '10px 12px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      fontSize: '14px',
+      minHeight: '80px',
+      resize: 'vertical',
+      boxSizing: 'border-box'
+    },
+    colorInput: {
+      width: '60px',
+      height: '40px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      cursor: 'pointer'
+    },
+    infoSection: {
+      backgroundColor: '#f9fafb',
+      padding: '12px',
+      borderRadius: '6px',
+      marginBottom: '20px'
+    },
+    infoTitle: {
+      fontSize: '13px',
+      fontWeight: '600',
+      color: '#374151',
+      marginBottom: '8px'
+    },
+    infoText: {
+      fontSize: '12px',
+      color: '#6b7280',
+      lineHeight: '1.4'
+    },
+    tempBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      padding: '4px 8px',
+      backgroundColor: '#dbeafe',
+      color: '#1e40af',
+      borderRadius: '12px',
+      fontSize: '12px',
+      fontWeight: '500',
+      border: '1px solid #3b82f6'
+    },
+    buttonGroup: {
+      display: 'flex',
+      gap: '12px',
+      justifyContent: 'flex-end',
+      paddingTop: '16px',
+      borderTop: '1px solid #e5e7eb'
+    },
+    button: {
+      padding: '10px 20px',
+      border: 'none',
+      borderRadius: '6px',
+      fontSize: '14px',
+      fontWeight: '500',
+      cursor: 'pointer',
+      transition: 'background-color 0.2s'
+    },
+    primaryButton: {
+      backgroundColor: '#3b82f6',
+      color: 'white'
+    },
+    successButton: {
+      backgroundColor: '#10b981',
+      color: 'white'
+    },
+    dangerButton: {
+      backgroundColor: '#ef4444',
+      color: 'white'
+    },
+    secondaryButton: {
+      backgroundColor: '#f3f4f6',
+      color: '#374151'
     }
   };
-  
+
+  const isReadonly = isWikiMode && !isTemporary;
+
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        {/* 閉じるボタン */}
-        <button
-          style={styles.closeButton}
-          onClick={onClose}
-          onMouseEnter={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
-        >
-          ×
-        </button>
-        
-        {isEditing ? (
-          <>
-            {/* 編集モード */}
-            <div style={styles.header}>
-              <div style={styles.title}>
-                📊 年表を編集
-              </div>
+        {/* ヘッダー */}
+        <div style={styles.header}>
+          <div style={styles.title}>
+            {isTemporary ? '📋' : '📊'} 
+            {isTemporary ? '一時年表' : '年表'}の詳細
+            {isTemporary && (
+              <span style={styles.tempBadge}>
+                🔄 一時作成
+              </span>
+            )}
+          </div>
+          <button onClick={onClose} style={styles.closeButton}>
+            ×
+          </button>
+        </div>
+
+        {/* 一時年表の説明 */}
+        {isTemporary && (
+          <div style={styles.infoSection}>
+            <div style={styles.infoTitle}>📋 一時年表について</div>
+            <div style={styles.infoText}>
+              検索結果から作成された一時的な年表です。個人ファイルに保存すると永続的な年表として利用できます。
+              ページを離脱すると削除されます。
             </div>
-            
-            <div style={styles.editContent}>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>年表名</label>
-                <input
-                  type="text"
-                  value={editedTimeline.name || ''}
-                  onChange={(e) => setEditedTimeline(prev => ({...prev, name: e.target.value}))}
-                  style={styles.input}
-                  placeholder="年表のタイトル"
-                  autoFocus
-                />
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>説明</label>
-                <textarea
-                  value={editedTimeline.description || ''}
-                  onChange={(e) => setEditedTimeline(prev => ({...prev, description: e.target.value}))}
-                  style={styles.textarea}
-                  placeholder="年表の説明（任意）"
-                />
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>カラー</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    type="color"
-                    value={editedTimeline.color || '#3b82f6'}
-                    onChange={(e) => setEditedTimeline(prev => ({...prev, color: e.target.value}))}
-                    style={{ 
-                      width: '40px', 
-                      height: '40px', 
-                      border: 'none', 
-                      borderRadius: '8px',
-                      cursor: 'pointer'
-                    }}
-                  />
-                  <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                    {editedTimeline.color || '#3b82f6'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            
-            <div style={styles.footer}>
-              <div style={styles.buttonGroup}>
-                <button
-                  onClick={handleCancel}
-                  style={{ ...styles.button, ...styles.secondaryButton }}
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={handleSave}
-                  style={{ ...styles.button, ...styles.primaryButton }}
-                >
-                  保存
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* 表示モード */}
-            <div style={styles.header}>
-              <div style={styles.title}>
-                <div 
-                  style={{
-                    width: '20px',
-                    height: '20px',
-                    backgroundColor: timeline.color || '#3b82f6',
-                    borderRadius: '4px'
-                  }}
-                />
-                {timeline.name || '（無題の年表）'}
-              </div>
-            </div>
-            
-            <div style={styles.content}>
-              {/* 統計情報 */}
-              <div style={styles.infoSection}>
-                <div style={{ fontWeight: '600', marginBottom: '8px' }}>📊 年表情報</div>
-                <div style={{ marginBottom: '4px' }}>
-                  イベント数: {timeline.events?.length || 0} 件
-                </div>
-                {timeline.temporaryEvents && timeline.temporaryEvents.length > 0 && (
-                  <div style={{ marginBottom: '4px' }}>
-                    仮登録: {timeline.temporaryEvents.length} 件
-                  </div>
-                )}
-                {timeline.removedEvents && timeline.removedEvents.length > 0 && (
-                  <div style={{ marginBottom: '4px' }}>
-                    仮削除: {timeline.removedEvents.length} 件
-                  </div>
-                )}
-                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '8px' }}>
-                  作成日: {timeline.createdAt ? 
-                    new Date(timeline.createdAt).toLocaleDateString('ja-JP') : 
-                    '不明'
-                  }
-                </div>
-              </div>
-              
-              {/* 説明 */}
-              {timeline.description && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontWeight: '600', marginBottom: '6px' }}>📝 説明</div>
-                  <div style={{ 
-                    fontSize: '14px', 
-                    lineHeight: '1.5', 
-                    color: '#374151',
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {timeline.description}
-                  </div>
-                </div>
-              )}
-              
-              {/* タグ */}
-              {timeline.tags && timeline.tags.length > 0 && (
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ fontWeight: '600', marginBottom: '6px' }}>🏷️ タグ</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                    {timeline.tags.map((tag, index) => (
-                      <span
-                        key={index}
-                        style={{
-                          padding: '4px 8px',
-                          backgroundColor: '#e0f2fe',
-                          color: '#0891b2',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: '500'
-                        }}
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            
-            <div style={styles.footer}>
-              <button
-                onClick={handleDelete}
-                style={{
-                  ...styles.button,
-                  ...(deleteConfirm ? styles.dangerButton : styles.secondaryButton),
-                  border: deleteConfirm ? "none" : "1px solid #d1d5db"
-                }}
-              >
-                {deleteConfirm ? "🗑️ 完全削除" : "削除"}
-              </button>
-              
-              <div style={styles.buttonGroup}>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  style={{ ...styles.button, ...styles.primaryButton }}
-                >
-                  編集
-                </button>
-              </div>
-            </div>
-          </>
+          </div>
         )}
+
+        {/* フォーム */}
+        <div style={styles.formGroup}>
+          <label style={styles.label}>年表名</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={styles.input}
+            placeholder="年表名を入力"
+            readOnly={isReadonly}
+          />
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>カラー</label>
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            style={styles.colorInput}
+            disabled={isReadonly}
+          />
+        </div>
+
+        {!isTemporary && (
+          <div style={styles.formGroup}>
+            <label style={styles.label}>説明</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={styles.textarea}
+              placeholder="年表の説明を入力（任意）"
+              readOnly={isReadonly}
+            />
+          </div>
+        )}
+
+        {/* 統計情報 */}
+        <div style={styles.infoSection}>
+          <div style={styles.infoTitle}>📊 統計情報</div>
+          <div style={styles.infoText}>
+            <div>イベント数: {timeline.eventCount || timeline.eventIds?.length || 0}件</div>
+            {timeline.createdAt && (
+              <div>作成日時: {new Date(timeline.createdAt).toLocaleString('ja-JP')}</div>
+            )}
+            {timeline.type && (
+              <div>種類: {timeline.type === 'temporary' ? '一時年表' : timeline.type === 'personal' ? '個人年表' : '不明'}</div>
+            )}
+          </div>
+        </div>
+
+        {/* ボタン群 */}
+        <div style={styles.buttonGroup}>
+          {/* 一時年表：個人保存ボタン */}
+          {isTemporary && user && onSaveToPersonal && (
+            <button
+              onClick={handleSaveToPersonal}
+              style={{...styles.button, ...styles.successButton}}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+            >
+              📥 個人ファイルに保存
+            </button>
+          )}
+
+          {/* 通常年表：保存ボタン */}
+          {!isReadonly && !isTemporary && (
+            <button
+              onClick={handleSave}
+              style={{...styles.button, ...styles.primaryButton}}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#2563eb'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#3b82f6'}
+            >
+              💾 保存
+            </button>
+          )}
+
+          {/* 削除ボタン */}
+          {onDelete && (
+            <button
+              onClick={handleDelete}
+              style={{...styles.button, ...styles.dangerButton}}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#dc2626'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = '#ef4444'}
+            >
+              🗑️ 削除
+            </button>
+          )}
+
+          {/* キャンセルボタン */}
+          <button
+            onClick={onClose}
+            style={{...styles.button, ...styles.secondaryButton}}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#e5e7eb'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+          >
+            キャンセル
+          </button>
+        </div>
       </div>
     </div>
   );
