@@ -1,14 +1,14 @@
-// src/components/ui/TimelineCard.js - 一時年表対応版
+// src/components/ui/TimelineCard.js - 座標計算修正版
 import React from 'react';
 
 export const TimelineCard = ({
   timeline,
   position = { x: 0, y: 0 },
-  isTemporary = false, // 新規：一時年表フラグ
+  isTemporary = false,
   onEdit,
   onDelete,
   onToggleVisibility,
-  onSaveToPersonal, // 新規：個人ファイルに保存
+  onSaveToPersonal,
   className = "",
   user = null
 }) => {
@@ -32,23 +32,24 @@ export const TimelineCard = ({
   const tempStyles = isTemporary ? {
     border: '2px dashed #3b82f6',
     backgroundColor: '#dbeafe',
-    opacity: 0.9
+    opacity: 0.95
   } : {};
 
   const baseStyles = {
     position: 'absolute',
     left: `${position.x}px`,
     top: `${position.y}px`,
-    width: '200px',
-    padding: '12px',
+    width: '180px', // 少し幅を調整
+    padding: '10px',
     backgroundColor: '#f9fafb',
     border: '1px solid #e5e7eb',
     borderRadius: '8px',
-    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
     cursor: 'pointer',
     zIndex: 15,
     fontSize: '12px',
     userSelect: 'none',
+    transform: 'translateY(-50%)', // 中央揃え
     ...tempStyles
   };
 
@@ -73,13 +74,14 @@ export const TimelineCard = ({
           flex: 1,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
+          whiteSpace: 'nowrap',
+          paddingRight: '4px'
         }}>
           {isTemporary ? '📋' : '📊'} {timeline.name}
         </div>
         
         {/* 操作ボタン群 */}
-        <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px' }}>
           {/* 表示切替（通常年表のみ） */}
           {!isTemporary && onToggleVisibility && (
             <button
@@ -91,13 +93,16 @@ export const TimelineCard = ({
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: '14px',
+                fontSize: '12px',
                 padding: '2px',
-                opacity: timeline.isVisible ? 1 : 0.5
+                opacity: timeline.isVisible !== false ? 1 : 0.5,
+                borderRadius: '3px'
               }}
-              title={timeline.isVisible ? '年表を非表示' : '年表を表示'}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
+              title={timeline.isVisible !== false ? '年表を非表示' : '年表を表示'}
             >
-              {timeline.isVisible ? '👁️' : '🙈'}
+              {timeline.isVisible !== false ? '👁️' : '🙈'}
             </button>
           )}
 
@@ -120,8 +125,10 @@ export const TimelineCard = ({
                 cursor: 'pointer',
                 fontSize: '12px',
                 padding: '2px 4px',
-                borderRadius: '2px'
+                borderRadius: '3px'
               }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#fee2e2'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
               title={isTemporary ? '一時年表を削除' : '年表を削除'}
             >
               ×
@@ -145,11 +152,12 @@ export const TimelineCard = ({
         {timeline.color && (
           <div
             style={{
-              width: '12px',
-              height: '12px',
+              width: '14px',
+              height: '14px',
               borderRadius: '50%',
               backgroundColor: timeline.color,
-              border: '1px solid #e5e7eb'
+              border: '1px solid #e5e7eb',
+              flexShrink: 0
             }}
           />
         )}
@@ -165,11 +173,12 @@ export const TimelineCard = ({
             backgroundColor: '#10b981',
             color: 'white',
             border: 'none',
-            borderRadius: '4px',
+            borderRadius: '6px',
             fontSize: '11px',
             fontWeight: '500',
             cursor: 'pointer',
-            marginTop: '4px'
+            marginTop: '4px',
+            transition: 'background-color 0.2s'
           }}
           onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
@@ -178,28 +187,56 @@ export const TimelineCard = ({
         </button>
       )}
 
-      {/* 一時年表の説明 */}
-      {isTemporary && (
+      {/* タグ表示（最大3個） */}
+      {timeline.tags && timeline.tags.length > 0 && (
         <div style={{
-          fontSize: '10px',
-          color: '#6b7280',
-          marginTop: '6px',
-          fontStyle: 'italic'
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '3px',
+          marginTop: '6px'
         }}>
-          一時作成された年表です
+          {timeline.tags.slice(0, 3).map((tag, index) => (
+            <span
+              key={index}
+              style={{
+                padding: '2px 6px',
+                backgroundColor: '#f3f4f6',
+                color: '#374151',
+                fontSize: '10px',
+                borderRadius: '4px',
+                border: '1px solid #d1d5db'
+              }}
+            >
+              #{tag}
+            </span>
+          ))}
+          {timeline.tags.length > 3 && (
+            <span style={{
+              fontSize: '10px',
+              color: '#9ca3af',
+              padding: '2px 4px'
+            }}>
+              +{timeline.tags.length - 3}
+            </span>
+          )}
         </div>
       )}
 
-      {/* 通常年表の作成日時 */}
-      {!isTemporary && timeline.createdAt && (
-        <div style={{
-          fontSize: '10px',
-          color: '#9ca3af',
-          marginTop: '4px'
-        }}>
-          {new Date(timeline.createdAt).toLocaleDateString('ja-JP')}
-        </div>
-      )}
+      {/* 作成日時 */}
+      <div style={{
+        fontSize: '10px',
+        color: '#9ca3af',
+        marginTop: '6px',
+        textAlign: 'right'
+      }}>
+        {isTemporary ? (
+          "一時作成"
+        ) : timeline.createdAt ? (
+          new Date(timeline.createdAt).toLocaleDateString('ja-JP')
+        ) : (
+          ""
+        )}
+      </div>
     </div>
   );
 };
