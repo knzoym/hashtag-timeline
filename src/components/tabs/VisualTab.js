@@ -8,7 +8,6 @@ import TimelineModal from "../modals/TimelineModal";
 import { SmoothLines } from "../ui/SmoothLines";
 import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
-import { truncateTitle } from "../../utils/timelineUtils";
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem";
 
@@ -60,16 +59,12 @@ const VisualTab = ({
   const coordinates = useCoordinate(timelineRef);
   const {
     scale,
-    panX,
     panY,
-    pixelsPerYear,
     isDragging,
     getXFromYear,
     getYearFromX,
     handleWheel,
     handleMouseDown,
-    handleMouseMove,
-    handleMouseUp,
     resetToInitialPosition,
   } = coordinates;
 
@@ -81,8 +76,8 @@ const VisualTab = ({
 
   // 色を暗くするヘルパー関数（落ち着いたトーン用）
   const getDarkerColor = useCallback((hslColor, darkenAmount = 30) => {
-    if (!hslColor || !hslColor.startsWith('hsl')) return hslColor;
-    
+    if (!hslColor || !hslColor.startsWith("hsl")) return hslColor;
+
     const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
     if (match) {
       const h = match[1];
@@ -115,14 +110,14 @@ const VisualTab = ({
   // 年マーカー生成
   const yearMarkers = useMemo(() => {
     if (!getXFromYear) return [];
-    
+
     const markers = [];
     const viewportWidth = window.innerWidth;
-    
+
     // スケールに応じた年間隔
     let yearInterval;
     const adjustedScale = scale / 2.5;
-    
+
     if (adjustedScale > 12) yearInterval = 1;
     else if (adjustedScale > 6) yearInterval = 2;
     else if (adjustedScale > 2) yearInterval = 5;
@@ -140,7 +135,7 @@ const VisualTab = ({
           key: year,
           x,
           year,
-          fontSize: Math.max(8, Math.min(14, 10 + adjustedScale))
+          fontSize: Math.max(8, Math.min(14, 10 + adjustedScale)),
         });
       }
     }
@@ -150,15 +145,21 @@ const VisualTab = ({
   // 年表軸計算
   const timelineAxes = useMemo(() => {
     if (!getXFromYear) return [];
-    
-    const visibleTimelines = displayTimelines.filter(t => t.isVisible !== false);
+
+    const visibleTimelines = displayTimelines.filter(
+      (t) => t.isVisible !== false
+    );
     const axes = [];
-    
+
     visibleTimelines.forEach((timeline, index) => {
       // 年表に属するイベントを検索
-      const timelineEvents = events.filter(event => {
+      const timelineEvents = events.filter((event) => {
         // timelineInfos方式
-        if (event.timelineInfos?.some(info => info.timelineId === timeline.id && !info.isTemporary)) {
+        if (
+          event.timelineInfos?.some(
+            (info) => info.timelineId === timeline.id && !info.isTemporary
+          )
+        ) {
           return true;
         }
         // eventIds方式
@@ -169,11 +170,12 @@ const VisualTab = ({
       });
 
       // 年範囲計算
-      let minYear = 2020, maxYear = 2025;
+      let minYear = 2020,
+        maxYear = 2025;
       if (timelineEvents.length > 0) {
         const years = timelineEvents
-          .map(e => e.startDate?.getFullYear?.())
-          .filter(y => y && !isNaN(y));
+          .map((e) => e.startDate?.getFullYear?.())
+          .filter((y) => y && !isNaN(y));
         if (years.length > 0) {
           minYear = Math.min(...years);
           maxYear = Math.max(...years);
@@ -183,21 +185,22 @@ const VisualTab = ({
       // 座標計算
       const startX = getXFromYear(minYear);
       const endX = getXFromYear(maxYear);
-      const yPosition = TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
-      
+      const yPosition =
+        TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
+
       axes.push({
         id: timeline.id,
         name: timeline.name,
-        color: timeline.color || '#6b7280',
+        color: timeline.color || "#6b7280",
         yPosition,
         startX,
         endX,
         cardX: Math.max(20, startX - 150),
         eventCount: timelineEvents.length,
-        timeline
+        timeline,
       });
     });
-    
+
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
@@ -206,52 +209,185 @@ const VisualTab = ({
     if (!events || !layoutManager || !timelineAxes) {
       return { allEvents: [], eventGroups: [] };
     }
-    
+
     try {
       const layoutResult = layoutManager.executeLayout(events, timelineAxes);
-      
-      console.log(`統合レイアウト結果: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`);
-      layoutResult.eventGroups.forEach(group => {
-        console.log(`グループ ${group.id}: 位置(${group.position.x.toFixed(0)}, ${group.position.y}) ${group.events.length}イベント`);
+
+      console.log(
+        `統合レイアウト結果: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`
+      );
+      layoutResult.eventGroups.forEach((group) => {
+        console.log(
+          `グループ ${group.id}: 位置(${group.position.x.toFixed(0)}, ${
+            group.position.y
+          }) ${group.events.length}イベント`
+        );
       });
-      
+
       return layoutResult;
     } catch (error) {
-      console.error('レイアウト計算エラー:', error);
+      console.error("レイアウト計算エラー:", error);
       return { allEvents: [], eventGroups: [] };
     }
   }, [events, timelineAxes, layoutManager]);
 
-  // ネットワーク接続線データ生成
-  const networkConnections = useMemo(() => {
-    if (!isNetworkMode) return [];
-    
-    const connections = [];
-    
-    timelineAxes.forEach(axis => {
-      const connectionPoints = layoutEventsWithGroups.allEvents
-        .filter(event => event.timelineInfo?.timelineId === axis.id && !event.hiddenByGroup)
-        .map(event => ({
-          x: event.adjustedPosition.x,
-          y: event.adjustedPosition.y
-        }));
+  // ネットワーク専用レイアウト計算
+  const networkLayout = useMemo(() => {
+    if (!isNetworkMode) return { events: [], connections: [] };
 
-      if (connectionPoints.length > 1) {
-        connections.push({
-          id: axis.id,
-          name: axis.name,
-          color: axis.color,
-          points: connectionPoints
+    console.log("🌐 ネットワークレイアウト計算開始");
+    const networkEvents = [];
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+
+    // 各年表の中心Y座標を計算
+    const timelinePositions = displayTimelines
+      .filter((t) => t.isVisible !== false)
+      .map((timeline, index) => {
+        const centerY =
+          viewportHeight * 0.2 + (index + 1) * (viewportHeight * 0.15);
+        return {
+          id: timeline.id,
+          name: timeline.name,
+          color: timeline.color || "#6b7280",
+          centerY: Math.min(centerY, viewportHeight * 0.8),
+          timeline,
+        };
+      });
+
+    // 年表ごとにイベントを配置
+    timelinePositions.forEach((timelinePos, timelineIndex) => {
+      const timelineEvents = events.filter((event) => {
+        return (
+          event.timelineInfos?.some(
+            (info) => info.timelineId === timelinePos.id && !info.isTemporary
+          ) || timelinePos.timeline.eventIds?.includes(event.id)
+        );
+      });
+
+      if (timelineEvents.length === 0) return;
+
+      // 時系列順にソート
+      const sortedEvents = [...timelineEvents].sort((a, b) => {
+        const aYear = a.startDate ? a.startDate.getFullYear() : 0;
+        const bYear = b.startDate ? b.startDate.getFullYear() : 0;
+        return aYear - bYear;
+      });
+
+      // イベントをY軸周りに配置（円弧状に分散）
+      sortedEvents.forEach((event, eventIndex) => {
+        const eventX = event.startDate
+          ? getXFromYear(event.startDate.getFullYear())
+          : viewportWidth / 2;
+
+        // ネットワーク専用のY座標計算（年表中心から放射状に配置）
+        const angleRange = Math.PI * 0.6; // 約108度の範囲
+        const startAngle = -angleRange / 2;
+        const angle =
+          sortedEvents.length > 1
+            ? startAngle + (eventIndex / (sortedEvents.length - 1)) * angleRange
+            : 0;
+
+        const radiusVariation = 40 + (eventIndex % 3) * 20; // 半径のバリエーション
+        const eventY = timelinePos.centerY + Math.sin(angle) * radiusVariation;
+
+        networkEvents.push({
+          ...event,
+          adjustedPosition: {
+            x: eventX,
+            y: Math.max(50, Math.min(eventY, viewportHeight - 100)),
+          },
+          calculatedWidth: calculateTextWidth(event.title || "") + 20,
+          calculatedHeight: 40,
+          timelineColor: timelinePos.color,
+          timelineInfo: {
+            timelineId: timelinePos.id,
+            timelineName: timelinePos.name,
+            timelineColor: timelinePos.color,
+            networkPosition: { angle, radius: radiusVariation },
+          },
+          hiddenByGroup: false,
         });
-      }
+      });
+
+      console.log(
+        `年表「${timelinePos.name}」: ${timelineEvents.length}イベントをネットワーク配置`
+      );
     });
 
+    return { events: networkEvents, timelinePositions };
+  }, [
+    isNetworkMode,
+    events,
+    displayTimelines,
+    getXFromYear,
+    calculateTextWidth,
+  ]);
+
+  // レイアウト選択（タイムライン or ネットワーク）
+  const currentLayout = useMemo(() => {
+    if (isNetworkMode) {
+      return {
+        allEvents: networkLayout.events,
+        eventGroups: [], // ネットワークモードではグループ化しない
+      };
+    }
+    return layoutEventsWithGroups;
+  }, [isNetworkMode, networkLayout, layoutEventsWithGroups]);
+
+  // ネットワーク接続線データ生成（修正版）
+  const networkConnections = useMemo(() => {
+    if (!isNetworkMode) return [];
+
+    const connections = [];
+    console.log("🌐 ネットワークモード: 接続線生成開始");
+
+    // ネットワークレイアウトのイベントから接続線を生成
+    if (networkLayout.timelinePositions) {
+      networkLayout.timelinePositions.forEach((timelinePos) => {
+        const timelineEvents = networkLayout.events.filter(
+          (event) => event.timelineInfo?.timelineId === timelinePos.id
+        );
+
+        console.log(
+          `年表「${timelinePos.name}」: ${timelineEvents.length}個の接続可能イベント`
+        );
+
+        if (timelineEvents.length >= 2) {
+          // イベントを時系列順にソート
+          const sortedEvents = [...timelineEvents].sort((a, b) => {
+            const aYear = a.startDate ? a.startDate.getFullYear() : 0;
+            const bYear = b.startDate ? b.startDate.getFullYear() : 0;
+            return aYear - bYear;
+          });
+
+          // ネットワーク用の接続ポイント生成
+          const connectionPoints = sortedEvents.map((event) => ({
+            x: event.adjustedPosition.x,
+            y: event.adjustedPosition.y, // panYは後でSmoothLinesで適用される
+          }));
+
+          connections.push({
+            id: timelinePos.id,
+            name: timelinePos.name,
+            color: timelinePos.color,
+            points: connectionPoints,
+          });
+
+          console.log(`  → 接続線追加: ${connectionPoints.length}ポイント`);
+        }
+      });
+    }
+
+    console.log(
+      `🌐 ネットワーク接続線生成完了: ${connections.length}本の接続線`
+    );
     return connections;
-  }, [isNetworkMode, timelineAxes, layoutEventsWithGroups.allEvents]);
+  }, [isNetworkMode, networkLayout]);
 
   // グループ管理
   const toggleEventGroup = useCallback((groupId) => {
-    setExpandedGroups(prev => {
+    setExpandedGroups((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(groupId)) {
         newSet.delete(groupId);
@@ -263,77 +399,97 @@ const VisualTab = ({
   }, []);
 
   // イベントハンドラー
-  const handleEventDoubleClick = useCallback((event) => {
-    console.log("VisualTab: Event double click:", event.title);
-    
-    // イベントの正規化
-    const normalizedEvent = {
-      ...event,
-      id: event.id || `temp-${Date.now()}`,
-      title: event.title || '新規イベント',
-      description: event.description || '',
-      startDate: event.startDate || new Date(),
-      endDate: event.endDate || null,
-      tags: event.tags || [],
-      timelineInfos: event.timelineInfos || []
-    };
-    
-    if (onEventClick) {
-      onEventClick(normalizedEvent);
-    }
-  }, [onEventClick]);
+  const handleEventDoubleClick = useCallback(
+    (event) => {
+      console.log("VisualTab: Event double click:", event.title);
 
-  const handleAddEventAtPosition = useCallback((clientX, clientY) => {
-    if (isWikiMode) {
-      alert("Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。");
-      return;
-    }
+      // イベントの正規化
+      const normalizedEvent = {
+        ...event,
+        id: event.id || `temp-${Date.now()}`,
+        title: event.title || "新規イベント",
+        description: event.description || "",
+        startDate: event.startDate || new Date(),
+        endDate: event.endDate || null,
+        tags: event.tags || [],
+        timelineInfos: event.timelineInfos || [],
+      };
 
-    if (onAddEvent && getYearFromX && timelineRef.current) {
-      const rect = timelineRef.current.getBoundingClientRect();
-      const relativeX = clientX - rect.left;
-      const relativeY = clientY - rect.top;
-      
-      // クリック座標から年を計算
-      const clickedYear = Math.round(getYearFromX(relativeX));
-      
-      // 新しいイベントの日付を設定
-      const eventDate = new Date();
-      eventDate.setFullYear(clickedYear);
-      
-      onAddEvent({
-        title: "新規イベント",
-        startDate: eventDate,
-        description: "",
-        tags: [],
-        position: { x: relativeX, y: relativeY }
-      });
-      
-      console.log(`座標 (${relativeX}, ${relativeY}) に ${clickedYear} 年のイベントを追加`);
-    }
-  }, [onAddEvent, getYearFromX, isWikiMode]);
-
-  const handleTimelineDoubleClick = useCallback((e) => {
-    // イベントやグループ以外の場所でのダブルクリック
-    if (!e.target.closest("[data-event-id]") && !e.target.closest("[data-group-id]")) {
-      handleAddEventAtPosition(e.clientX, e.clientY);
-    }
-  }, [handleAddEventAtPosition]);
-
-  const handleCreateTimeline = useCallback((timelineName) => {
-    // 引数で年表名を受け取る、またはsearchTermから自動設定
-    const finalTimelineName = timelineName || searchTerm.trim() || "新しい年表";
-    
-    if (isWikiMode) {
-      if (onCreateTempTimeline) {
-        onCreateTempTimeline(finalTimelineName);
+      if (onEventClick) {
+        onEventClick(normalizedEvent);
       }
-    } else {
-      if (onCreateTimeline) {
-        onCreateTimeline(finalTimelineName);
+    },
+    [onEventClick]
+  );
+
+  const handleAddEventAtPosition = useCallback(
+    (clientX, clientY) => {
+      if (isWikiMode) {
+        alert(
+          "Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。"
+        );
+        return;
       }
-    }
-  }, [onCreateTimeline, onCreateTempTimeline, isWikiMode, searchTerm]);
+
+      if (onAddEvent && getYearFromX && timelineRef.current) {
+        const rect = timelineRef.current.getBoundingClientRect();
+        const relativeX = clientX - rect.left;
+        const relativeY = clientY - rect.top;
+
+        // クリック座標から年を計算
+        const clickedYear = Math.round(getYearFromX(relativeX));
+
+        // 新しいイベントの日付を設定
+        const eventDate = new Date();
+        eventDate.setFullYear(clickedYear);
+
+        onAddEvent({
+          title: "新規イベント",
+          startDate: eventDate,
+          description: "",
+          tags: [],
+          position: { x: relativeX, y: relativeY },
+        });
+
+        console.log(
+          `座標 (${relativeX}, ${relativeY}) に ${clickedYear} 年のイベントを追加`
+        );
+      }
+    },
+    [onAddEvent, getYearFromX, isWikiMode]
+  );
+
+  const handleTimelineDoubleClick = useCallback(
+    (e) => {
+      // イベントやグループ以外の場所でのダブルクリック
+      if (
+        !e.target.closest("[data-event-id]") &&
+        !e.target.closest("[data-group-id]")
+      ) {
+        handleAddEventAtPosition(e.clientX, e.clientY);
+      }
+    },
+    [handleAddEventAtPosition]
+  );
+
+  const handleCreateTimeline = useCallback(
+    (timelineName) => {
+      // 引数で年表名を受け取る、またはsearchTermから自動設定
+      const finalTimelineName =
+        timelineName || searchTerm.trim() || "新しい年表";
+
+      if (isWikiMode) {
+        if (onCreateTempTimeline) {
+          onCreateTempTimeline(finalTimelineName);
+        }
+      } else {
+        if (onCreateTimeline) {
+          onCreateTimeline(finalTimelineName);
+        }
+      }
+    },
+    [onCreateTimeline, onCreateTempTimeline, isWikiMode, searchTerm]
+  );
 
   console.log(`VisualTab ${isNetworkMode ? "Network" : "Timeline"} render:`, {
     events: events?.length || 0,
@@ -394,7 +550,6 @@ const VisualTab = ({
             </span>
           </div>
         ))}
-
         {/* メインタイムライン線 */}
         <div
           style={{
@@ -407,13 +562,12 @@ const VisualTab = ({
             zIndex: 1,
           }}
         />
-
-        {/* タイムラインモード：年表軸 */}
+        {/* タイムラインモード：年表軸（ネットワークモードでは非表示） */}
         {!isNetworkMode &&
           timelineAxes.map((axis, index) => {
             const baselineY = window.innerHeight * 0.3;
-            const axisY = baselineY + 100 + (index * 120);
-            
+            const axisY = baselineY + 100 + index * 120;
+
             return (
               <div
                 key={`timeline-axis-${axis.id}`}
@@ -431,80 +585,94 @@ const VisualTab = ({
               />
             );
           })}
-
-        {/* ネットワークモード：滑らかな接続線 */}
-        {isNetworkMode &&
-          networkConnections.map((timeline, index) => (
-            <SmoothLines
-              key={timeline.id}
-              timeline={timeline}
-              panY={panY}
-              displayState="default"
-              onHover={() => {}}
-              onClick={onTimelineClick}
-              zIndex={10 + index}
-            />
-          ))}
-
-        {/* 通常イベント表示（修正版：hiddenByGroupフィルタリング） */}
-        {layoutEventsWithGroups.allEvents
-          .filter(event => !event.hiddenByGroup) // グループ化されたイベントを除外
-          .map((event, index) => {
-          const eventX = event.adjustedPosition.x;
-          const eventY = event.adjustedPosition.y + panY;
-          const isHighlighted = highlightedEvents?.some?.(e => e.id === event.id) || false;
-
-          return (
-            <React.Fragment key={`event-${event.id}-${index}`}>
-              <EventCard
-                event={event}
-                style={{
-                  position: "absolute",
-                  left: `${eventX}px`,
-                  top: `${eventY}px`,
-                  transform: "translateX(-50%)",
-                }}
-                isHighlighted={isHighlighted}
-                onDoubleClick={() => handleEventDoubleClick(event)}
-                onMouseDown={(e) => e.stopPropagation()}
-                calculateTextWidth={calculateTextWidth} // 統一サイズ計算を渡す
-                className="no-pan"
+        {/* ネットワークモード：滑らかな接続線（デバッグ情報付き） */}
+        {isNetworkMode && (
+          <>
+            {console.log("🌐 ネットワークモード: SmoothLinesをレンダリング中", {
+              connectionsCount: networkConnections.length,
+              connections: networkConnections.map((c) => ({
+                id: c.id,
+                name: c.name,
+                pointsCount: c.points?.length || 0,
+              })),
+            })}
+            {networkConnections.map((timeline, index) => (
+              <SmoothLines
+                key={timeline.id}
+                timeline={timeline}
+                panY={panY}
+                displayState="default"
+                onHover={() => {}}
+                onClick={onTimelineClick}
+                zIndex={10 + index}
               />
+            ))}
+          </>
+        )}
+        {/* 通常イベント表示（修正版：currentLayoutを使用） */}
+        {currentLayout.allEvents
+          .filter((event) => !event.hiddenByGroup) // グループ化されたイベントを除外
+          .map((event, index) => {
+            const eventX = event.adjustedPosition.x;
+            const eventY = event.adjustedPosition.y + panY;
+            const isHighlighted =
+              highlightedEvents?.some?.((e) => e.id === event.id) || false;
 
-              {/* 延長線の描画（年表イベントで必要な場合） */}
-              {event.timelineInfo?.needsExtensionLine && (
-                <div
+            return (
+              <React.Fragment key={`event-${event.id}-${index}`}>
+                <EventCard
+                  event={event}
                   style={{
                     position: "absolute",
                     left: `${eventX}px`,
-                    top: `${Math.min(eventY, event.timelineInfo.axisY + panY)}px`,
-                    width: "2px",
-                    height: `${Math.abs(eventY - (event.timelineInfo.axisY + panY))}px`,
-                    backgroundColor: event.timelineColor || "#6b7280",
-                    opacity: 0.6,
-                    zIndex: 1,
-                    pointerEvents: "none",
+                    top: `${eventY}px`,
+                    transform: "translateX(-50%)",
                   }}
+                  isHighlighted={isHighlighted}
+                  onDoubleClick={() => handleEventDoubleClick(event)}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  calculateTextWidth={calculateTextWidth}
+                  className="no-pan"
                 />
-              )}
-            </React.Fragment>
-          );
-        })}
 
+                {/* 延長線の描画（年表イベントで必要な場合、ネットワークモードでは非表示） */}
+                {!isNetworkMode && event.timelineInfo?.needsExtensionLine && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${eventX}px`,
+                      top: `${Math.min(
+                        eventY,
+                        event.timelineInfo.axisY + panY
+                      )}px`,
+                      width: "2px",
+                      height: `${Math.abs(
+                        eventY - (event.timelineInfo.axisY + panY)
+                      )}px`,
+                      backgroundColor: event.timelineColor || "#6b7280",
+                      opacity: 0.6,
+                      zIndex: 1,
+                      pointerEvents: "none",
+                    }}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
         {/* イベントグループアイコン（修正版：年表色を正しく渡す） */}
         {layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
           console.log(`グループ ${index}:`, {
             id: groupData.id,
             position: groupData.position,
             events: groupData.events?.length || 0,
-            timelineColor: groupData.timelineColor
+            timelineColor: groupData.timelineColor,
           });
-          
+
           if (!groupData.position) {
             console.error(`グループ ${groupData.id} の position が未定義`);
             return null;
           }
-          
+
           return (
             <EventGroupIcon
               key={`group-icon-${groupData.id}`}
@@ -512,7 +680,7 @@ const VisualTab = ({
               position={groupData.position}
               panY={panY}
               panX={0}
-              timelineColor={groupData.timelineColor || '#6b7280'} // 年表色を正しく渡す
+              timelineColor={groupData.timelineColor || "#6b7280"} // 年表色を正しく渡す
               onHover={setHoveredGroup}
               onClick={toggleEventGroup}
               onDoubleClick={(e, group) => {
@@ -527,20 +695,29 @@ const VisualTab = ({
             />
           );
         })}
-
         {/* グループツールチップ（修正版） */}
-        {hoveredGroup && layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup) && (
-          <GroupTooltip
-            groupData={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)}
-            position={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)?.position}
-            panY={panY}
-            panX={0}
-          />
-        )}
-
+        {hoveredGroup &&
+          layoutEventsWithGroups.eventGroups.find(
+            (g) => g.id === hoveredGroup
+          ) && (
+            <GroupTooltip
+              groupData={layoutEventsWithGroups.eventGroups.find(
+                (g) => g.id === hoveredGroup
+              )}
+              position={
+                layoutEventsWithGroups.eventGroups.find(
+                  (g) => g.id === hoveredGroup
+                )?.position
+              }
+              panY={panY}
+              panX={0}
+            />
+          )}
         {/* 展開されたグループカード（修正版） */}
         {Array.from(expandedGroups).map((groupId) => {
-          const groupData = layoutEventsWithGroups.eventGroups.find(g => g.id === groupId);
+          const groupData = layoutEventsWithGroups.eventGroups.find(
+            (g) => g.id === groupId
+          );
           if (!groupData) return null;
 
           return (
@@ -549,18 +726,17 @@ const VisualTab = ({
               groupData={groupData}
               position={{
                 x: groupData.position.x + 30,
-                y: groupData.position.y - 50
+                y: groupData.position.y - 50,
               }}
               panY={panY}
               panX={0}
-              timelineColor={groupData.timelineColor || '#6b7280'} // 年表色を正しく渡す
+              timelineColor={groupData.timelineColor || "#6b7280"} // 年表色を正しく渡す
               onEventDoubleClick={handleEventDoubleClick}
               onClose={() => toggleEventGroup(groupId)}
               onEventClick={handleEventDoubleClick}
             />
           );
         })}
-
         {/* 年表概要カード */}
         {timelineAxes.map((axis, index) => {
           const timeline = displayTimelines?.find((t) => t.id === axis.id);
@@ -590,7 +766,6 @@ const VisualTab = ({
             />
           );
         })}
-
         {/* 現在線 */}
         <div
           style={{
@@ -674,7 +849,12 @@ const VisualTab = ({
         </button>
 
         <button
-          onClick={() => handleAddEventAtPosition(window.innerWidth / 2, window.innerHeight / 2)}
+          onClick={() =>
+            handleAddEventAtPosition(
+              window.innerWidth / 2,
+              window.innerHeight / 2
+            )
+          }
           style={{
             backgroundColor: isWikiMode ? "#6b7280" : "#3b82f6",
             color: "white",
