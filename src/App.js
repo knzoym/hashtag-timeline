@@ -128,59 +128,54 @@ const AppContent = () => {
     }
   }, []);
 
-  // === 年表操作（修正版） ===
-  const handleCreateTimeline = useCallback(() => {
-    try {
-      if (!highlightedEvents || highlightedEvents.size === 0) {
-        console.log("年表作成: ハイライトされたイベントがありません");
-        return;
+  const handleCreateTimeline = useCallback(
+    (timelineName) => {
+      try {
+        if (!highlightedEvents || highlightedEvents.size === 0) {
+          console.log("年表作成: ハイライトされたイベントがありません");
+          return;
+        }
+
+        const selectedEventIds = Array.from(highlightedEvents); // この行を追加
+        const newTimelineId = Date.now(); // この行を追加
+
+        // 新しい年表を作成
+        const newTimeline = {
+          id: newTimelineId, // Date.now()からnewTimelineIdに変更
+          name: timelineName,
+          color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
+          isVisible: true,
+          createdAt: new Date(),
+          type: "personal",
+          eventIds: selectedEventIds,
+          eventCount: selectedEventIds.length,
+        };
+
+        setTimelines((prev) => [...prev, newTimeline]);
+
+        // 選択されたイベントにtimelineInfosを追加
+        setEvents((prevEvents) =>
+          prevEvents.map((event) =>
+            selectedEventIds.includes(event.id)
+              ? {
+                  ...event,
+                  timelineInfos: [
+                    ...(event.timelineInfos || []),
+                    { timelineId: newTimelineId, isTemporary: false },
+                  ],
+                }
+              : event
+          )
+        );
+
+        console.log("年表作成完了:", newTimeline);
+        handleSearchChange({ target: { value: "" } });
+      } catch (error) {
+        console.error("年表作成エラー:", error);
       }
-
-      // 検索テキストをデフォルト年表名として使用
-      const defaultName = searchTerm.trim() || "新しい年表";
-      const timelineName = prompt(`年表名を入力してください:`, defaultName);
-      if (!timelineName) return;
-
-      const newTimelineId = `timeline_${Date.now()}`;
-      const selectedEventIds = Array.from(highlightedEvents);
-
-      // 新しい年表を作成
-      const newTimeline = {
-        id: newTimelineId,
-        name: timelineName,
-        color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
-        isVisible: true,
-        createdAt: new Date(),
-        type: "personal",
-        eventIds: selectedEventIds, // イベントID配列を追加
-        eventCount: selectedEventIds.length,
-      };
-
-      setTimelines((prev) => [...prev, newTimeline]);
-
-      // 選択されたイベントにtimelineInfosを追加
-      setEvents((prevEvents) =>
-        prevEvents.map((event) =>
-          selectedEventIds.includes(event.id)
-            ? {
-                ...event,
-                timelineInfos: [
-                  ...(event.timelineInfos || []),
-                  { timelineId: newTimelineId, isTemporary: false },
-                ],
-              }
-            : event
-        )
-      );
-
-      console.log("年表作成完了:", newTimeline);
-      // 検索をクリア（handleSearchChangeを使用）
-      handleSearchChange({ target: { value: "" } });
-    } catch (error) {
-      console.error("年表作成エラー:", error);
-    }
-  }, [highlightedEvents, searchTerm, handleSearchChange]);
-
+    },
+    [highlightedEvents, handleSearchChange]
+  ); // dependenciesからsearchTermを削除
   // 一時年表作成（Wiki専用）
   const handleCreateTempTimeline = useCallback(() => {
     try {
