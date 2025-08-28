@@ -24,14 +24,12 @@ const Header = ({
     changeTab,
     getAvailableTabs,
     getPageModeInfo,
-    canUseFileOperations
   } = usePageMode();
   
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   
   // 修正: 関数として呼び出してからオブジェクト分割代入
-  const pageModeInfo = getPageModeInfo();
-  const { isPersonalMode, isWikiMode, isMyPageMode } = pageModeInfo;
+  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo;
   
   // レンダリング毎にランダムロゴを選択
   const randomLogo = useMemo(() => {
