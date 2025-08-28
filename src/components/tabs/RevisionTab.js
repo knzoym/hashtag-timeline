@@ -1,78 +1,54 @@
-// src/components/tabs/RevisionTab.js - Wiki更新履歴システム
-import React, { useState, useEffect, useMemo } from 'react';
+// src/components/tabs/RevisionTab.js - 承認システム統合版
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import ApprovalSystem from '../wiki/ApprovalSystem';
 
-const RevisionTab = ({
-  wikiData,
-  user,
+const RevisionTab = ({ 
+  wikiData, 
+  user, 
   isWikiMode,
-  showRevisionHistory = true
+  showRevisionHistory 
 }) => {
+  const [currentView, setCurrentView] = useState('activity'); // 'activity' | 'approval'
   const [revisions, setRevisions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedRevision, setSelectedRevision] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [timeRange, setTimeRange] = useState('24h');
   const [filterType, setFilterType] = useState('all');
-  const [timeRange, setTimeRange] = useState('week');
-  
-  // 更新履歴を取得
-  useEffect(() => {
-    if (!wikiData || !showRevisionHistory || !isWikiMode) {
-      setLoading(false);
-      return;
-    }
-    
-    const loadRevisions = async () => {
+  const [loading, setLoading] = useState(false);
+  const [selectedRevision, setSelectedRevision] = useState(null);
+
+  // 更新履歴読み込み
+  const loadRevisions = useCallback(async () => {
+    if (!isWikiMode || !wikiData) return;
+
+    try {
       setLoading(true);
-      try {
-        // モックデータ（実際のAPIに置き換える）
-        const mockRevisions = [
-          {
-            id: '1',
-            type: 'event_create',
-            user_name: 'user123',
-            user_email: 'user@example.com',
-            event_title: '明治維新',
-            description: '新しいイベントを作成しました',
-            created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-            score: 5,
-            vote_count: 8
-          },
-          {
-            id: '2',
-            type: 'event_update',
-            user_name: 'historian_a',
-            user_email: 'historian@example.com',
-            event_title: '第二次世界大戦',
-            description: '開始日と終了日を正確な情報に修正',
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-            score: 3,
-            vote_count: 5,
-            diff: '- 開始日: 1939年\n+ 開始日: 1939年9月1日'
-          },
-          {
-            id: '3',
-            type: 'approval',
-            user_name: 'moderator1',
-            user_email: 'mod@example.com',
-            event_title: 'ベルリンの壁崩壊',
-            description: '編集内容を承認しました',
-            created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-            score: 2,
-            vote_count: 3
-          }
-        ];
-        
-        setRevisions(mockRevisions);
-      } catch (error) {
-        console.error('Failed to load revisions:', error);
-        setRevisions([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
+      
+      // 通常の更新履歴
+      const recentRevisions = await wikiData.getRecentRevisions(50, timeRange);
+      setRevisions(recentRevisions);
+
+      // 承認待ち件数を取得
+      const pendingRevisions = await wikiData.getPendingRevisions('pending', 100);
+      setPendingCount(pendingRevisions.length);
+
+      console.log('更新履歴読み込み完了:', {
+        revisions: recentRevisions.length,
+        pending: pendingRevisions.length
+      });
+      
+    } catch (error) {
+      console.error('Failed to load revisions:', error);
+      setRevisions([]);
+      setPendingCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [wikiData, timeRange, isWikiMode]);
+
+  useEffect(() => {
     loadRevisions();
-  }, [wikiData, timeRange, showRevisionHistory, isWikiMode]);
-  
+  }, [loadRevisions]);
+
   // フィルタリングされた更新履歴
   const filteredRevisions = useMemo(() => {
     let filtered = revisions;
@@ -83,9 +59,11 @@ const RevisionTab = ({
           case 'events':
             return revision.type === 'event_create' || revision.type === 'event_update';
           case 'approvals':
-            return revision.type === 'approval' || revision.type === 'rejection';
+            return revision.approval_status === 'approved' || revision.approval_status === 'rejected';
           case 'edits':
             return revision.type === 'event_update' || revision.type === 'event_edit';
+          case 'pending':
+            return revision.approval_status === 'pending';
           default:
             return true;
         }
@@ -99,12 +77,12 @@ const RevisionTab = ({
   const stats = useMemo(() => {
     return {
       total: filteredRevisions.length,
-      events: filteredRevisions.filter(r => r.type === 'event_create').length,
-      updates: filteredRevisions.filter(r => r.type === 'event_update').length,
-      approvals: filteredRevisions.filter(r => r.type === 'approval').length
+      pending: revisions.filter(r => r.approval_status === 'pending').length,
+      approved: revisions.filter(r => r.approval_status === 'approved').length,
+      rejected: revisions.filter(r => r.approval_status === 'rejected').length
     };
-  }, [filteredRevisions]);
-  
+  }, [revisions, filteredRevisions]);
+
   // Wiki専用タブなので、Wikiモードでない場合は警告表示
   if (!isWikiMode) {
     return (
@@ -125,19 +103,20 @@ const RevisionTab = ({
       </div>
     );
   }
-  
+
   // 更新タイプのアイコンとラベル
   const getRevisionTypeInfo = (type) => {
     const typeMap = {
       event_create: { icon: '➕', label: 'イベント作成', color: '#10b981' },
       event_update: { icon: '✏️', label: 'イベント編集', color: '#3b82f6' },
       approval: { icon: '✅', label: '編集承認', color: '#059669' },
-      rejection: { icon: '❌', label: '編集却下', color: '#dc2626' }
+      rejection: { icon: '❌', label: '編集却下', color: '#dc2626' },
+      auto_approval: { icon: '🤖', label: '自動承認', color: '#8b5cf6' }
     };
     
     return typeMap[type] || { icon: '❓', label: '不明', color: '#6b7280' };
   };
-  
+
   // 相対時間表示
   const getRelativeTime = (dateString) => {
     const now = new Date();
@@ -154,7 +133,7 @@ const RevisionTab = ({
       return date.toLocaleDateString('ja-JP');
     }
   };
-  
+
   const styles = {
     container: {
       flex: 1,
@@ -178,6 +157,30 @@ const RevisionTab = ({
       fontSize: '14px',
       color: '#6b7280',
       marginBottom: '20px'
+    },
+    viewSwitcher: {
+      display: 'flex',
+      marginBottom: '20px',
+      backgroundColor: '#f3f4f6',
+      borderRadius: '8px',
+      padding: '2px'
+    },
+    viewButton: {
+      flex: 1,
+      padding: '8px 16px',
+      border: 'none',
+      backgroundColor: 'transparent',
+      color: '#6b7280',
+      fontSize: '14px',
+      fontWeight: '500',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      transition: 'all 0.2s'
+    },
+    viewButtonActive: {
+      backgroundColor: '#3b82f6',
+      color: 'white',
+      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)'
     },
     statsAndFilters: {
       display: 'flex',
@@ -204,83 +207,35 @@ const RevisionTab = ({
       color: '#6b7280',
       marginTop: '2px'
     },
+    pendingBadge: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      backgroundColor: '#fef3c7',
+      color: '#92400e',
+      padding: '4px 8px',
+      borderRadius: '4px',
+      fontSize: '12px',
+      fontWeight: '600'
+    },
     filterContainer: {
       display: 'flex',
       gap: '12px',
       alignItems: 'center'
     },
     filterSelect: {
-      padding: '6px 12px',
+      padding: '8px 12px',
       border: '1px solid #d1d5db',
       borderRadius: '6px',
-      backgroundColor: '#ffffff',
-      fontSize: '14px'
-    },
-    revisionList: {
-      flex: 1,
-      overflow: 'auto',
-      backgroundColor: '#ffffff'
-    },
-    revisionItem: {
-      padding: '16px 20px',
-      borderBottom: '1px solid #f3f4f6',
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: '12px',
-      cursor: 'pointer',
-      transition: 'background-color 0.2s'
-    },
-    revisionIcon: {
-      fontSize: '16px',
-      width: '24px',
-      height: '24px',
-      borderRadius: '50%',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      color: 'white',
-      fontWeight: 'bold',
-      flexShrink: 0
-    },
-    revisionContent: {
-      flex: 1
-    },
-    revisionHeader: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: '8px',
-      marginBottom: '4px'
-    },
-    revisionType: {
       fontSize: '14px',
-      fontWeight: '600',
-      color: '#1f2937'
-    },
-    revisionUser: {
-      fontSize: '13px',
-      color: '#6b7280'
-    },
-    revisionTime: {
-      fontSize: '12px',
-      color: '#9ca3af',
-      marginLeft: 'auto'
-    },
-    revisionDescription: {
-      fontSize: '14px',
-      color: '#374151',
-      marginBottom: '8px'
-    },
-    revisionMeta: {
-      display: 'flex',
-      gap: '12px',
-      fontSize: '12px',
-      color: '#6b7280'
+      backgroundColor: 'white'
     },
     loadingContainer: {
       flex: 1,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      fontSize: '18px',
       color: '#6b7280'
     },
     emptyContainer: {
@@ -289,256 +244,252 @@ const RevisionTab = ({
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: '12px',
       color: '#6b7280',
-      gap: '12px'
+      fontSize: '16px'
+    },
+    revisionsList: {
+      flex: 1,
+      padding: '20px',
+      overflow: 'auto'
+    },
+    revisionCard: {
+      backgroundColor: '#ffffff',
+      border: '1px solid #e5e7eb',
+      borderRadius: '8px',
+      padding: '16px',
+      marginBottom: '12px',
+      transition: 'all 0.2s'
+    },
+    revisionHeader: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: '8px'
+    },
+    revisionTypeInfo: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px'
+    },
+    revisionIcon: {
+      fontSize: '16px'
+    },
+    revisionType: {
+      fontSize: '14px',
+      fontWeight: '600'
+    },
+    revisionTime: {
+      fontSize: '12px',
+      color: '#6b7280'
+    },
+    revisionContent: {
+      fontSize: '14px',
+      color: '#374151',
+      lineHeight: '1.5',
+      marginBottom: '8px'
+    },
+    revisionMeta: {
+      display: 'flex',
+      gap: '16px',
+      fontSize: '12px',
+      color: '#6b7280'
     }
   };
-  
+
   return (
     <div style={styles.container}>
-      {/* ヘッダー */}
       <div style={styles.header}>
-        <div style={styles.headerTitle}>📝 TLwiki 更新履歴</div>
+        <div style={styles.headerTitle}>📝 TLwiki 管理画面</div>
         <div style={styles.headerSubtitle}>
-          コミュニティによるイベント情報の更新を追跡
+          コミュニティによる編集の管理と承認
         </div>
         
-        <div style={styles.statsAndFilters}>
-          {/* 統計情報 */}
-          <div style={styles.statsContainer}>
-            <div style={styles.statItem}>
-              <div style={styles.statNumber}>{stats.total}</div>
-              <div style={styles.statLabel}>総更新数</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statNumber}>{stats.events}</div>
-              <div style={styles.statLabel}>新規イベント</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statNumber}>{stats.updates}</div>
-              <div style={styles.statLabel}>編集</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statNumber}>{stats.approvals}</div>
-              <div style={styles.statLabel}>承認</div>
-            </div>
-          </div>
-          
-          {/* フィルター */}
-          <div style={styles.filterContainer}>
-            <select
-              value={timeRange}
-              onChange={(e) => setTimeRange(e.target.value)}
-              style={styles.filterSelect}
-            >
-              <option value="day">今日</option>
-              <option value="week">今週</option>
-              <option value="month">今月</option>
-              <option value="all">全期間</option>
-            </select>
-            
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              style={styles.filterSelect}
-            >
-              <option value="all">すべて</option>
-              <option value="events">イベント作成</option>
-              <option value="edits">編集</option>
-              <option value="approvals">承認・却下</option>
-            </select>
-          </div>
+        {/* ビュー切り替え */}
+        <div style={styles.viewSwitcher}>
+          <button
+            onClick={() => setCurrentView('activity')}
+            style={{
+              ...styles.viewButton,
+              ...(currentView === 'activity' ? styles.viewButtonActive : {})
+            }}
+          >
+            📊 更新履歴
+          </button>
+          <button
+            onClick={() => setCurrentView('approval')}
+            style={{
+              ...styles.viewButton,
+              ...(currentView === 'approval' ? styles.viewButtonActive : {})
+            }}
+          >
+            ⚖️ 承認管理
+            {pendingCount > 0 && (
+              <span style={styles.pendingBadge}>
+                {pendingCount}
+              </span>
+            )}
+          </button>
         </div>
+
+        {/* 更新履歴ビューのフィルター */}
+        {currentView === 'activity' && (
+          <div style={styles.statsAndFilters}>
+            {/* 統計情報 */}
+            <div style={styles.statsContainer}>
+              <div style={styles.statItem}>
+                <div style={styles.statNumber}>{stats.total}</div>
+                <div style={styles.statLabel}>総更新数</div>
+              </div>
+              <div style={styles.statItem}>
+                <div style={styles.statNumber}>{stats.pending}</div>
+                <div style={styles.statLabel}>承認待ち</div>
+              </div>
+              <div style={styles.statItem}>
+                <div style={styles.statNumber}>{stats.approved}</div>
+                <div style={styles.statLabel}>承認済み</div>
+              </div>
+              <div style={styles.statItem}>
+                <div style={styles.statNumber}>{stats.rejected}</div>
+                <div style={styles.statLabel}>却下済み</div>
+              </div>
+            </div>
+            
+            {/* フィルター */}
+            <div style={styles.filterContainer}>
+              <select
+                value={timeRange}
+                onChange={(e) => setTimeRange(e.target.value)}
+                style={styles.filterSelect}
+              >
+                <option value="1h">1時間</option>
+                <option value="24h">24時間</option>
+                <option value="7d">7日間</option>
+                <option value="30d">30日間</option>
+                <option value="all">全期間</option>
+              </select>
+              
+              <select
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                style={styles.filterSelect}
+              >
+                <option value="all">すべて</option>
+                <option value="events">イベント作成</option>
+                <option value="edits">編集</option>
+                <option value="pending">承認待ち</option>
+                <option value="approvals">承認・却下</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
       
-      {/* 更新リスト */}
-      {loading ? (
-        <div style={styles.loadingContainer}>
-          📊 更新履歴を読み込み中...
-        </div>
-      ) : filteredRevisions.length === 0 ? (
-        <div style={styles.emptyContainer}>
-          <div style={{ fontSize: '48px' }}>📭</div>
-          <div style={{ fontSize: '16px', fontWeight: '600' }}>更新履歴がありません</div>
-          <div style={{ fontSize: '14px', textAlign: 'center' }}>
-            選択された期間とフィルターに該当する更新がありません
-          </div>
-        </div>
+      {/* メインコンテンツ */}
+      {currentView === 'approval' ? (
+        <ApprovalSystem 
+          user={user} 
+          wikiData={wikiData}
+        />
       ) : (
-        <div style={styles.revisionList}>
-          {filteredRevisions.map((revision) => {
-            const typeInfo = getRevisionTypeInfo(revision.type);
-            
-            return (
-              <div
-                key={revision.id}
-                style={styles.revisionItem}
-                onClick={() => setSelectedRevision(revision)}
-                onMouseEnter={(e) => e.target.style.backgroundColor = '#f9fafb'}
-                onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
-              >
-                {/* アイコン */}
+        /* 更新履歴表示 */
+        loading ? (
+          <div style={styles.loadingContainer}>
+            📊 更新履歴を読み込み中...
+          </div>
+        ) : filteredRevisions.length === 0 ? (
+          <div style={styles.emptyContainer}>
+            <div>📭</div>
+            <div>表示する更新履歴がありません</div>
+            <div style={{ fontSize: '14px' }}>
+              フィルターを変更するか、時間範囲を広げてみてください
+            </div>
+          </div>
+        ) : (
+          <div style={styles.revisionsList}>
+            {filteredRevisions.map((revision, index) => {
+              const typeInfo = getRevisionTypeInfo(revision.type || 'event_update');
+              
+              return (
                 <div
-                  style={{
-                    ...styles.revisionIcon,
-                    backgroundColor: typeInfo.color
-                  }}
+                  key={revision.rev_id || index}
+                  style={styles.revisionCard}
+                  onMouseEnter={(e) => e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)'}
+                  onMouseLeave={(e) => e.target.style.boxShadow = 'none'}
                 >
-                  {typeInfo.icon}
-                </div>
-                
-                {/* コンテンツ */}
-                <div style={styles.revisionContent}>
                   <div style={styles.revisionHeader}>
-                    <span style={styles.revisionType}>{typeInfo.label}</span>
-                    <span style={styles.revisionUser}>
-                      by {revision.user_name || '匿名'}
-                    </span>
+                    <div style={styles.revisionTypeInfo}>
+                      <span style={{ ...styles.revisionIcon, color: typeInfo.color }}>
+                        {typeInfo.icon}
+                      </span>
+                      <span style={{ ...styles.revisionType, color: typeInfo.color }}>
+                        {typeInfo.label}
+                      </span>
+                      
+                      {/* 承認状態表示 */}
+                      {revision.approval_status && (
+                        <span style={{
+                          marginLeft: '8px',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '500',
+                          backgroundColor: {
+                            pending: '#fef3c7',
+                            approved: '#d1fae5',
+                            rejected: '#fee2e2',
+                            auto_approved: '#ede9fe'
+                          }[revision.approval_status] || '#f3f4f6',
+                          color: {
+                            pending: '#92400e',
+                            approved: '#166534',
+                            rejected: '#dc2626',
+                            auto_approved: '#7c3aed'
+                          }[revision.approval_status] || '#6b7280'
+                        }}>
+                          {{
+                            pending: '⏳ 承認待ち',
+                            approved: '✅ 承認済み',
+                            rejected: '❌ 却下済み',
+                            auto_approved: '🤖 自動承認'
+                          }[revision.approval_status]}
+                        </span>
+                      )}
+                    </div>
+                    
                     <span style={styles.revisionTime}>
                       {getRelativeTime(revision.created_at)}
                     </span>
                   </div>
                   
-                  {revision.event_title && (
-                    <div style={{
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      color: '#374151',
-                      marginBottom: '4px'
-                    }}>
-                      📅 {revision.event_title}
-                    </div>
-                  )}
-                  
-                  <div style={styles.revisionDescription}>
-                    {revision.description}
+                  <div style={styles.revisionContent}>
+                    <strong>{revision.data?.title || revision.events?.title || '無題'}</strong>
+                    {revision.data?.description && (
+                      <div style={{ marginTop: '4px', fontSize: '13px', color: '#6b7280' }}>
+                        {revision.data.description.length > 100 
+                          ? revision.data.description.substring(0, 100) + '...'
+                          : revision.data.description
+                        }
+                      </div>
+                    )}
                   </div>
                   
                   <div style={styles.revisionMeta}>
-                    {revision.score !== undefined && (
-                      <span>スコア: {revision.score > 0 ? '+' : ''}{revision.score}</span>
+                    <span>
+                      編集者: {revision.profiles?.display_name || revision.profiles?.username || '匿名'}
+                    </span>
+                    <span>👍 {revision.upvotes || 0}</span>
+                    <span>⚠️ {revision.reports || 0}</span>
+                    <span>📊 {revision.stable_score?.toFixed(1) || '0.0'}</span>
+                    {revision.approval_status === 'approved' && revision.approved_by && (
+                      <span>承認者: {revision.approved_by}</span>
                     )}
-                    {revision.vote_count && (
-                      <span>投票: {revision.vote_count}票</span>
-                    )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      
-      {/* 詳細モーダル */}
-      {selectedRevision && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            padding: '24px',
-            maxWidth: '600px',
-            maxHeight: '80vh',
-            overflow: 'auto',
-            margin: '20px',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)'
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginBottom: '20px',
-              paddingBottom: '16px',
-              borderBottom: '1px solid #e5e7eb'
-            }}>
-              <h3 style={{ 
-                margin: 0, 
-                fontSize: '20px', 
-                fontWeight: '700',
-                color: '#1f2937'
-              }}>
-                {getRevisionTypeInfo(selectedRevision.type).icon} 更新詳細
-              </h3>
-              <button
-                onClick={() => setSelectedRevision(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  color: '#6b7280',
-                  padding: '4px'
-                }}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div style={{ fontSize: '14px', lineHeight: '1.6' }}>
-              <div style={{ marginBottom: '12px' }}>
-                <strong>タイプ:</strong> {getRevisionTypeInfo(selectedRevision.type).label}
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <strong>実行者:</strong> {selectedRevision.user_name || '匿名'}
-              </div>
-              
-              <div style={{ marginBottom: '12px' }}>
-                <strong>実行時刻:</strong> {new Date(selectedRevision.created_at).toLocaleString('ja-JP')}
-              </div>
-              
-              {selectedRevision.event_title && (
-                <div style={{ marginBottom: '12px' }}>
-                  <strong>対象イベント:</strong> {selectedRevision.event_title}
-                </div>
-              )}
-              
-              {selectedRevision.description && (
-                <div style={{ marginBottom: '12px' }}>
-                  <strong>詳細:</strong>
-                  <div style={{ 
-                    marginTop: '8px',
-                    padding: '12px',
-                    backgroundColor: '#f9fafb',
-                    borderRadius: '6px',
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {selectedRevision.description}
-                  </div>
-                </div>
-              )}
-              
-              {selectedRevision.diff && (
-                <div style={{ marginBottom: '12px' }}>
-                  <strong>変更内容:</strong>
-                  <div style={{ 
-                    marginTop: '8px',
-                    padding: '12px',
-                    backgroundColor: '#1f2937',
-                    color: '#f9fafb',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontFamily: 'monospace',
-                    whiteSpace: 'pre-wrap',
-                    overflow: 'auto'
-                  }}>
-                    {selectedRevision.diff}
-                  </div>
-                </div>
-              )}
-            </div>
+              );
+            })}
           </div>
-        </div>
+        )
       )}
     </div>
   );

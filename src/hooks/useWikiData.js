@@ -581,6 +581,228 @@ export const useWikiData = (user) => {
     []
   );
 
+  // 承認待ちリビジョン取得
+  const getPendingRevisions = useCallback(
+    async (status = 'pending', limit = 50) => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        let query = supabase
+          .from("revision_scores")
+          .select(`
+            rev_id,
+            event_id,
+            data,
+            edited_by,
+            created_at,
+            upvotes,
+            reports,
+            stable_score,
+            approval_status,
+            approved_by,
+            approved_at,
+            rejection_reason,
+            profiles:edited_by(display_name, username),
+            events!inner(title, slug)
+          `)
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (status !== 'all') {
+          query = query.eq('approval_status', status);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        // 追加のイベント情報を取得
+        const enrichedData = (data || []).map(revision => ({
+          ...revision,
+          event_title: revision.events?.title || '無題',
+          event_slug: revision.events?.slug
+        }));
+
+        return enrichedData;
+      } catch (err) {
+        console.error("承認待ちリビジョン取得エラー:", err);
+        setError(err.message);
+        return [];
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // リビジョン承認
+  const approveRevision = useCallback(
+    async (revisionId, approvalType = 'manual') => {
+      if (!user) {
+        setError('承認にはログインが必要です');
+        return null;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
+        if (!session) throw new Error('ログインが必要です');
+
+        console.log('承認API呼び出し開始:', { revisionId, approvalType });
+
+        const response = await fetch(
+          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-approve`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+            },
+            body: JSON.stringify({
+              revision_id: revisionId,
+              approval_type: approvalType, // 'manual' | 'auto'
+            }),
+          }
+        );
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.ok) {
+          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          throw new Error(errorMessage);
+        }
+
+        console.log('承認API呼び出し成功:', result);
+        return result;
+      } catch (err) {
+        console.error("承認エラー:", err);
+        setError(err.message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
+  // リビジョン却下
+  const rejectRevision = useCallback(
+    async (revisionId, reason = '') => {
+      if (!user) {
+        setError('却下にはログインが必要です');
+        return null;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
+        if (!session) throw new Error('ログインが必要です');
+
+        console.log('却下API呼び出し開始:', { revisionId, reason });
+
+        const response = await fetch(
+          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-reject`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+            },
+            body: JSON.stringify({
+              revision_id: revisionId,
+              rejection_reason: reason,
+            }),
+          }
+        );
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.ok) {
+          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          throw new Error(errorMessage);
+        }
+
+        console.log('却下API呼び出し成功:', result);
+        return result;
+      } catch (err) {
+        console.error("却下エラー:", err);
+        setError(err.message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
+  // 自動承認の実行
+  const executeAutoApproval = useCallback(
+    async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
+        if (!session) throw new Error('管理者権限が必要です');
+
+        console.log('自動承認API呼び出し開始');
+
+        const response = await fetch(
+          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/auto-approve`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${session.access_token}`,
+              "Content-Type": "application/json",
+              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+            },
+          }
+        );
+
+        let result;
+        try {
+          result = await response.json();
+        } catch (parseError) {
+          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+        }
+
+        if (!response.ok) {
+          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          throw new Error(errorMessage);
+        }
+
+        console.log('自動承認API呼び出し成功:', result);
+        return result;
+      } catch (err) {
+        console.error("自動承認エラー:", err);
+        setError(err.message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [user]
+  );
+
   return {
     loading,
     error,
@@ -598,6 +820,11 @@ export const useWikiData = (user) => {
     getEventRevisions,
     getRecentRevisions,
     getEventDetail,
+    // 承認システム
+    getPendingRevisions,
+    approveRevision,
+    rejectRevision,
+    executeAutoApproval,
     // エラー管理
     clearError: () => setError(null)
   };
