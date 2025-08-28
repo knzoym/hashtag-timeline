@@ -28,7 +28,10 @@ const Header = ({
   } = usePageMode();
   
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo; // 関数呼び出しを削除
+  
+  // 修正: 関数として呼び出してからオブジェクト分割代入
+  const pageModeInfo = getPageModeInfo();
+  const { isPersonalMode, isWikiMode, isMyPageMode } = pageModeInfo;
   
   // レンダリング毎にランダムロゴを選択
   const randomLogo = useMemo(() => {
@@ -224,7 +227,7 @@ const Header = ({
   };
   
   // 利用可能なタブを取得
-  const availableTabs = getAvailableTabs;
+  const availableTabs = getAvailableTabs();
   
   return (
     <header style={styles.header}>
