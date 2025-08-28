@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - 既存コンポーネント連携保持版
+// components/tabs/VisualTab.js - 既存実装を尊重した修正版
 import React, { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import { SearchPanel } from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -9,7 +9,7 @@ import { SmoothLines } from "../ui/SmoothLines";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import { truncateTitle } from "../../utils/timelineUtils";
 
-// 統合座標管理フック（元のTimelineTab/NetworkTabから）
+// 統合座標管理フック（既存実装を保持）
 const useUnifiedCoordinates = (timelineRef) => {
   const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
   const [panX, setPanX] = useState(() => {
@@ -52,7 +52,7 @@ const useUnifiedCoordinates = (timelineRef) => {
     
     setScale(newScale);
     setPanX(newPanX);
-  }, [scale, panX, getYearFromX]);
+  }, [scale, getYearFromX, timelineRef]);
 
   const handleMouseDown = useCallback((e) => {
     if (e.target.closest('.no-pan')) return;
@@ -103,7 +103,28 @@ const useUnifiedCoordinates = (timelineRef) => {
   };
 };
 
-// 統合レイアウト管理フック（元のTimelineTab/NetworkTabから）
+// マウスイベントリスナーの設定（既存実装を保持）
+const useMouseEventListeners = (handleMouseMove, handleMouseUp) => {
+  useEffect(() => {
+    const handleGlobalMouseMove = (e) => {
+      handleMouseMove(e);
+    };
+    
+    const handleGlobalMouseUp = (e) => {
+      handleMouseUp(e);
+    };
+    
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
+};
+
+// 統合レイアウト管理フック（既存実装を保持）
 const useUnifiedLayout = (events, timelines, coordinates, calculateTextWidth) => {
   const { getXFromYear } = coordinates;
 
@@ -166,19 +187,47 @@ const useUnifiedLayout = (events, timelines, coordinates, calculateTextWidth) =>
   const timelineAxes = useMemo(() => {
     if (!timelines) return [];
     
-    return timelines.filter(timeline => timeline.isVisible && timeline.events?.length > 0)
+    console.log('timelineAxes計算開始:', {
+      timelinesCount: timelines.length,
+      visibleTimelines: timelines.filter(t => t.isVisible).length
+    });
+    
+    const axes = timelines.filter(timeline => timeline.isVisible)
       .map((timeline, index) => {
+        console.log(`年表「${timeline.name}」処理開始`);
+        
+        // timelineInfosから年表に属するイベントを抽出
+        const timelineEvents = events.filter(event => {
+          if (!event.timelineInfos || !Array.isArray(event.timelineInfos)) {
+            return false;
+          }
+          
+          // この年表に属し、仮削除されていないイベントを対象
+          return event.timelineInfos.some(info => 
+            info.timelineId === timeline.id && !info.isTemporary
+          );
+        });
+        
+        console.log(`年表「${timeline.name}」のイベント数:`, timelineEvents.length);
+        
+        if (timelineEvents.length === 0) {
+          console.log(`年表「${timeline.name}」: イベントがないためスキップ`);
+          return null;
+        }
+
         const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
         const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
 
-        const years = timeline.events.map(e => e.startDate.getFullYear());
+        const years = timelineEvents
+          .filter(e => e.startDate)
+          .map(e => e.startDate.getFullYear());
         const minYear = Math.min(...years);
         const maxYear = Math.max(...years);
 
         const startX = getXFromYear(minYear);
         const endX = getXFromYear(maxYear);
 
-        return {
+        const axisData = {
           id: timeline.id,
           name: timeline.name,
           color: timeline.color,
@@ -188,9 +237,17 @@ const useUnifiedLayout = (events, timelines, coordinates, calculateTextWidth) =>
           minYear,
           maxYear,
           cardX: Math.max(20, startX - 120),
+          eventCount: timelineEvents.length
         };
-      });
-  }, [timelines, getXFromYear]);
+        
+        console.log(`年表「${timeline.name}」軸データ:`, axisData);
+        return axisData;
+      })
+      .filter(Boolean);
+    
+    console.log('timelineAxes計算完了:', axes.length, '本の軸を作成');
+    return axes;
+  }, [timelines, events, getXFromYear]);
 
   return { layoutEvents, timelineAxes };
 };
@@ -210,9 +267,9 @@ const VisualTab = ({
   // App.jsからの操作関数
   onEventUpdate,
   onEventDelete,
-  onAddEvent,
+  onAddEvent, // App.jsからの関数
   onTimelineUpdate,
-  onCreateTimeline,
+  onCreateTimeline, // App.jsからの関数
   onDeleteTimeline,
   onEventClick,
   onTimelineClick,
@@ -236,7 +293,7 @@ const VisualTab = ({
   const timelineRef = useRef(null);
   const isNetworkMode = viewMode === 'network';
 
-  // 統合座標管理（元のコードから復元）
+  // 統合座標管理
   const coordinates = useUnifiedCoordinates(timelineRef);
   const {
     scale, panX, panY, pixelsPerYear, isDragging,
@@ -245,7 +302,10 @@ const VisualTab = ({
     resetToInitialPosition
   } = coordinates;
 
-  // テキスト幅計算（元のコードから）
+  // マウスイベントリスナー設定
+  useMouseEventListeners(handleMouseMove, handleMouseUp);
+
+  // テキスト幅計算
   const calculateTextWidth = useCallback((text, fontSize = 11) => {
     try {
       const canvas = document.createElement("canvas");
@@ -257,7 +317,7 @@ const VisualTab = ({
     }
   }, []);
 
-  // 統合レイアウト管理（元のコードから復元）
+  // 統合レイアウト管理
   const { layoutEvents, timelineAxes } = useUnifiedLayout(
     events, 
     timelines, 
@@ -265,7 +325,7 @@ const VisualTab = ({
     calculateTextWidth
   );
 
-  // ネットワークモード用の接続線データ（元のNetworkTab.jsから）
+  // ネットワークモード用の接続線データ
   const timelineConnections = useMemo(() => {
     if (!isNetworkMode || !timelines || !layoutEvents) return [];
     
@@ -275,78 +335,42 @@ const VisualTab = ({
 
       const connectionPoints = [];
       layoutEvents.forEach(eventPos => {
-        const belongsToThisTimeline = timeline.events?.some(
-          tlEvent => tlEvent.id === eventPos.id
+        // timelineInfosから年表所属を判定
+        const belongsToThisTimeline = eventPos.timelineInfos?.some(info =>
+          info.timelineId === timeline.id && !info.isTemporary
         );
+        
         if (belongsToThisTimeline) {
           connectionPoints.push({
             x: eventPos.adjustedPosition.x,
-            y: eventPos.adjustedPosition.y + TIMELINE_CONFIG.EVENT_HEIGHT / 2,
-            event: eventPos,
+            y: eventPos.adjustedPosition.y + TIMELINE_CONFIG.EVENT_HEIGHT / 2
           });
         }
       });
-
-      connectionPoints.sort((a, b) => 
-        (a.event.startDate?.getTime() || 0) - (b.event.startDate?.getTime() || 0)
-      );
 
       if (connectionPoints.length > 1) {
         connections.push({
           id: timeline.id,
           name: timeline.name,
           color: timeline.color,
-          points: connectionPoints,
+          points: connectionPoints
         });
       }
     });
+
     return connections;
   }, [isNetworkMode, timelines, layoutEvents]);
 
-  // グローバルマウスイベント（元のコードから）
-  useEffect(() => {
-    const handleGlobalMouseMove = (e) => {
-      if (isDragging) handleMouseMove(e);
-    };
-    const handleGlobalMouseUp = () => {
-      if (isDragging) handleMouseUp();
-    };
-
-    if (isDragging) {
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleGlobalMouseMove);
-      document.removeEventListener('mouseup', handleGlobalMouseUp);
-    };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-
-  // 年マーカー生成（元のコードから）
-  const generateYearMarkers = useCallback(() => {
+  // 年マーカー生成
+  const generateYearMarkers = useMemo(() => {
     const markers = [];
+    const startYear = Math.floor(getYearFromX(0) / 100) * 100;
+    const endYear = Math.ceil(getYearFromX(window.innerWidth) / 100) * 100;
     
-    let yearInterval;
-    if (scale >= 10) yearInterval = 1;
-    else if (scale >= 5) yearInterval = 5;
-    else if (scale >= 2) yearInterval = 10;
-    else if (scale >= 1) yearInterval = 25;
-    else if (scale >= 0.5) yearInterval = 50;
-    else if (scale >= 0.2) yearInterval = 100;
-    else if (scale >= 0.1) yearInterval = 200;
-    else if (scale >= 0.05) yearInterval = 500;
-    else yearInterval = 1000;
-    
-    const viewportStart = (-panX) / pixelsPerYear - 5000;
-    const viewportEnd = (window.innerWidth - panX) / pixelsPerYear - 5000;
-    const startYear = Math.floor(viewportStart / yearInterval) * yearInterval;
-    const endYear = Math.ceil(viewportEnd / yearInterval) * yearInterval;
-    
-    for (let year = Math.max(-5000, startYear); year <= Math.min(5000, endYear); year += yearInterval) {
+    for (let year = startYear; year <= endYear; year += 100) {
       const x = getXFromYear(year);
-      if (x > -200 && x < window.innerWidth + 200) {
-        const fontSize = Math.max(10, Math.min(14, 12 + Math.log10(Math.max(0.01, scale)) * 2));
+      if (x >= -50 && x <= window.innerWidth + 50) {
+        const fontSize = Math.max(8, Math.min(12, 10 * Math.max(0.01, scale) * 2));
         
         markers.push(
           <div key={year} style={{
@@ -371,52 +395,61 @@ const VisualTab = ({
       }
     }
     return markers;
-  }, [scale, pixelsPerYear, panX, getXFromYear]);
+  }, [scale, getXFromYear, getYearFromX]);
 
-  // イベントハンドラー（元のコードから復元）
+  // イベントハンドラー - App.jsの関数を呼び出し
   const handleEventDoubleClick = useCallback((event) => {
-    console.log("Event double click:", event.title);
+    console.log("VisualTab: Event double click:", event.title);
     if (onEventClick) {
       onEventClick(event);
     }
   }, [onEventClick]);
 
   const handleAddEvent = useCallback(() => {
-    console.log("Add event button clicked");
+    console.log("VisualTab: Add event button clicked - onAddEvent:", !!onAddEvent);
     if (onAddEvent) {
-      // 新規イベントを作成
-      onAddEvent({
+      const result = onAddEvent({
         title: '新規イベント',
         startDate: new Date(),
         description: '',
         tags: []
       });
+      console.log("VisualTab: イベント追加結果:", result);
+    } else {
+      console.error("VisualTab: onAddEvent関数が提供されていません");
     }
   }, [onAddEvent]);
 
   const handleCreateTimeline = useCallback(() => {
-    console.log("Create timeline clicked, highlighted:", highlightedEvents?.size || 0);
-    if (onCreateTimeline) onCreateTimeline();
+    console.log("VisualTab: Create timeline clicked - onCreateTimeline:", !!onCreateTimeline, "highlighted:", highlightedEvents?.length || 0);
+    if (onCreateTimeline) {
+      const result = onCreateTimeline();
+      console.log("VisualTab: 年表作成結果:", result);
+    } else {
+      console.error("VisualTab: onCreateTimeline関数が提供されていません");
+    }
   }, [onCreateTimeline, highlightedEvents]);
 
   const handleTimelineDoubleClick = useCallback((e) => {
+    console.log("VisualTab: Timeline double click detected");
     if (!e.target.closest("[data-event-id]")) {
       handleAddEvent();
     }
   }, [handleAddEvent]);
 
-  // SmoothLines用のハンドラー（元のNetworkTab.jsから）
+  // SmoothLines用のハンドラー
   const getTimelineDisplayState = useCallback(() => 'default', []);
   const handleTimelineHover = useCallback(() => {}, []);
-  const handleTimelineClick = useCallback(() => {}, []);
 
-  console.log(`${isNetworkMode ? 'Network' : 'Timeline'}Tab render:`, {
+  console.log(`VisualTab ${isNetworkMode ? 'Network' : 'Timeline'} render:`, {
     events: events?.length || 0,
     timelines: timelines?.length || 0,
     layoutEvents: layoutEvents?.length || 0,
     connections: timelineConnections?.length || 0,
     scale: scale?.toFixed(2),
-    viewMode
+    viewMode,
+    onAddEvent: !!onAddEvent,
+    onCreateTimeline: !!onCreateTimeline
   });
 
   return (
@@ -437,7 +470,7 @@ const VisualTab = ({
         onDoubleClick={handleTimelineDoubleClick}
       >
         {/* 年マーカー */}
-        {generateYearMarkers()}
+        {generateYearMarkers}
 
         {/* メインタイムライン線 */}
         <div style={{
@@ -465,9 +498,9 @@ const VisualTab = ({
             key={timeline.id}
             timeline={timeline}
             panY={panY}
-            displayState={getTimelineDisplayState(timeline.id)}
+            displayState={getTimelineDisplayState()}
             onHover={handleTimelineHover}
-            onClick={handleTimelineClick}
+            onClick={onTimelineClick}
             zIndex={10 + index} 
           />
         ))}
@@ -526,7 +559,7 @@ const VisualTab = ({
                 }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
-                  console.log('イベントダブルクリック検出:', event.title);
+                  console.log('VisualTab: イベントダブルクリック検出:', event.title);
                   handleEventDoubleClick(event);
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -546,15 +579,9 @@ const VisualTab = ({
             position={{ x: axis.cardX, y: axis.yPosition + panY - 30 }}
             onEdit={() => {
               const timeline = timelines?.find((t) => t.id === axis.id);
-              console.log('TimelineCard onEdit呼び出し:', {
-                axis: axis.id,
-                timeline: timeline?.name,
-                onTimelineClick: !!onTimelineClick
-              });
+              console.log('VisualTab: TimelineCard onEdit呼び出し:', timeline?.name);
               if (timeline && onTimelineClick) {
                 onTimelineClick(timeline);
-              } else {
-                console.warn('Timeline編集失敗:', { timeline: !!timeline, onTimelineClick: !!onTimelineClick });
               }
             }}
             onDelete={() => onDeleteTimeline && onDeleteTimeline(axis.id)}
@@ -565,12 +592,6 @@ const VisualTab = ({
                 );
                 onTimelineUpdate(updatedTimelines);
               }
-            }}
-            style={{
-              position: "absolute",
-              left: `${axis.cardX}px`,
-              top: `${axis.yPosition + panY - 30}px`,
-              zIndex: 25,
             }}
             className="no-pan"
           />
@@ -593,7 +614,7 @@ const VisualTab = ({
         </div>
       </div>
 
-      {/* フローティングUI（元のコードから） */}
+      {/* フローティングUI */}
       <div className="no-pan" style={{ position: "absolute", left: "20px", top: "20px", zIndex: 30 }}>
         <SearchPanel
           searchTerm={searchTerm}
@@ -617,7 +638,7 @@ const VisualTab = ({
         {isNetworkMode ? "🕸️ ネットワークモード" : "📊 年表モード"}
       </div>
 
-      {/* ボタン群（元のコードから） */}
+      {/* ボタン群 */}
       <div className="no-pan" style={{
         position: "absolute", right: "20px", bottom: "20px", zIndex: 30,
         display: 'flex', gap: '10px'
@@ -637,7 +658,7 @@ const VisualTab = ({
         }} title="イベントを追加">+</button>
       </div>
 
-      {/* モーダル（App.jsで管理されているselectedEvent/selectedTimelineを表示） */}
+      {/* モーダル（App.jsで管理） */}
       {selectedEvent && (
         <EventModal
           event={selectedEvent}

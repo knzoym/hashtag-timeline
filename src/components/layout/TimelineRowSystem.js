@@ -1,4 +1,4 @@
-// components/layout/TimelineRowSystem.js - グループ化修正版
+// components/layout/TimelineRowSystem.js - timelineInfos対応修正版
 import { useMemo } from 'react';
 import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 
@@ -18,6 +18,7 @@ export const ROW_SYSTEM = {
 
 /**
  * 行・段システムでイベントレイアウトを計算するフック
+ * timelineInfos構造に対応
  */
 export const useTimelineRowLayout = (events, timelines, coordinates, calculateTextWidth) => {
   return useMemo(() => {
@@ -25,7 +26,9 @@ export const useTimelineRowLayout = (events, timelines, coordinates, calculateTe
       return { layoutEvents: [], timelineRows: [] };
     }
 
-    console.log('🏗️ TimelineRowSystem レイアウト計算開始');
+    console.log('🏗️ TimelineRowSystem レイアウト計算開始 (timelineInfos対応)');
+    console.log('  - イベント数:', events.length);
+    console.log('  - 年表数:', timelines.length);
     
     const layoutEvents = [];
     const timelineRows = [];
@@ -33,7 +36,10 @@ export const useTimelineRowLayout = (events, timelines, coordinates, calculateTe
     
     // 年表ごとに行を割り当て
     timelines.forEach((timeline, timelineIndex) => {
-      if (!timeline.isVisible || !timeline.events?.length) return;
+      if (!timeline.isVisible) {
+        console.log(`📋 年表「${timeline.name}」: 非表示のためスキップ`);
+        return;
+      }
 
       const rowY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * ROW_SYSTEM.ROW_HEIGHT;
       const timelineRowData = {
@@ -42,12 +48,32 @@ export const useTimelineRowLayout = (events, timelines, coordinates, calculateTe
         color: timeline.color,
         rowIndex: timelineIndex,
         yPosition: rowY,
-        events: timeline.events,
+        events: [],
         tiers: [[], [], []] // 3段の占有情報
       };
 
+      // timelineInfosから年表に属するイベントを抽出
+      const timelineEvents = events.filter(event => {
+        if (!event.timelineInfos || !Array.isArray(event.timelineInfos)) {
+          return false;
+        }
+        
+        // この年表に属し、仮削除されていないイベントを対象
+        return event.timelineInfos.some(info => 
+          info.timelineId === timeline.id && !info.isTemporary
+        );
+      });
+
+      timelineRowData.events = timelineEvents;
+      
+      if (timelineEvents.length === 0) {
+        console.log(`📋 年表「${timeline.name}」: イベントなし`);
+        timelineRows.push(timelineRowData);
+        return;
+      }
+
       // 年表内のイベントを時系列順にソート
-      const sortedEvents = [...timeline.events].sort((a, b) => {
+      const sortedEvents = [...timelineEvents].sort((a, b) => {
         const aYear = a.startDate ? a.startDate.getFullYear() : 0;
         const bYear = b.startDate ? b.startDate.getFullYear() : 0;
         return aYear - bYear;
@@ -170,11 +196,14 @@ export const useTimelineRowLayout = (events, timelines, coordinates, calculateTe
     });
 
     // メインタイムライン（年表に属さないイベント）の処理
-    const ungroupedEvents = events.filter(event => 
-      !timelines.some(timeline => 
-        timeline.events?.some(tlEvent => tlEvent.id === event.id)
-      )
-    );
+    const ungroupedEvents = events.filter(event => {
+      // timelineInfosが空または存在しないイベントは未分類として扱う
+      return !event.timelineInfos || 
+             event.timelineInfos.length === 0 ||
+             !event.timelineInfos.some(info => !info.isTemporary); // 全て仮削除状態なら未分類
+    });
+
+    console.log(`🏛️ メインタイムライン: ${ungroupedEvents.length}イベント処理`);
 
     ungroupedEvents.forEach(event => {
       const eventX = event.startDate 
@@ -214,96 +243,83 @@ function findAvailableTierPlacement(tiers, tierIndex, eventX, eventWidth) {
   // 重複チェック
   const hasCollision = tier.some(occupiedSpace => {
     const gap = ROW_SYSTEM.MIN_EVENT_GAP;
-    return !(eventEndX + gap <= occupiedSpace.startX || 
-             eventStartX - gap >= occupiedSpace.endX);
+    return !(eventEndX + gap < occupiedSpace.startX || eventStartX - gap > occupiedSpace.endX);
   });
 
   return {
     available: !hasCollision,
     tierIndex,
-    isGrouped: false
+    isGrouped: false,
+    groupData: null
   };
 }
 
 /**
- * グループ化処理（3段でも収まらない場合のみ）
+ * イベントのグループ化処理
  */
 function handleEventGrouping(tiers, eventX, eventWidth, event, timelineIndex) {
-  // 中段で最も近い位置を探す
   const middleTier = tiers[ROW_SYSTEM.TIER_POSITIONS.MIDDLE];
-  const groupRadius = 80; // グループ化する範囲
   
-  // 既存のグループを探す
-  let nearestGroup = null;
-  let minDistance = Infinity;
+  // 近隣のグループを検索（±50pxの範囲）
+  const searchRadius = 50;
+  const nearbyGroup = findNearbyGroup(middleTier, eventX, searchRadius);
   
-  middleTier.forEach(occupiedSpace => {
-    if (occupiedSpace.isGroup) {
-      const distance = Math.abs(occupiedSpace.x - eventX);
-      if (distance < groupRadius && distance < minDistance) {
-        nearestGroup = occupiedSpace;
-        minDistance = distance;
-      }
-    }
-  });
-
-  if (nearestGroup) {
+  if (nearbyGroup) {
     // 既存グループに追加
-    nearestGroup.groupData.events.push(event);
-    nearestGroup.groupData.count = nearestGroup.groupData.events.length;
-    
-    console.log(`📦 既存グループに追加: ${nearestGroup.groupData.id} → ${nearestGroup.groupData.count}イベント`);
+    nearbyGroup.events.push(event);
+    nearbyGroup.count++;
     
     return {
       available: true,
       tierIndex: ROW_SYSTEM.TIER_POSITIONS.MIDDLE,
       isGrouped: true,
-      groupData: nearestGroup.groupData
+      groupData: {
+        id: nearbyGroup.id,
+        x: nearbyGroup.x,
+        count: nearbyGroup.count,
+        events: nearbyGroup.events,
+        timelineIndex
+      }
     };
   } else {
     // 新しいグループを作成
-    const groupData = {
-      id: `group_${timelineIndex}_${Date.now()}`,
+    const groupId = `group_${timelineIndex}_${Date.now()}`;
+    const newGroup = {
+      id: groupId,
       x: eventX,
-      events: [event],
+      width: Math.max(eventWidth, 80),
       count: 1,
-      isExpanded: false
+      events: [event],
+      startX: eventX - Math.max(eventWidth, 80) / 2,
+      endX: eventX + Math.max(eventWidth, 80) / 2,
+      isGroup: true
     };
-
-    // グループ用の占有スペースを追加
-    middleTier.push({
-      x: eventX,
-      width: 40, // グループアイコンの幅
-      startX: eventX - 20,
-      endX: eventX + 20,
-      isGroup: true,
-      groupData
-    });
-
-    console.log(`📦 新規グループ作成: ${groupData.id}`);
-
+    
+    middleTier.push(newGroup);
+    
     return {
       available: true,
       tierIndex: ROW_SYSTEM.TIER_POSITIONS.MIDDLE,
       isGrouped: true,
-      groupData
+      groupData: {
+        id: groupId,
+        x: eventX,
+        count: 1,
+        events: [event],
+        timelineIndex
+      }
     };
   }
 }
 
 /**
- * 延長線の描画情報を生成
+ * 近隣のグループを検索
  */
-export const generateExtensionLines = (layoutEvents) => {
-  return layoutEvents
-    .filter(event => event.timelineInfo?.needsExtensionLine && !event.isGrouped)
-    .map(event => ({
-      id: event.id,
-      fromX: event.adjustedPosition.x,
-      fromY: event.adjustedPosition.y,
-      toX: event.adjustedPosition.x,
-      toY: event.timelineInfo.rowY,
-      color: event.timelineInfo.timelineColor,
-      opacity: 0.6
-    }));
-};
+function findNearbyGroup(tier, eventX, searchRadius) {
+  return tier.find(occupiedSpace => {
+    if (!occupiedSpace.isGroup) return false;
+    
+    const distance = Math.abs(occupiedSpace.x - eventX);
+    return distance <= searchRadius;
+  });
+}

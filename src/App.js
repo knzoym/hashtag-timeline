@@ -1,4 +1,4 @@
-// App.js - 完全修正版（構文エラー解消）
+// App.js - データ構造統一修正版
 import React, { useRef, useCallback, useState, useMemo } from 'react';
 import { PageModeProvider, usePageMode } from './contexts/PageModeContext';
 import Header from './components/common/Header';
@@ -7,31 +7,26 @@ import MyPage from './components/personal/MyPage';
 
 // 修正済みフック
 import { useUnifiedCoordinates } from './hooks/useUnifiedCoordinates';
-import { useDragDrop } from './hooks/useDragDrop';
 import { useAuth } from './hooks/useAuth';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
 import { useWikiData } from './hooks/useWikiData';
 
 const AppContent = () => {
   const {
-    currentPageMode,
     currentTab,
     currentFileName,
-    changeTab,
     updateFileName,
     getPageModeInfo
   } = usePageMode();
   
-  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo();
+  const { isWikiMode, isMyPageMode } = getPageModeInfo();
   
   // 認証
-  const { user, signInWithGoogle, signOut, isAuthenticated } = useAuth();
+  const { user, signInWithGoogle, signOut } = useAuth();
   
   // Supabase同期
   const {
-    saveTimelineData,
-    getUserTimelines,
-    deleteTimeline: deleteTimelineFile,
+    saveTimelineData
   } = useSupabaseSync(user);
   
   // Wiki関連
@@ -53,7 +48,8 @@ const AppContent = () => {
       startDate: new Date(2023, 0, 15),
       endDate: new Date(2023, 0, 15),
       description: "これはサンプルイベントです",
-      tags: ["テスト", "サンプル"]
+      tags: ["テスト", "サンプル"],
+      timelineInfos: [] // 統一データ構造
     },
     {
       id: 2,
@@ -61,7 +57,8 @@ const AppContent = () => {
       startDate: new Date(2023, 5, 10),
       endDate: new Date(2023, 5, 10),
       description: "2つ目のサンプルイベント",
-      tags: ["テスト", "例"]
+      tags: ["テスト", "例"],
+      timelineInfos: [] // 統一データ構造
     }
   ]);
   const [timelines, setTimelines] = useState([]);
@@ -84,7 +81,7 @@ const AppContent = () => {
     return matchingEvents;
   }, [searchTerm, events]);
   
-  // イベント操作
+  // イベント操作 - timelineInfos統一対応
   const addEvent = useCallback((newEventData) => {
     const event = {
       id: Date.now(),
@@ -92,24 +89,82 @@ const AppContent = () => {
       startDate: newEventData?.startDate || new Date(),
       endDate: newEventData?.endDate || newEventData?.startDate || new Date(),
       description: newEventData?.description || '',
-      tags: newEventData?.tags || []
+      tags: newEventData?.tags || [],
+      timelineInfos: [] // 必須フィールドを初期化
     };
     setEvents(prev => [...prev, event]);
-    console.log('イベント追加:', event.title);
+    console.log('イベント追加:', event.title, 'timelineInfos初期化済み');
     return event;
   }, []);
 
   const updateEvent = useCallback((updatedEvent) => {
+    // timelineInfosフィールドが存在しない場合は空配列で初期化
+    const normalizedEvent = {
+      ...updatedEvent,
+      timelineInfos: updatedEvent.timelineInfos || []
+    };
+    
     setEvents(prev => prev.map(event => 
-      event.id === updatedEvent.id ? updatedEvent : event
+      event.id === normalizedEvent.id ? normalizedEvent : event
     ));
+    console.log('イベント更新:', normalizedEvent.title);
   }, []);
 
   const deleteEvent = useCallback((eventId) => {
     setEvents(prev => prev.filter(event => event.id !== eventId));
+    console.log('イベント削除:', eventId);
   }, []);
   
-  // 年表操作
+  // イベントを年表に追加/削除する統一関数
+  const addEventToTimeline = useCallback((event, timelineId) => {
+    const timeline = timelines.find(t => t.id === timelineId);
+    if (!timeline) {
+      console.warn(`年表が見つかりません: ${timelineId}`);
+      return;
+    }
+
+    // イベントのtimelineInfosを更新
+    const updatedTimelineInfos = [...(event.timelineInfos || [])];
+    const existingIndex = updatedTimelineInfos.findIndex(info => info.timelineId === timelineId);
+    
+    if (existingIndex === -1) {
+      // 新規追加 - 仮登録状態で追加
+      updatedTimelineInfos.push({
+        timelineId,
+        timelineName: timeline.name,
+        isTemporary: true,
+        addedAt: new Date()
+      });
+      
+      const updatedEvent = {
+        ...event,
+        timelineInfos: updatedTimelineInfos
+      };
+      
+      updateEvent(updatedEvent);
+      console.log(`イベント「${event.title}」を年表「${timeline.name}」に仮登録`);
+    } else {
+      console.log(`イベント「${event.title}」は既に年表「${timeline.name}」に登録済み`);
+    }
+  }, [timelines, updateEvent]);
+
+  const removeEventFromTimeline = useCallback((event, timelineId) => {
+    const updatedTimelineInfos = (event.timelineInfos || []).filter(
+      info => info.timelineId !== timelineId
+    );
+    
+    const updatedEvent = {
+      ...event,
+      timelineInfos: updatedTimelineInfos
+    };
+    
+    updateEvent(updatedEvent);
+    
+    const timeline = timelines.find(t => t.id === timelineId);
+    console.log(`イベント「${event.title}」を年表「${timeline?.name || timelineId}」から削除`);
+  }, [timelines, updateEvent]);
+  
+  // 年表操作 - 新しい関連付け方式対応
   const createTimeline = useCallback((timelineData) => {
     if (highlightedEvents.length === 0) {
       alert("検索でイベントを選択してから年表を作成してください");
@@ -120,20 +175,67 @@ const AppContent = () => {
       id: Date.now(),
       name: timelineData?.name || `年表_${new Date().toLocaleDateString()}`,
       color: timelineData?.color || `hsl(${Math.random() * 360}, 70%, 50%)`,
-      events: [...highlightedEvents], // 配列から直接コピー
       isVisible: true,
       createdAt: new Date(),
       ...timelineData
     };
     
     setTimelines(prev => [...prev, timeline]);
-    console.log('年表作成:', timeline.name, '含むイベント:', timeline.events.length);
+    
+    // ハイライトされたイベントを年表に関連付け
+    highlightedEvents.forEach(event => {
+      const updatedTimelineInfos = [...(event.timelineInfos || [])];
+      updatedTimelineInfos.push({
+        timelineId: timeline.id,
+        timelineName: timeline.name,
+        isTemporary: false, // 年表作成時は正式登録
+        addedAt: new Date()
+      });
+      
+      const updatedEvent = {
+        ...event,
+        timelineInfos: updatedTimelineInfos
+      };
+      
+      updateEvent(updatedEvent);
+    });
+    
+    console.log('年表作成:', timeline.name, '含むイベント:', highlightedEvents.length);
     return timeline;
-  }, [highlightedEvents]);
+  }, [highlightedEvents, updateEvent]);
+
+  const updateTimeline = useCallback((updatedTimeline) => {
+    setTimelines(prev => prev.map(timeline => 
+      timeline.id === updatedTimeline.id ? updatedTimeline : timeline
+    ));
+    
+    // timelineName更新時は、関連するイベントのtimelineInfosも更新
+    if (updatedTimeline.name) {
+      setEvents(prevEvents => prevEvents.map(event => ({
+        ...event,
+        timelineInfos: (event.timelineInfos || []).map(info =>
+          info.timelineId === updatedTimeline.id 
+            ? { ...info, timelineName: updatedTimeline.name }
+            : info
+        )
+      })));
+    }
+    
+    console.log('年表更新:', updatedTimeline.name);
+  }, []);
 
   const deleteTimeline = useCallback((timelineId) => {
+    const timeline = timelines.find(t => t.id === timelineId);
+    
+    // 関連するイベントのtimelineInfosからも削除
+    setEvents(prevEvents => prevEvents.map(event => ({
+      ...event,
+      timelineInfos: (event.timelineInfos || []).filter(info => info.timelineId !== timelineId)
+    })));
+    
     setTimelines(prev => prev.filter(timeline => timeline.id !== timelineId));
-  }, []);
+    console.log('年表削除:', timeline?.name || timelineId);
+  }, [timelines]);
   
   // UI操作
   const handleSearchChange = useCallback((e) => {
@@ -161,6 +263,18 @@ const AppContent = () => {
     console.log('App.js: handleTimelineClick呼び出し:', timeline.name);
     setSelectedTimeline(timeline);
   }, []);
+
+  // イベント追加時のハンドラー（VisualTab → App.js）
+  const handleAddEvent = useCallback((eventData) => {
+    console.log('App.js: handleAddEvent呼び出し:', eventData);
+    return addEvent(eventData);
+  }, [addEvent]);
+
+  // 年表作成時のハンドラー（VisualTab → App.js）
+  const handleCreateTimeline = useCallback((timelineData) => {
+    console.log('App.js: handleCreateTimeline呼び出し:', timelineData);
+    return createTimeline(timelineData);
+  }, [createTimeline]);
   
   const getTopTagsFromSearch = useCallback(() => {
     const allTags = highlightedEvents.flatMap(event => event.tags || []);
@@ -174,9 +288,6 @@ const AppContent = () => {
       .slice(0, 3)
       .map(([tag]) => tag);
   }, [highlightedEvents]);
-  
-  // ドラッグ&ドロップ対応
-  const { handleDrop } = useDragDrop(setEvents, setTimelines);
   
   // ファイル操作
   const handleNew = useCallback(async () => {
@@ -212,12 +323,6 @@ const AppContent = () => {
     }
   }, [user, events, timelines, currentFileName, saveTimelineData]);
 
-  const handleLoadTimeline = useCallback((timelineData) => {
-    setEvents(timelineData.events || []);
-    setTimelines(timelineData.timelines || []);
-    updateFileName(timelineData.name);
-  }, [updateFileName]);
-
   // メニューアクション
   const handleMenuAction = useCallback((actionId) => {
     console.log('App: handleMenuAction called', actionId);
@@ -245,84 +350,70 @@ const AppContent = () => {
     currentTab,
     isMyPageMode,
     selectedEvent: !!selectedEvent,
-    selectedTimeline: !!selectedTimeline,
-    selectedEventTitle: selectedEvent?.title,
-    selectedTimelineName: selectedTimeline?.name
+    selectedTimeline: !!selectedTimeline
   });
-  
+
+  // MyPageモード時は別のコンポーネントを表示
+  if (isMyPageMode) {
+    return <MyPage />;
+  }
+
+  // 通常のアプリケーションUI
   return (
-    <div 
-      style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}
-      onDrop={handleDrop}
-      onDragOver={(e) => e.preventDefault()}
-    >
-      {/* ヘッダー */}
-      <Header
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <Header 
         user={user}
-        isAuthenticated={isAuthenticated}
-        onSignIn={signInWithGoogle}
-        onSignOut={signOut}
+        signInWithGoogle={signInWithGoogle}
+        signOut={signOut}
         onMenuAction={handleMenuAction}
+        currentFileName={currentFileName}
+        canSave={events.length > 0 || timelines.length > 0}
         isSaving={isSaving}
       />
       
-      {/* メインコンテンツ */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {isMyPageMode ? (
-          <MyPage
-            user={user}
-            isAuthenticated={isAuthenticated}
-            onLoadTimeline={handleLoadTimeline}
-            getUserTimelines={getUserTimelines}
-            deleteTimelineFile={deleteTimelineFile}
-          />
-        ) : (
-          <TabSystem
-            events={events}
-            timelines={timelines}
-            user={user}
-            onEventUpdate={updateEvent}
-            onEventDelete={deleteEvent}
-            onTimelineUpdate={setTimelines}
-            onAddEvent={addEvent}
-            
-            timelineRef={timelineRef}
-            coordinates={coordinates}
-            highlightedEvents={highlightedEvents}
-            searchTerm={searchTerm}
-            onSearchChange={handleSearchChange}
-            
-            wikiData={wikiData}
-            showPendingEvents={false}
-            
-            onResetView={coordinates.resetToInitialPosition}
-            onMenuAction={handleMenuAction}
-            selectedEvent={selectedEvent}
-            selectedTimeline={selectedTimeline}
-            onCloseEventModal={closeEventModal}
-            onCloseTimelineModal={closeTimelineModal}
-            hoveredGroup={hoveredGroup}
-            setHoveredGroup={setHoveredGroup}
-            
-            onCreateTimeline={createTimeline}
-            onDeleteTimeline={deleteTimeline}
-            getTopTagsFromSearch={getTopTagsFromSearch}
-            onEventClick={handleEventClick}
-            onTimelineClick={handleTimelineClick}
-            
-            currentPageMode={currentPageMode}
-            currentTab={currentTab}
-            isPersonalMode={isPersonalMode}
-            isWikiMode={isWikiMode}
-            onTabChange={changeTab}
-          />
-        )}
-      </div>
+      <TabSystem
+        // データ
+        events={events}
+        timelines={timelines}
+        searchTerm={searchTerm}
+        highlightedEvents={highlightedEvents}
+        selectedEvent={selectedEvent}
+        selectedTimeline={selectedTimeline}
+        
+        // 操作ハンドラ
+        onEventUpdate={updateEvent}
+        onEventDelete={deleteEvent}
+        onEventAdd={handleAddEvent}
+        onEventClick={handleEventClick}
+        onEventAddToTimeline={addEventToTimeline}
+        onEventRemoveFromTimeline={removeEventFromTimeline}
+        
+        onTimelineCreate={handleCreateTimeline}
+        onTimelineUpdate={updateTimeline}
+        onTimelineDelete={deleteTimeline}
+        onTimelineClick={handleTimelineClick}
+        
+        onSearchChange={handleSearchChange}
+        onCloseEventModal={closeEventModal}
+        onCloseTimelineModal={closeTimelineModal}
+        
+        // 座標系とUI
+        coordinates={coordinates}
+        timelineRef={timelineRef}
+        
+        // その他のUI状態
+        hoveredGroup={hoveredGroup}
+        setHoveredGroup={setHoveredGroup}
+        getTopTagsFromSearch={getTopTagsFromSearch}
+        
+        // モード
+        isWikiMode={isWikiMode}
+        wikiData={wikiData}
+      />
     </div>
   );
 };
 
-// PageModeProvider でラップして提供
 const App = () => {
   return (
     <PageModeProvider>

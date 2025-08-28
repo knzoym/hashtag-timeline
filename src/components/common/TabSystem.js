@@ -1,4 +1,4 @@
-// src/components/common/TabSystem.js - VisualTab統合対応版
+// src/components/common/TabSystem.js - props接続修正版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -16,7 +16,7 @@ const TabSystem = ({
   onEventUpdate,
   onEventDelete,
   onTimelineUpdate,
-  onAddEvent,
+  onEventAdd, // App.jsからのhandleAddEvent
   
   // Timeline/Network固有
   timelineRef,
@@ -32,8 +32,8 @@ const TabSystem = ({
   onResetView,
   onMenuAction,
   onSearchChange,
-  onCreateTimeline,
-  onDeleteTimeline,
+  onTimelineCreate, // App.jsからのhandleCreateTimeline
+  onTimelineDelete,
   getTopTagsFromSearch,
   onEventClick,
   onTimelineClick,
@@ -54,6 +54,12 @@ const TabSystem = ({
   
   const { isPersonalMode, isWikiMode } = getPageModeInfo();
   
+  console.log('TabSystem props check:', {
+    onEventAdd: !!onEventAdd,
+    onTimelineCreate: !!onTimelineCreate,
+    currentTab
+  });
+  
   // 現在のタブに応じてコンポーネントを選択
   const renderCurrentTab = () => {
     const commonProps = {
@@ -63,7 +69,6 @@ const TabSystem = ({
       onEventUpdate,
       onEventDelete,
       onTimelineUpdate,
-      onAddEvent,
       isPersonalMode,
       isWikiMode,
       currentPageMode
@@ -71,14 +76,19 @@ const TabSystem = ({
     
     // VisualTab（Timeline/Network）共通のprops
     const visualProps = {
+      // App.jsからの操作関数を正しく渡す
+      onAddEvent: onEventAdd, // 修正：onEventAddを使用
+      onCreateTimeline: onTimelineCreate, // 重要：App.jsのhandleCreateTimelineが渡される
+      onDeleteTimeline: onTimelineDelete,
+      onEventClick,
+      onTimelineClick,
+      
       timelineRef,
       coordinates, // 統合座標管理を使用
       highlightedEvents,
       onResetView,
       searchTerm,
       onSearchChange,
-      onCreateTimeline,
-      onDeleteTimeline,
       getTopTagsFromSearch,
       selectedEvent,
       selectedTimeline,
@@ -90,24 +100,28 @@ const TabSystem = ({
     
     switch (currentTab) {
       case 'timeline':
+        console.log('TabSystem: timeline tab - passing props:', {
+          onAddEvent: !!visualProps.onAddEvent,
+          onCreateTimeline: !!visualProps.onCreateTimeline
+        });
         return (
           <VisualTab
             {...commonProps}
             {...visualProps}
             viewMode="timeline"
-            onEventClick={onEventClick}
-            onTimelineClick={onTimelineClick}
           />
         );
         
       case 'network':
+        console.log('TabSystem: network tab - passing props:', {
+          onAddEvent: !!visualProps.onAddEvent,
+          onCreateTimeline: !!visualProps.onCreateTimeline
+        });
         return (
           <VisualTab
             {...commonProps}
             {...visualProps}
             viewMode="network"
-            onEventClick={onEventClick}
-            onTimelineClick={onTimelineClick}
           />
         );
         
