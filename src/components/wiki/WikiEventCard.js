@@ -1,6 +1,6 @@
-// src/components/WikiEventCard.js の投票機能付き拡張版
+// src/components/wiki/WikiEventCard.js - 統一版
 import React, { useState, useEffect } from 'react';
-import { VoteButtons, ScoreDisplay, RevisionHistory } from '../VotingComponents';
+import { VoteButtons, ScoreDisplay, RevisionHistory } from './VoteButtons';
 
 const WikiEventCard = ({ 
   event, 
@@ -28,10 +28,14 @@ const WikiEventCard = ({
   }, [event.id, showRevisions]);
 
   const loadRevisions = async () => {
-    const revisionData = await getEventRevisions(event.id);
-    setRevisions(revisionData);
-    if (revisionData.length > 0) {
-      setSelectedRevision(revisionData[0]); // 最新版を選択
+    try {
+      const revisionData = await getEventRevisions(event.id);
+      setRevisions(revisionData);
+      if (revisionData.length > 0) {
+        setSelectedRevision(revisionData[0]); // 最新版を選択
+      }
+    } catch (error) {
+      console.error('リビジョン読み込みエラー:', error);
     }
   };
 
@@ -65,9 +69,10 @@ const WikiEventCard = ({
         // 成功メッセージ
         const message = kind === 'upvote' ? '良い編集として投票しました' : '問題を報告しました';
         // 簡易的な通知（実際のプロジェクトではより良いUI使用）
-        alert(message);
+        console.log(message);
       }
     } catch (error) {
+      console.error('投票エラー:', error);
       alert('投票に失敗しました: ' + error.message);
     } finally {
       setLoading(false);
@@ -93,6 +98,7 @@ const WikiEventCard = ({
         alert('版を戻しました');
       }
     } catch (error) {
+      console.error('リバートエラー:', error);
       alert('リバートに失敗しました: ' + error.message);
     } finally {
       setLoading(false);
@@ -109,6 +115,7 @@ const WikiEventCard = ({
   };
 
   const formatDate = (dateString) => {
+    if (!dateString) return '年不明';
     const date = new Date(dateString);
     return date.getFullYear();
   };

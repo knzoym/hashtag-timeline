@@ -1,6 +1,6 @@
 // src/components/WikiEventForm.js の修正版
 import React, { useState, useEffect } from 'react';
-import { extractTagsFromDescription } from '../utils/timelineUtils';
+import { extractTagsFromDescription } from '../../utils/timelineUtils';
 
 const WikiEventForm = ({ event, onSave, onCancel, loading }) => {
   const [formData, setFormData] = useState({
