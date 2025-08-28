@@ -1,4 +1,4 @@
-// src/App.js - 未定義関数修正版
+// src/App.js - 無限レンダリング修正版
 import React, {
   useRef,
   useCallback,
@@ -28,7 +28,7 @@ const AppContent = () => {
     togglePendingEvents,
   } = usePageMode();
 
-  const { isWikiMode, isMyPageMode } = getPageModeInfo();
+  const { isWikiMode, isMyPageMode } = getPageModeInfo;
 
   // 認証
   const { user, signInWithGoogle, signOut } = useAuth();
@@ -552,7 +552,7 @@ const AppContent = () => {
     [handleSave, handleAddEvent]
   );
 
-  // TabSystemに渡すprops（完全版）
+  // TabSystemに渡すprops（無限ループ修正版）
   const tabSystemProps = useMemo(
     () => ({
       // 共通のデータとハンドラー
@@ -565,9 +565,8 @@ const AppContent = () => {
       onTimelineUpdate: updateTimeline,
       onEventAdd: handleAddEvent,
 
-      // Timeline/Network固有
+      // Timeline/Network固有（coordinatesオブジェクトを渡さない）
       timelineRef,
-      coordinates,
       highlightedEvents,
       searchTerm,
 
@@ -576,7 +575,6 @@ const AppContent = () => {
       showPendingEvents,
 
       // その他のハンドラー
-      onResetView: () => coordinates.resetToInitialPosition(),
       onMenuAction: handleMenuAction,
       onSearchChange: handleSearchChange,
       onTimelineCreate: handleCreateTimeline,
@@ -609,7 +607,6 @@ const AppContent = () => {
       updateTimeline,
       handleAddEvent,
       timelineRef,
-      coordinates,
       highlightedEvents,
       searchTerm,
       wikiData,

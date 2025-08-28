@@ -1,4 +1,4 @@
-// src/components/common/Header.js - ランダムロゴ表示版
+// src/components/common/Header.js - getPageModeInfo修正版
 import React, { useState, useMemo } from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { APP_CONFIG } from '../../constants/appConfig';
@@ -28,7 +28,7 @@ const Header = ({
   } = usePageMode();
   
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo();
+  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo; // 関数呼び出しを削除
   
   // レンダリング毎にランダムロゴを選択
   const randomLogo = useMemo(() => {
@@ -224,7 +224,7 @@ const Header = ({
   };
   
   // 利用可能なタブを取得
-  const availableTabs = getAvailableTabs();
+  const availableTabs = getAvailableTabs;
   
   return (
     <header style={styles.header}>

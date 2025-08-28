@@ -1,4 +1,4 @@
-// src/components/common/TabSystem.js - 一時年表対応版
+// src/components/common/TabSystem.js - 無限レンダリング修正版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -12,16 +12,15 @@ const TabSystem = ({
   // 共通のデータとハンドラー
   events,
   timelines,
-  tempTimelines, // 新規：一時年表
+  tempTimelines,
   user,
   onEventUpdate,
   onEventDelete,
   onTimelineUpdate,
   onEventAdd,
   
-  // Timeline/Network固有
+  // Timeline/Network固有（coordinatesは完全削除）
   timelineRef,
-  coordinates,
   highlightedEvents,
   searchTerm,
   
@@ -30,14 +29,13 @@ const TabSystem = ({
   showPendingEvents,
   
   // その他のハンドラー
-  onResetView,
   onMenuAction,
   onSearchChange,
   onTimelineCreate,
-  onCreateTempTimeline, // 新規：一時年表作成
+  onCreateTempTimeline,
   onTimelineDelete,
-  onDeleteTempTimeline, // 新規：一時年表削除
-  onSaveTempTimelineToPersonal, // 新規：個人ファイル保存
+  onDeleteTempTimeline,
+  onSaveTempTimelineToPersonal,
   getTopTagsFromSearch,
   onEventClick,
   onTimelineClick,
@@ -48,7 +46,10 @@ const TabSystem = ({
   onCloseEventModal,
   onCloseTimelineModal,
   hoveredGroup,
-  setHoveredGroup
+  setHoveredGroup,
+
+  // 承認システム
+  onApprovalAction,
 }) => {
   const {
     currentTab,
@@ -56,7 +57,7 @@ const TabSystem = ({
     getPageModeInfo
   } = usePageMode();
   
-  const { isPersonalMode, isWikiMode } = getPageModeInfo();
+  const { isPersonalMode, isWikiMode } = getPageModeInfo;
   
   console.log('TabSystem props check:', {
     onEventAdd: !!onEventAdd,
@@ -86,17 +87,16 @@ const TabSystem = ({
       // App.jsからの操作関数を正しく渡す
       onAddEvent: onEventAdd,
       onCreateTimeline: onTimelineCreate,
-      onCreateTempTimeline: onCreateTempTimeline, // 新規追加
+      onCreateTempTimeline: onCreateTempTimeline,
       onDeleteTimeline: onTimelineDelete,
-      onDeleteTempTimeline: onDeleteTempTimeline, // 新規追加
-      onSaveTempTimelineToPersonal: onSaveTempTimelineToPersonal, // 新規追加
+      onDeleteTempTimeline: onDeleteTempTimeline,
+      onSaveTempTimelineToPersonal: onSaveTempTimelineToPersonal,
       onEventClick,
       onTimelineClick,
       
+      // coordinatesの代わりにrefのみを渡す
       timelineRef,
-      coordinates,
       highlightedEvents,
-      onResetView,
       searchTerm,
       onSearchChange,
       getTopTagsFromSearch,
@@ -105,7 +105,12 @@ const TabSystem = ({
       onCloseEventModal,
       onCloseTimelineModal,
       hoveredGroup,
-      setHoveredGroup
+      setHoveredGroup,
+
+      // Wiki関連
+      showPendingEvents,
+      wikiData,
+      onApprovalAction,
     };
     
     switch (currentTab) {

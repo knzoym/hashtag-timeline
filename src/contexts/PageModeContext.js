@@ -1,5 +1,5 @@
-// src/contexts/PageModeContext.js
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+// src/contexts/PageModeContext.js - 無限レンダリング修正版
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { APP_CONFIG } from '../constants/appConfig';
 
 const PageModeContext = createContext();
@@ -67,8 +67,8 @@ export const PageModeProvider = ({ children }) => {
     setCurrentFileName(fileName);
   }, []);
   
-  // ページモード情報を取得
-  const getPageModeInfo = useCallback(() => {
+  // ページモード情報を取得（メモ化で無限レンダリング防止）
+  const getPageModeInfo = useMemo(() => {
     return {
       isPersonalMode: currentPageMode === APP_CONFIG.PAGE_MODES.PERSONAL,
       isWikiMode: currentPageMode === APP_CONFIG.PAGE_MODES.WIKI,
@@ -80,8 +80,8 @@ export const PageModeProvider = ({ children }) => {
     };
   }, [currentPageMode, currentTab, currentFileName, showPendingEvents]);
   
-  // 利用可能なタブを取得
-  const getAvailableTabs = useCallback(() => {
+  // 利用可能なタブを取得（メモ化）
+  const getAvailableTabs = useMemo(() => {
     return Object.values(APP_CONFIG.TABS).filter(tab => 
       tab.availableInModes.includes(currentPageMode)
     );
@@ -94,11 +94,18 @@ export const PageModeProvider = ({ children }) => {
     }
   }, [currentPageMode]);
   
-  // ファイル操作用のフラグ
-  const canUseFileOperations = currentPageMode === APP_CONFIG.PAGE_MODES.PERSONAL;
-  const canEditWiki = currentPageMode === APP_CONFIG.PAGE_MODES.WIKI;
+  // ファイル操作用のフラグ（メモ化）
+  const canUseFileOperations = useMemo(() => 
+    currentPageMode === APP_CONFIG.PAGE_MODES.PERSONAL, 
+    [currentPageMode]
+  );
+  const canEditWiki = useMemo(() => 
+    currentPageMode === APP_CONFIG.PAGE_MODES.WIKI, 
+    [currentPageMode]
+  );
   
-  const value = {
+  // Context value（完全にメモ化）
+  const value = useMemo(() => ({
     // 現在の状態
     currentPageMode,
     currentTab,
@@ -122,7 +129,20 @@ export const PageModeProvider = ({ children }) => {
     // 設定
     PAGE_MODES: APP_CONFIG.PAGE_MODES,
     TABS: APP_CONFIG.TABS
-  };
+  }), [
+    currentPageMode,
+    currentTab,
+    currentFileName,
+    showPendingEvents,
+    changePageMode,
+    changeTab,
+    updateFileName,
+    togglePendingEvents,
+    getPageModeInfo,
+    getAvailableTabs,
+    canUseFileOperations,
+    canEditWiki
+  ]);
   
   return (
     <PageModeContext.Provider value={value}>
