@@ -1,6 +1,6 @@
 // src/hooks/useAppState.js
 import { useState, useCallback, useEffect } from 'react';
-import { initialEvents, initialTimelines } from '../utils/eventUtils';
+import { initialEvents, initialTimelines } from '../lib/SampleEvents';
 import { generateUniqueId } from '../utils/timelineUtils';
 
 /**

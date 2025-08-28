@@ -17,7 +17,7 @@ import { useSupabaseSync } from "./hooks/useSupabaseSync";
 import { useWikiData } from "./hooks/useWikiData";
 import { useSampleSync } from "./hooks/useSampleSync";
 import { useTimelineSearch } from "./hooks/useTimelineSearch";
-import { sampleEvents } from "./utils/eventUtils";
+import { sampleEvents } from "./lib/SampleEvents";
 
 // AppContentコンポーネント（PageModeProvider内で動作）
 const AppContent = () => {

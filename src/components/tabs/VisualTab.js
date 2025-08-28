@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - グループ位置修正版
+// src/components/tabs/VisualTab.js - 統合グループ化システム対応版
 import React, { useRef, useCallback, useState, useMemo } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -9,6 +9,7 @@ import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import { truncateTitle } from "../../utils/timelineUtils";
 import { useCoordinate } from "../../hooks/useCoordinate";
+import { IntegratedLayoutManager } from "../../utils/groupLayoutSystem";
 
 const VisualTab = ({
   // データ
@@ -71,7 +72,7 @@ const VisualTab = ({
     resetToInitialPosition,
   } = coordinates;
 
-  // テキスト幅計算（昔と同じ）
+  // テキスト幅計算
   const calculateTextWidth = useCallback((text) => {
     if (!text) return 60;
     return Math.min(Math.max(60, text.length * 8), 200);
@@ -91,29 +92,11 @@ const VisualTab = ({
     return hslColor;
   }, []);
 
-  // 衝突検出ヘルパー関数
-  const findCollisionInTier = useCallback((tier, eventX, eventWidth) => {
-    const eventStart = eventX - eventWidth / 2;
-    const eventEnd = eventX + eventWidth / 2;
-    const gap = 15;
-
-    return tier.find(occupied => 
-      !(eventEnd + gap < occupied.startX || eventStart - gap > occupied.endX)
-    );
-  }, []);
-
-  // グループ内イベントの年号範囲から中央位置を計算するヘルパー関数
-  const calculateGroupCenterX = useCallback((groupEvents) => {
-    const validEvents = groupEvents.filter(event => event.startDate);
-    if (validEvents.length === 0) return 100;
-
-    const years = validEvents.map(event => event.startDate.getFullYear());
-    const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    const centerYear = (minYear + maxYear) / 2;
-    
-    return getXFromYear(centerYear);
-  }, [getXFromYear]);
+  // 統合レイアウトマネージャーのインスタンス化
+  const layoutManager = useMemo(() => {
+    if (!coordinates || !calculateTextWidth) return null;
+    return new IntegratedLayoutManager(coordinates, calculateTextWidth);
+  }, [coordinates, calculateTextWidth]);
 
   // 表示用の統合年表データ
   const displayTimelines = useMemo(() => {
@@ -128,14 +111,14 @@ const VisualTab = ({
     return timelines;
   }, [isWikiMode, timelines, tempTimelines]);
 
-  // 年マーカー生成（昔の方式を復元）
+  // 年マーカー生成
   const yearMarkers = useMemo(() => {
     if (!getXFromYear) return [];
     
     const markers = [];
     const viewportWidth = window.innerWidth;
     
-    // スケールに応じた年間隔（昔の計算方式）
+    // スケールに応じた年間隔
     let yearInterval;
     const adjustedScale = scale / 2.5;
     
@@ -163,7 +146,7 @@ const VisualTab = ({
     return markers;
   }, [scale, getXFromYear]);
 
-  // 年表軸計算（昔のシンプルな方式）
+  // 年表軸計算
   const timelineAxes = useMemo(() => {
     if (!getXFromYear) return [];
     
@@ -217,194 +200,26 @@ const VisualTab = ({
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
-  // グループ化対応イベントレイアウト計算（修正版）
+  // 統合レイアウトシステムによるイベント配置計算
   const layoutEventsWithGroups = useMemo(() => {
-    if (!events || !getXFromYear) return { allEvents: [], eventGroups: [] };
-
-    const results = [];
-    const groups = new Map(); // グループの実体を管理 (key: groupId, value: groupData)
-    const eventIdToGroupId = new Map(); // イベントIDがどのグループに属しているかを管理
+    if (!events || !layoutManager || !timelineAxes) {
+      return { allEvents: [], eventGroups: [] };
+    }
     
-    // 画面高さの30%を基準位置とする
-    const baselineY = window.innerHeight * 0.3;
-    
-    // メインタイムライン（年表に属さないイベント）を先に処理
-    const ungroupedEvents = events.filter(event => 
-      !event.timelineInfos?.length && 
-      !timelineAxes.some(axis => axis.timeline.eventIds?.includes(event.id))
-    );
-
-    // メインタイムライン用の上方向重なり回避
-    const mainTimelineOccupied = [];
-    
-    ungroupedEvents.forEach(event => {
-      const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-      const textWidth = calculateTextWidth(event.title);
-      const eventWidth = Math.max(80, textWidth + 20);
+    try {
+      const layoutResult = layoutManager.executeLayout(events, timelineAxes);
       
-      // 上方向への配置試行（-40px間隔）
-      let finalY = baselineY;
-      let placed = false;
-      
-      for (let tier = 0; tier < 5; tier++) { // 最大5段まで上方向
-        const testY = baselineY - (tier * 45);
-        const collision = mainTimelineOccupied.find(occupied => 
-          Math.abs(occupied.x - eventX) < (occupied.width + eventWidth) / 2 + 15 &&
-          Math.abs(occupied.y - testY) < 35
-        );
-        
-        if (!collision) {
-          finalY = testY;
-          mainTimelineOccupied.push({
-            x: eventX,
-            y: finalY,
-            width: eventWidth,
-            eventId: event.id
-          });
-          placed = true;
-          break;
-        }
-      }
-      
-      if (!placed) {
-        finalY = baselineY - (mainTimelineOccupied.length * 45);
-        mainTimelineOccupied.push({
-          x: eventX,
-          y: finalY,
-          width: eventWidth,
-          eventId: event.id
-        });
-      }
-      
-      results.push({
-        ...event,
-        adjustedPosition: { x: eventX, y: finalY },
-        calculatedWidth: eventWidth,
-        timelineColor: '#6b7280',
-        timelineInfo: null,
-        hiddenByGroup: false
+      console.log(`統合レイアウト結果: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`);
+      layoutResult.eventGroups.forEach(group => {
+        console.log(`グループ ${group.id}: 位置(${group.position.x.toFixed(0)}, ${group.position.y}) ${group.events.length}イベント`);
       });
-    });
-    
-    // 年表ごとにイベントを配置
-    timelineAxes.forEach((axis, axisIndex) => {
-        const timelineEvents = events.filter(event => {
-            if (event.timelineInfos?.some(info => info.timelineId === axis.id && !info.isTemporary)) {
-                return true;
-            }
-            if (axis.timeline.eventIds?.includes(event.id)) {
-                return true;
-            }
-            return false;
-        });
-
-        const timelineY = baselineY + 100 + (axisIndex * 120);
-
-        const sortedEvents = [...timelineEvents].sort((a, b) => 
-            (a.startDate?.getFullYear() || 0) - (b.startDate?.getFullYear() || 0)
-        );
-
-        const tiers = [[], [], []]; // 3段の占有情報
-
-        sortedEvents.forEach(event => {
-            const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-            const textWidth = calculateTextWidth(event.title);
-            const eventWidth = Math.max(80, textWidth + 20);
-
-            let placed = false;
-            let collisionInfo = null;
-
-            for (const tryTier of [1, 0, 2]) {
-                const collision = findCollisionInTier(tiers[tryTier], eventX, eventWidth);
-                if (!collision) {
-                    tiers[tryTier].push({
-                        startX: eventX - eventWidth / 2,
-                        endX: eventX + eventWidth / 2,
-                        eventId: event.id,
-                        tierIndex: tryTier,
-                    });
-                    
-                    const eventY = timelineY + (tryTier - 1) * 40;
-                    results.push({
-                        ...event,
-                        adjustedPosition: { x: eventX, y: eventY },
-                        calculatedWidth: eventWidth,
-                        timelineColor: axis.color,
-                        timelineInfo: {
-                            timelineId: axis.id,
-                            timelineName: axis.name,
-                            timelineColor: axis.color,
-                            needsExtensionLine: tryTier !== 1,
-                            axisY: timelineY,
-                        },
-                        hiddenByGroup: false,
-                    });
-                    placed = true;
-                    break;
-                }
-                // 下段で衝突した場合、その情報を保持
-                if (tryTier === 2) {
-                    collisionInfo = collision;
-                }
-            }
-
-            // どの段にも配置できなかった場合（＝グループ化が必要）
-            if (!placed && collisionInfo) {
-                const collidedEventId = collisionInfo.eventId;
-                const existingGroupId = eventIdToGroupId.get(collidedEventId);
-
-                let targetGroup;
-
-                if (existingGroupId) {
-                    // 衝突相手が既にグループに属している場合
-                    targetGroup = groups.get(existingGroupId);
-                } else {
-                    // 衝突相手がまだグループに属していない場合、新しいグループを作成
-                    const collidedEventResult = results.find(r => r.id === collidedEventId);
-                    
-                    if (collidedEventResult) {
-                        // 新規グループを作成
-                        const newGroupId = `group-${axis.id}-${collidedEventId}`;
-                        targetGroup = {
-                            id: newGroupId,
-                            events: [collidedEventResult], // 衝突された側のイベント
-                            count: 1,
-                            position: { x: 0, y: timelineY + 80 }, // y座標を固定
-                            timelineColor: axis.color,
-                            timelineId: axis.id,
-                            getDisplayCount: function() { return this.count; },
-                            getMainEvent: function() { return this.events[0]; }
-                        };
-                        groups.set(newGroupId, targetGroup);
-                        eventIdToGroupId.set(collidedEventId, newGroupId);
-
-                        // 元々配置されていたイベントを非表示にする
-                        collidedEventResult.hiddenByGroup = true;
-                    }
-                }
-                
-                if (targetGroup) {
-                    // 現在のイベントをグループに追加
-                    targetGroup.events.push(event);
-                    targetGroup.count++;
-                    eventIdToGroupId.set(event.id, targetGroup.id);
-
-                    // イベント追加後にグループの中心位置を再計算
-                    targetGroup.position.x = calculateGroupCenterX(targetGroup.events);
-                }
-            }
-        });
-    });
-
-    const finalGroups = Array.from(groups.values());
-    
-    // グループによって隠されたイベントを最終結果から除外
-    const finalEvents = results.filter(event => !event.hiddenByGroup);
-
-    console.log(`レイアウト計算完了: ${finalEvents.length}イベント, ${finalGroups.length}グループ`);
-    return { allEvents: finalEvents, eventGroups: finalGroups };
-
-  }, [events, timelineAxes, getXFromYear, calculateTextWidth, findCollisionInTier, calculateGroupCenterX]);
+      
+      return layoutResult;
+    } catch (error) {
+      console.error('レイアウト計算エラー:', error);
+      return { allEvents: [], eventGroups: [] };
+    }
+  }, [events, timelineAxes, layoutManager]);
 
   // ネットワーク接続線データ生成
   const networkConnections = useMemo(() => {
@@ -450,7 +265,7 @@ const VisualTab = ({
   const handleEventDoubleClick = useCallback((event) => {
     console.log("VisualTab: Event double click:", event.title);
     
-    // イベントの正規化（必要なプロパティが存在することを確認）
+    // イベントの正規化
     const normalizedEvent = {
       ...event,
       id: event.id || `temp-${Date.now()}`,
@@ -732,31 +547,48 @@ const VisualTab = ({
           );
         })}
 
-        {/* イベントグループアイコン（位置修正済み） */}
-        {layoutEventsWithGroups.eventGroups.map((groupData) => (
-          <EventGroupIcon
-            key={`group-icon-${groupData.id}`}
-            groupData={groupData}
-            position={groupData.position}
-            panY={panY}
-            panX={panX}
-            timelineColor={groupData.timelineColor}
-            onHover={setHoveredGroup}
-            onClick={toggleEventGroup}
-            onDoubleClick={(e, group) => {
-              e.stopPropagation();
-              if (group.events.length === 1) {
-                handleEventDoubleClick(group.events[0]);
-              } else {
-                toggleEventGroup(group.id);
-              }
-            }}
-            isHighlighted={hoveredGroup === groupData.id}
-          />
-        ))}
+        {/* イベントグループアイコン（panX補正削除版） */}
+        {console.log('グループアイコン描画チェック:', layoutEventsWithGroups.eventGroups) || 
+         layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
+          console.log(`グループ ${index}:`, groupData);
+          console.log(`  ID: ${groupData.id}`);
+          console.log(`  position:`, groupData.position);
+          console.log(`  events:`, groupData.events?.length || 0);
+          
+          // グループの位置をログ出力してデバッグ
+          if (!groupData.position) {
+            console.error(`グループ ${groupData.id} の position が未定義`);
+            return null;
+          }
+          
+          console.log(`  描画位置（panX補正なし）: x=${groupData.position.x.toFixed(0)}, y=${groupData.position.y}`);
+          
+          return (
+            <EventGroupIcon
+              key={`group-icon-${groupData.id}`}
+              groupData={groupData}
+              position={groupData.position}
+              panY={panY}
+              panX={panX}
+              timelineColor={groupData.timelineColor || '#6b7280'}
+              onHover={setHoveredGroup}
+              onClick={toggleEventGroup}
+              onDoubleClick={(e, group) => {
+                e.stopPropagation();
+                if (group.events.length === 1) {
+                  handleEventDoubleClick(group.events[0]);
+                } else {
+                  toggleEventGroup(group.id);
+                }
+              }}
+              isHighlighted={hoveredGroup === groupData.id}
+            />
+          );
+        })}
 
         {/* グループツールチップ */}
-        {hoveredGroup && layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup) && (
+        {console.log('ツールチップ描画チェック - hoveredGroup:', hoveredGroup) ||
+         hoveredGroup && layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup) && (
           <GroupTooltip
             groupData={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)}
             position={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)?.position}

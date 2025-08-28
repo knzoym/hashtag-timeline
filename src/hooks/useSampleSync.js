@@ -1,7 +1,7 @@
 // src/hooks/useSampleSync.js
 import { useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import { sampleEvents } from '../utils/eventUtils';
+import { sampleEvents } from '../lib/SampleEvents';
 
 export const useSampleSync = (user) => {
   const [loading, setLoading] = useState(false);
