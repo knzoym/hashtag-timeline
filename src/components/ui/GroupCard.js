@@ -1,4 +1,4 @@
-// components/ui/GroupCard.js - グループ表示コンポーネント
+// components/ui/GroupCard.js - グループ表示コンポーネント（年表色対応・パフォーマンス改善版）
 import React, { useState } from 'react';
 import { EventCard } from './EventCard';
 
@@ -10,7 +10,8 @@ export const GroupIcon = ({
   onDoubleClick, 
   onHover, 
   style = {},
-  isHighlighted = false 
+  isHighlighted = false,
+  timelineColor = '#4b5563' // 年表色対応
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -18,9 +19,9 @@ export const GroupIcon = ({
     position: 'relative',
     width: '32px',
     height: '32px',
-    backgroundColor: '#4b5563',
+    backgroundColor: timelineColor, // 年表色を使用
     color: '#ffffff',
-    border: '2px solid #374151',
+    border: `2px solid ${timelineColor}`,
     borderRadius: '50%',
     display: 'flex',
     alignItems: 'center',
@@ -105,8 +106,10 @@ export const GroupCard = ({
   onClose, 
   style = {},
   panY = 0,
+  panX = 0,
   calculateTextWidth
 }) => {
+  // transform を使用してGPU加速によるパフォーマンス向上
   const cardStyles = {
     position: 'absolute',
     minWidth: '200px',
@@ -117,6 +120,9 @@ export const GroupCard = ({
     padding: '12px',
     zIndex: 50,
     backdropFilter: 'blur(4px)',
+    // パフォーマンス改善：transformを使用
+    transform: `translate(${panX}px, ${panY}px)`,
+    willChange: 'transform', // GPU加速の有効化
     ...style
   };
 
@@ -200,17 +206,19 @@ export const GroupCard = ({
 /**
  * 延長線コンポーネント
  */
-export const ExtensionLine = ({ lineData, panY }) => {
+export const ExtensionLine = ({ lineData, panY, panX = 0 }) => {
+  // パフォーマンス改善：transformを使用
   const lineStyles = {
     position: 'absolute',
-    left: `${lineData.fromX}px`,
-    top: `${Math.min(lineData.fromY, lineData.toY) + panY}px`,
     width: '2px',
     height: `${Math.abs(lineData.toY - lineData.fromY)}px`,
     backgroundColor: lineData.color,
     opacity: lineData.opacity || 0.6,
     zIndex: 1,
-    pointerEvents: 'none'
+    pointerEvents: 'none',
+    // GPU加速によるパフォーマンス向上
+    transform: `translate(${lineData.fromX + panX}px, ${Math.min(lineData.fromY, lineData.toY) + panY}px)`,
+    willChange: 'transform'
   };
 
   return <div style={lineStyles} />;

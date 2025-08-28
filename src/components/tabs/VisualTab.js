@@ -1,7 +1,8 @@
-// src/components/tabs/VisualTab.js - 統合グループ化システム対応版
+// src/components/tabs/VisualTab.js - グループ化修正完全版
 import React, { useRef, useCallback, useState, useMemo } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
+import { EventCard } from "../ui/EventCard";
 import { EventModal } from "../modals/EventModal";
 import TimelineModal from "../modals/TimelineModal";
 import { SmoothLines } from "../ui/SmoothLines";
@@ -85,8 +86,8 @@ const VisualTab = ({
     const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
     if (match) {
       const h = match[1];
-      const s = Math.max(20, Math.min(50, parseInt(match[2]) - 15)); // 彩度を大幅に落として落ち着いた色に
-      const l = Math.max(20, parseInt(match[3]) - darkenAmount); // 明度も下げる
+      const s = Math.max(20, Math.min(50, parseInt(match[2]) - 15));
+      const l = Math.max(20, parseInt(match[3]) - darkenAmount);
       return `hsl(${h}, ${s}%, ${l}%)`;
     }
     return hslColor;
@@ -182,7 +183,7 @@ const VisualTab = ({
       // 座標計算
       const startX = getXFromYear(minYear);
       const endX = getXFromYear(maxYear);
-      const yPosition = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
+      const yPosition = TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
       
       axes.push({
         id: timeline.id,
@@ -445,36 +446,32 @@ const VisualTab = ({
             />
           ))}
 
-        {/* 通常イベント表示 */}
+        {/* 通常イベント表示（修正版：hiddenByGroupフィルタリング） */}
         {layoutEventsWithGroups.allEvents
-          .filter(event => !event.hiddenByGroup)
+          .filter(event => !event.hiddenByGroup) // グループ化されたイベントを除外
           .map((event, index) => {
           const eventX = event.adjustedPosition.x;
           const eventY = event.adjustedPosition.y + panY;
           const isHighlighted = highlightedEvents?.some?.(e => e.id === event.id) || false;
-          const eventWidth = event.calculatedWidth;
 
           return (
             <React.Fragment key={`event-${event.id}-${index}`}>
-              {/* 年号表示（小型化） */}
-              <div
+              <EventCard
+                event={event}
                 style={{
                   position: "absolute",
                   left: `${eventX}px`,
-                  top: `${eventY - 16}px`,  // イベントカードが小さくなった分調整
+                  top: `${eventY}px`,
                   transform: "translateX(-50%)",
-                  fontSize: "9px",  // フォントサイズを10px→9pxに縮小
-                  color: event.timelineColor || "#999",
-                  fontWeight: "500",
-                  textAlign: "center",
-                  pointerEvents: "none",
-                  zIndex: 15,
                 }}
-              >
-                {event.startDate?.getFullYear()}
-              </div>
+                isHighlighted={isHighlighted}
+                onDoubleClick={() => handleEventDoubleClick(event)}
+                onMouseDown={(e) => e.stopPropagation()}
+                calculateTextWidth={calculateTextWidth} // 統一サイズ計算を渡す
+                className="no-pan"
+              />
 
-              {/* 延長線（中段以外） */}
+              {/* 延長線の描画（年表イベントで必要な場合） */}
               {event.timelineInfo?.needsExtensionLine && (
                 <div
                   style={{
@@ -483,94 +480,39 @@ const VisualTab = ({
                     top: `${Math.min(eventY, event.timelineInfo.axisY + panY)}px`,
                     width: "2px",
                     height: `${Math.abs(eventY - (event.timelineInfo.axisY + panY))}px`,
-                    backgroundColor: event.timelineColor || "#999",
+                    backgroundColor: event.timelineColor || "#6b7280",
                     opacity: 0.6,
-                    zIndex: 8,
+                    zIndex: 1,
                     pointerEvents: "none",
                   }}
                 />
               )}
-
-              {/* イベントカード（小型化） */}
-              <div
-                data-event-id={event.id}
-                className="no-pan"
-                style={{
-                  position: "absolute",
-                  left: `${eventX - eventWidth / 2}px`,
-                  top: `${eventY - 12}px`,  // 高さを24pxに縮小（12px上下）
-                  width: `${Math.max(40, eventWidth * 0.8)}px`,  // 幅を80%に縮小、最小40px
-                  height: "24px",  // 高さを32px→24pxに縮小
-                  backgroundColor: event.timelineInfo ? 
-                    getDarkerColor(event.timelineColor) : 
-                    (isHighlighted ? "#4b5563" : "#6b7280"),
-                  color: "white",
-                  border: `1px solid ${  // 境界線を2px→1pxに縮小
-                    isHighlighted ? "#f59e0b" : 
-                    event.timelineInfo ? getDarkerColor(event.timelineColor, 20) : "#4b5563"
-                  }`,
-                  borderRadius: "4px",  // 角丸を6px→4pxに縮小
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  fontSize: "10px",  // フォントサイズを11px→10pxに縮小
-                  fontWeight: "500",
-                  boxShadow: isHighlighted
-                    ? "0 2px 8px rgba(245, 158, 11, 0.4)"  // 影を縮小
-                    : "0 1px 3px rgba(0, 0, 0, 0.1)",
-                  zIndex: isHighlighted ? 20 : 10,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  padding: "0 6px",  // パディングを8px→6pxに縮小
-                  transition: "all 0.2s ease",
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  handleEventDoubleClick(event);
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-                onMouseEnter={(e) => {
-                  e.target.style.transform = "scale(1.05)";  // ホバー時の拡大率を縮小
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.transform = "scale(1)";
-                }}
-                title={`${event.title}\n${
-                  event.startDate?.toLocaleDateString("ja-JP") || ""
-                }\nダブルクリックで編集`}
-              >
-                {truncateTitle ? truncateTitle(event.title, 8) : event.title}  {/* 文字数制限を12→8に */}
-              </div>
             </React.Fragment>
           );
         })}
 
-        {/* イベントグループアイコン（過去の正常動作版に復元） */}
-        {console.log('グループアイコン描画チェック:', layoutEventsWithGroups.eventGroups) || 
-         layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
-          console.log(`グループ ${index}:`, groupData);
-          console.log(`  ID: ${groupData.id}`);
-          console.log(`  position:`, groupData.position);
-          console.log(`  events:`, groupData.events?.length || 0);
+        {/* イベントグループアイコン（修正版：年表色を正しく渡す） */}
+        {layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
+          console.log(`グループ ${index}:`, {
+            id: groupData.id,
+            position: groupData.position,
+            events: groupData.events?.length || 0,
+            timelineColor: groupData.timelineColor
+          });
           
-          // グループの位置をログ出力してデバッグ
           if (!groupData.position) {
             console.error(`グループ ${groupData.id} の position が未定義`);
             return null;
           }
           
-          console.log(`  描画位置: x=${groupData.position.x.toFixed(0)}, y=${groupData.position.y}`);
-          
           return (
             <EventGroupIcon
               key={`group-icon-${groupData.id}`}
               groupData={groupData}
-              position={groupData.position}  // そのまま渡す（修正済み）
+              position={groupData.position}
               panY={panY}
-              panX={0}  // panXは加算しない（修正）
-              timelineColor={groupData.timelineColor || '#6b7280'}
+              panX={0}
+              timelineColor={groupData.timelineColor || '#6b7280'} // 年表色を正しく渡す
               onHover={setHoveredGroup}
               onClick={toggleEventGroup}
               onDoubleClick={(e, group) => {
@@ -586,18 +528,17 @@ const VisualTab = ({
           );
         })}
 
-        {/* グループツールチップ */}
-        {console.log('ツールチップ描画チェック - hoveredGroup:', hoveredGroup) ||
-         hoveredGroup && layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup) && (
+        {/* グループツールチップ（修正版） */}
+        {hoveredGroup && layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup) && (
           <GroupTooltip
             groupData={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)}
             position={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)?.position}
             panY={panY}
-            panX={0}  // panXは加算しない
+            panX={0}
           />
         )}
 
-        {/* 展開されたグループカード */}
+        {/* 展開されたグループカード（修正版） */}
         {Array.from(expandedGroups).map((groupId) => {
           const groupData = layoutEventsWithGroups.eventGroups.find(g => g.id === groupId);
           if (!groupData) return null;
@@ -611,8 +552,8 @@ const VisualTab = ({
                 y: groupData.position.y - 50
               }}
               panY={panY}
-              panX={0}  // panXは加算しない
-              timelineColor={groupData.timelineColor}
+              panX={0}
+              timelineColor={groupData.timelineColor || '#6b7280'} // 年表色を正しく渡す
               onEventDoubleClick={handleEventDoubleClick}
               onClose={() => toggleEventGroup(groupId)}
               onEventClick={handleEventDoubleClick}
@@ -624,15 +565,15 @@ const VisualTab = ({
         {timelineAxes.map((axis, index) => {
           const timeline = displayTimelines?.find((t) => t.id === axis.id);
           const isTemporary = timeline?.type === "temporary";
-          const baselineY = window.innerHeight * 0.3;
-          const cardY = baselineY + 70 + (index * 120);
 
           return (
             <TimelineCard
               key={`timeline-card-${axis.id}`}
               timeline={timeline}
-              position={{ x: axis.cardX, y: cardY + panY }}
+              position={{ x: axis.cardX, y: axis.yPosition + 70 }}
               isTemporary={isTemporary}
+              panY={panY}
+              panX={0}
               onEdit={() => {
                 if (timeline && onTimelineClick) {
                   onTimelineClick(timeline);

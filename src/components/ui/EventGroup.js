@@ -1,4 +1,4 @@
-// src/components/ui/EventGroup.js
+// src/components/ui/EventGroup.js - パフォーマンス改善版
 import React, { useState } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 
@@ -40,14 +40,14 @@ export const EventGroupIcon = ({
   
   const baseStyles = {
     position: "absolute",
-    left: position.x,
-    top: position.y + panY - 7,
-    transform: "translateX(-50%)",
     cursor: "pointer",
     zIndex: isHighlighted ? 50 : 30,
     textAlign: "center",
     userSelect: "none",
     transition: "all 0.2s ease",
+    // パフォーマンス改善：transformを使用してGPU加速
+    transform: `translate(${position.x - 16}px, ${position.y + panY - 7}px)`,
+    willChange: 'transform',
     ...style
   };
   
@@ -162,8 +162,6 @@ export const GroupTooltip = ({
     <div
       style={{
         position: "absolute",
-        left: position.x + panX + 25,
-        top: position.y + panY - 10,
         backgroundColor: "rgba(0, 0, 0, 0.95)",
         color: "white",
         padding: "12px 16px",
@@ -174,7 +172,10 @@ export const GroupTooltip = ({
         zIndex: 1000,
         pointerEvents: "none",
         boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
-        border: "1px solid rgba(255, 255, 255, 0.1)"
+        border: "1px solid rgba(255, 255, 255, 0.1)",
+        // パフォーマンス改善：transformを使用
+        transform: `translate(${position.x + panX + 25}px, ${position.y + panY - 10}px)`,
+        willChange: 'transform'
       }}
     >
       {/* ヘッダー */}
@@ -185,7 +186,7 @@ export const GroupTooltip = ({
         borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
         paddingBottom: "6px"
       }}>
-        📁 {events.length}個のイベント
+        📋 {events.length}個のイベント
       </div>
       
       {/* イベントリスト */}
@@ -268,8 +269,6 @@ export const GroupCard = ({
   
   const baseStyles = {
     position: "absolute",
-    left: position.x + panX,
-    top: position.y + panY,
     width: "320px",
     maxHeight,
     backgroundColor: "white",
@@ -278,6 +277,9 @@ export const GroupCard = ({
     boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25)",
     zIndex: 1000,
     overflow: "hidden",
+    // パフォーマンス改善：transformを使用
+    transform: `translate(${position.x + panX}px, ${position.y + panY}px)`,
+    willChange: 'transform',
     ...style
   };
   
@@ -325,7 +327,7 @@ export const GroupCard = ({
       <div style={headerStyles}>
         <div>
           <div style={{ fontWeight: "bold", fontSize: "16px", marginBottom: "2px" }}>
-            📁 イベントグループ
+            📋 イベントグループ
           </div>
           <div style={{ fontSize: "12px", opacity: 0.9 }}>
             {events.length} 件のイベント

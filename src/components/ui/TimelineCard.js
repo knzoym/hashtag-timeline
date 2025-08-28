@@ -1,4 +1,4 @@
-// src/components/ui/TimelineCard.js - 座標計算修正版
+// src/components/ui/TimelineCard.js - パフォーマンス改善版
 import React from 'react';
 
 export const TimelineCard = ({
@@ -10,7 +10,9 @@ export const TimelineCard = ({
   onToggleVisibility,
   onSaveToPersonal,
   className = "",
-  user = null
+  user = null,
+  panY = 0,
+  panX = 0
 }) => {
   if (!timeline) return null;
 
@@ -37,9 +39,7 @@ export const TimelineCard = ({
 
   const baseStyles = {
     position: 'absolute',
-    left: `${position.x}px`,
-    top: `${position.y}px`,
-    width: '180px', // 少し幅を調整
+    width: '180px',
     padding: '10px',
     backgroundColor: '#f9fafb',
     border: '1px solid #e5e7eb',
@@ -49,7 +49,9 @@ export const TimelineCard = ({
     zIndex: 15,
     fontSize: '12px',
     userSelect: 'none',
-    transform: 'translateY(-50%)', // 中央揃え
+    // パフォーマンス改善：transformを使用してGPU加速
+    transform: `translate(${position.x + panX}px, ${position.y + panY - 50}px)`,
+    willChange: 'transform',
     ...tempStyles
   };
 
@@ -183,7 +185,7 @@ export const TimelineCard = ({
           onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
           onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
         >
-          📥 個人ファイルに保存
+          💾 個人ファイルに保存
         </button>
       )}
 
