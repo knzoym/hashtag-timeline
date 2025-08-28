@@ -1,130 +1,197 @@
 // src/components/ui/SearchPanel.js
-import React from 'react';
+import React, { useCallback } from 'react';
+import { WikiImportButton } from './WikiImportButton';
 
-export const SearchPanel = ({
-  searchTerm = '', // デフォルト値を追加
-  highlightedEvents = [],
-  timelines = [],
+const SearchPanel = ({
+  searchTerm = '',
   onSearchChange,
+  highlightedEvents,
+  topTags = [],
   onCreateTimeline,
+  timelines = [],
   onDeleteTimeline,
-  getTopTagsFromSearch,
   isWikiMode = false,
-  showAdvancedOptions = false
+  user = null,
+  onEventImported = null,
+  wikiEvents = []
 }) => {
-  const highlightedEventsSize = Array.isArray(highlightedEvents) ? 
-    highlightedEvents.length : 
-    (highlightedEvents.size || 0);
+  const highlightedEventsSize = highlightedEvents?.size || 0;
 
-  const topTags = getTopTagsFromSearch ? getTopTagsFromSearch() : [];
-  
-  // デバッグ用ログ
-  console.log('SearchPanel props:', {
-    searchTerm,
-    searchTermType: typeof searchTerm,
-    searchTermValue: searchTerm
-  });
-  
+  // Wiki検索結果のインポート処理
+  const handleWikiSearchImport = useCallback((importData) => {
+    try {
+      if (importData.type === 'events' && importData.data.length > 0) {
+        onEventImported?.(importData.data);
+      } else if (importData.type === 'timeline' && importData.data) {
+        onEventImported?.({ 
+          type: 'timeline', 
+          data: importData.data 
+        });
+      }
+    } catch (err) {
+      console.error('Wiki検索結果インポートエラー:', err);
+      alert(`インポートエラー: ${err.message}`);
+    }
+  }, [onEventImported]);
+
+  // 現在の検索結果からインポート対象を抽出
+  const getImportTargetEvents = useCallback(() => {
+    if (!isWikiMode) return [];
+    
+    // highlightedEventsがある場合はそれを使用、なければ検索にマッチしたwikiEvents
+    if (highlightedEventsSize > 0 && wikiEvents.length > 0) {
+      return wikiEvents.filter(event => 
+        highlightedEvents?.has ? highlightedEvents.has(event.id) : true
+      );
+    }
+    
+    return [];
+  }, [isWikiMode, highlightedEventsSize, wikiEvents, highlightedEvents]);
+
+  const importTargetEvents = getImportTargetEvents();
+
+  // タグクリックハンドラー
+  const handleTagClick = (tag) => {
+    if (onSearchChange && tag) {
+      const currentSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
+      const newSearchTerm = currentSearchTerm.trim() ? 
+        `${currentSearchTerm.trim()} ${tag}` : 
+        tag;
+      onSearchChange({ target: { value: newSearchTerm } });
+    }
+  };
+
+  const safeSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
+  const hasSearchTerm = safeSearchTerm.trim().length > 0;
+
   const styles = {
     searchPanel: {
-      position: "absolute",
-      top: "20px",
-      left: "20px",
-      width: "280px",
       backgroundColor: "#ffffff",
-      border: "1px solid #e5e7eb",
-      borderRadius: "8px",
-      boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-      zIndex: 50,
-      padding: "16px",
+      borderRadius: "12px",
+      padding: "20px",
+      marginBottom: "16px",
+      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
+      border: "1px solid #e5e7eb"
     },
     
     searchInput: {
       width: "100%",
-      padding: "8px 12px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
+      padding: "12px 16px",
+      border: "2px solid #e5e7eb",
+      borderRadius: "8px",
+      fontSize: "16px",
       marginBottom: "16px",
-      fontSize: "14px",
-      boxSizing: "border-box",
-      backgroundColor: "#ffffff"
+      backgroundColor: "#f9fafb",
+      transition: "border-color 0.2s ease, background-color 0.2s ease"
     },
     
+    statsContainer: {
+      padding: "12px",
+      backgroundColor: "#f0f9ff",
+      borderRadius: "8px",
+      marginBottom: "16px",
+      fontSize: "14px",
+      color: "#1e40af",
+      textAlign: "center",
+      fontWeight: "500"
+    },
+    
+    createButton: {
+      width: "100%",
+      padding: "12px 20px",
+      backgroundColor: "#10b981",
+      color: "white",
+      border: "none",
+      borderRadius: "8px",
+      fontSize: "16px",
+      fontWeight: "600",
+      cursor: "pointer",
+      transition: "background-color 0.2s ease",
+      marginBottom: "16px"
+    },
+    
+    createButtonDisabled: {
+      backgroundColor: "#9ca3af",
+      cursor: "not-allowed"
+    },
+
+    // Wiki専用スタイル
+    wikiIndicator: {
+      fontSize: "12px",
+      color: "#3b82f6",
+      backgroundColor: "#dbeafe",
+      padding: "6px 12px",
+      borderRadius: "8px",
+      marginBottom: "16px",
+      display: "inline-block",
+      fontWeight: "500"
+    },
+
+    importSection: {
+      marginTop: "16px",
+      padding: "16px",
+      backgroundColor: "#f0f9ff",
+      borderRadius: "8px",
+      border: "1px solid #e0f2fe"
+    },
+
+    importTitle: {
+      fontSize: "14px",
+      fontWeight: "600",
+      color: "#1e40af",
+      marginBottom: "12px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px"
+    },
+
     // タグセクション
     tagSection: {
-      marginBottom: "16px",
+      marginBottom: "20px"
     },
     
     sectionTitle: {
       fontSize: "14px",
       fontWeight: "600",
       color: "#374151",
-      marginBottom: "8px",
+      marginBottom: "12px",
+      display: "flex",
+      alignItems: "center",
+      gap: "8px"
     },
     
     tagContainer: {
       display: "flex",
       flexWrap: "wrap",
-      gap: "4px",
+      gap: "8px"
     },
     
     tag: {
-      padding: "4px 8px",
-      backgroundColor: "#e0f2fe",
-      color: "#0891b2",
-      fontSize: "12px",
-      border: "1px solid #0891b2",
-      borderRadius: "12px",
+      padding: "6px 12px",
+      backgroundColor: "#f0f9ff",
+      color: "#1e40af",
+      borderRadius: "16px",
+      fontSize: "13px",
+      fontWeight: "500",
       cursor: "pointer",
-      transition: "all 0.2s",
-      userSelect: "none"
+      transition: "all 0.2s ease",
+      border: "1px solid #e0f2fe"
     },
     
     tagHover: {
-      backgroundColor: "#0891b2",
+      backgroundColor: "#3b82f6",
       color: "white"
     },
-    
-    // ボタン
-    createButton: {
-      width: "100%",
-      backgroundColor: "#10b981",
-      color: "white",
-      padding: "10px 16px",
-      border: "none",
-      borderRadius: "6px",
-      cursor: "pointer",
-      fontWeight: "500",
-      fontSize: "14px",
-      transition: "background-color 0.2s",
-      marginBottom: "8px"
-    },
-    
-    createButtonDisabled: {
-      backgroundColor: "#9ca3af",
-      cursor: "not-allowed",
-    },
-    
-    // 統計情報
-    statsContainer: {
-      fontSize: "12px",
-      color: "#6b7280",
-      marginBottom: "12px",
-      padding: "8px",
-      backgroundColor: "#f9fafb",
-      borderRadius: "4px"
-    },
-    
-    // 年表一覧（コンパクト）
+
+    // 年表セクション
     timelineSection: {
-      marginTop: "16px",
-      borderTop: "1px solid #f3f4f6",
-      paddingTop: "12px"
+      marginBottom: "16px"
     },
     
     timelineList: {
-      maxHeight: "120px",
-      overflow: "auto"
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px"
     },
     
     timelineItem: {
@@ -162,42 +229,15 @@ export const SearchPanel = ({
       padding: "2px 4px",
       borderRadius: "2px",
       marginLeft: "4px"
-    },
-    
-    // Wiki専用スタイル
-    wikiIndicator: {
-      fontSize: "10px",
-      color: "#3b82f6",
-      backgroundColor: "#dbeafe",
-      padding: "2px 6px",
-      borderRadius: "8px",
-      marginBottom: "8px",
-      display: "inline-block"
     }
   };
-  
-  // タグクリックハンドラー - null/undefined チェックを追加
-  const handleTagClick = (tag) => {
-    if (onSearchChange && tag) {
-      // searchTermが文字列であることを確認してからtrimを実行
-      const currentSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
-      const newSearchTerm = currentSearchTerm.trim() ? 
-        `${currentSearchTerm.trim()} ${tag}` : 
-        tag;
-      onSearchChange({ target: { value: newSearchTerm } });
-    }
-  };
-
-  // 安全なsearchTerm処理用のヘルパー - 文字列であることを確認
-  const safeSearchTerm = (typeof searchTerm === 'string') ? searchTerm : '';
-  const hasSearchTerm = safeSearchTerm.trim().length > 0;
   
   return (
     <div style={styles.searchPanel}>
       {/* Wiki モードインジケーター */}
       {isWikiMode && (
         <div style={styles.wikiIndicator}>
-          📚 Wiki モード
+          📚 TLwiki モード - 共同編集データを表示中
         </div>
       )}
       
@@ -211,6 +251,8 @@ export const SearchPanel = ({
         value={safeSearchTerm}
         onChange={onSearchChange}
         style={styles.searchInput}
+        onFocus={(e) => e.target.style.borderColor = "#3b82f6"}
+        onBlur={(e) => e.target.style.borderColor = "#e5e7eb"}
       />
       
       {/* 統計情報 */}
@@ -225,11 +267,27 @@ export const SearchPanel = ({
         </div>
       )}
       
+      {/* Wiki検索結果インポートセクション */}
+      {isWikiMode && importTargetEvents.length > 0 && (
+        <div style={styles.importSection}>
+          <div style={styles.importTitle}>
+            📥 個人ファイルに追加
+          </div>
+          <WikiImportButton
+            wikiEvents={importTargetEvents}
+            user={user}
+            onImportComplete={handleWikiSearchImport}
+            buttonText={`検索結果${importTargetEvents.length}件を追加`}
+            variant="primary"
+          />
+        </div>
+      )}
+      
       {/* 上位タグ表示 */}
       {topTags.length > 0 && (
         <div style={styles.tagSection}>
           <h3 style={styles.sectionTitle}>
-            {highlightedEventsSize > 0 ? '関連タグ' : '人気タグ'}
+            🏷️ {highlightedEventsSize > 0 ? '関連タグ' : (isWikiMode ? '人気タグ' : 'よく使われるタグ')}
           </h3>
           <div style={styles.tagContainer}>
             {topTags.map((tag) => (
@@ -254,7 +312,7 @@ export const SearchPanel = ({
         </div>
       )}
       
-      {/* 年表作成ボタン */}
+      {/* 年表作成ボタン（個人モードのみ） */}
       {!isWikiMode && onCreateTimeline && (
         <button
           style={{
@@ -278,55 +336,34 @@ export const SearchPanel = ({
           {highlightedEventsSize > 0 && ` (${highlightedEventsSize})`}
         </button>
       )}
-      
-      {/* Wiki モード用のインポートボタン */}
-      {isWikiMode && highlightedEventsSize > 0 && (
-        <button
-          style={styles.createButton}
-          onClick={() => {
-            // Wiki イベントのインポート処理
-            console.log('Wiki events import:', highlightedEventsSize);
-          }}
-          onMouseEnter={(e) => e.target.style.backgroundColor = "#059669"}
-          onMouseLeave={(e) => e.target.style.backgroundColor = "#10b981"}
-        >
-          📥 個人ファイルに追加 ({highlightedEventsSize})
-        </button>
-      )}
-      
-      {/* 年表一覧（個人モードのみ） */}
-      {!isWikiMode && timelines.length > 0 && showAdvancedOptions && (
+
+      {/* 年表リスト表示 */}
+      {timelines.length > 0 && (
         <div style={styles.timelineSection}>
-          <h3 style={styles.sectionTitle}>作成した年表 ({timelines.length})</h3>
+          <h3 style={styles.sectionTitle}>
+            📊 {isWikiMode ? '表示中の年表' : '作成済み年表'}
+          </h3>
           <div style={styles.timelineList}>
-            {timelines.filter(t => t.isVisible).map((timeline) => (
+            {timelines.map((timeline) => (
               <div key={timeline.id} style={styles.timelineItem}>
-                <div 
-                  style={{
-                    width: "12px",
-                    height: "12px",
-                    backgroundColor: timeline.color || "#6b7280",
-                    borderRadius: "2px",
-                    marginRight: "8px",
-                    flexShrink: 0
-                  }}
-                />
-                <div style={styles.timelineItemTitle} title={timeline.name}>
+                <div style={styles.timelineItemTitle}>
                   {timeline.name}
                 </div>
                 <div style={styles.timelineItemCount}>
-                  {timeline.eventCount || timeline.events?.length || 0}
+                  {timeline.events?.length || 0}件
                 </div>
-                {onDeleteTimeline && (
+                {!isWikiMode && onDeleteTimeline && (
                   <button
-                    style={styles.deleteButton}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDeleteTimeline(timeline.id);
+                      if (window.confirm(`年表「${timeline.name}」を削除しますか？`)) {
+                        onDeleteTimeline(timeline.id);
+                      }
                     }}
-                    onMouseEnter={(e) => e.target.style.backgroundColor = "#fecaca"}
-                    onMouseLeave={(e) => e.target.style.backgroundColor = "transparent"}
+                    style={styles.deleteButton}
                     title="年表を削除"
+                    onMouseEnter={(e) => e.target.style.backgroundColor = '#fee2e2'}
+                    onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                   >
                     ×
                   </button>
@@ -336,19 +373,8 @@ export const SearchPanel = ({
           </div>
         </div>
       )}
-      
-      {/* 検索結果が0件の場合のメッセージ */}
-      {hasSearchTerm && highlightedEventsSize === 0 && (
-        <div style={{
-          fontSize: "12px",
-          color: "#9ca3af",
-          textAlign: "center",
-          padding: "12px",
-          fontStyle: "italic"
-        }}>
-          "{safeSearchTerm.trim()}" に一致するイベントがありません
-        </div>
-      )}
     </div>
   );
 };
+
+export default SearchPanel;

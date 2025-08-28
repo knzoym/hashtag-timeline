@@ -1,6 +1,6 @@
-// src/components/Sidebar.js（整理版）
-import React, { useState } from 'react';
-import logoImage from '../assets/logo.png'; // ロゴ画像のパスを適宜変更
+// src/components/layout/Sidebar.js
+import React, { useState, useCallback } from 'react';
+import logoImage from '../../assets/logo.png';
 
 const Sidebar = ({ 
   isOpen, 
@@ -9,11 +9,13 @@ const Sidebar = ({
   currentUser,
   isSaving,
   canSave,
-  logoSrc
+  logoSrc,
+  isWikiMode = false,
+  currentPageMode = 'personal'
 }) => {
   const [expandedSections, setExpandedSections] = useState(new Set(['ファイル内操作']));
   const [expandedSubmenus, setExpandedSubmenus] = useState(new Set());
-  const [isHovering, setIsHovering] = useState(false);
+  const [isHovering, setIsHovering] = useState(false);;
 
   const toggleSection = (section) => {
     const newExpanded = new Set(expandedSections);
@@ -35,8 +37,8 @@ const Sidebar = ({
     setExpandedSubmenus(newExpanded);
   };
 
-  // 機能を整理して配置
-  const menuItems = [
+  // メニューアイテム（既存の配列を動的生成版に変更）
+  const menuItems = getMenuItems();
     {
       section: 'ファイル内操作',
       icon: '',
@@ -45,7 +47,8 @@ const Sidebar = ({
           id: 'add-event', 
           label: 'イベントを追加', 
           icon: '➕',
-          shortcut: 'ダブルクリック'
+          shortcut: 'ダブルクリック',
+          disabled: isWikiMode
         },
         { 
           id: 'reset-view', 
@@ -57,6 +60,7 @@ const Sidebar = ({
           id: 'sample-events', 
           label: 'サンプルイベント', 
           icon: '📌',
+          disabled: isWikiMode,
           subItems: [
             { id: 'sample-architecture', label: '建築史イベント', icon: '🏛️' },
             { id: 'sample-history', label: '日本史イベント', icon: '🗾' },
@@ -67,7 +71,8 @@ const Sidebar = ({
           id: 'clear-all', 
           label: 'すべてのデータをクリア', 
           icon: '🗑️',
-          danger: true
+          danger: true,
+          disabled: isWikiMode
         }
       ]
     },
@@ -80,35 +85,39 @@ const Sidebar = ({
           label: '新規作成', 
           icon: '📄', 
           shortcut: 'Ctrl+N',
-          disabled: false 
+          disabled: isWikiMode
         },
         { 
           id: 'open', 
           label: 'ファイルを開く', 
           icon: '📂', 
           shortcut: 'Ctrl+O',
-          disabled: !currentUser,
-          tooltip: !currentUser ? 'ログインが必要です' : null
+          disabled: !currentUser || isWikiMode,
+          tooltip: !currentUser ? 'ログインが必要です' : 
+                   isWikiMode ? 'Wikiモードでは利用できません' : null
         },
         { 
           id: 'save', 
           label: '保存', 
           icon: '💾', 
           shortcut: 'Ctrl+S',
-          disabled: !currentUser || !canSave || isSaving,
-          tooltip: !currentUser ? 'ログインが必要です' : null
+          disabled: !currentUser || !canSave || isSaving || isWikiMode,
+          tooltip: !currentUser ? 'ログインが必要です' : 
+                   isWikiMode ? 'Wikiモードでは利用できません' : null
         },
         { 
           id: 'save-as', 
           label: '名前を付けて保存', 
           icon: '💾', 
-          disabled: !currentUser || !canSave,
-          tooltip: !currentUser ? 'ログインが必要です' : null
+          disabled: !currentUser || !canSave || isWikiMode,
+          tooltip: !currentUser ? 'ログインが必要です' : 
+                   isWikiMode ? 'Wikiモードでは利用できません' : null
         },
         { 
           id: 'export', 
           label: 'エクスポート', 
           icon: '📤',
+          disabled: isWikiMode,
           subItems: [
             { id: 'export-json', label: 'JSON形式で書き出し', icon: '{ }' },
             { id: 'export-csv', label: 'CSV形式で書き出し', icon: '📊' },
@@ -119,10 +128,40 @@ const Sidebar = ({
           id: 'import', 
           label: 'インポート', 
           icon: '📥',
+          disabled: isWikiMode,
           subItems: [
             { id: 'import-json', label: 'JSONファイル', icon: '{ }' },
             { id: 'import-csv', label: 'CSVファイル', icon: '📊' }
           ]
+        }
+      ]
+    },
+    {
+      section: 'Wiki連携',
+      icon: '🔄',
+      items: [
+        {
+          id: 'sync-samples',
+          label: 'サンプルをTLwikiに同期',
+          icon: '📤',
+          disabled: !currentUser,
+          tooltip: !currentUser ? 'ログインが必要です' : 'ローカルサンプルをTLwikiに登録'
+        },
+        {
+          id: 'import-wiki-search', 
+          label: '検索結果を個人に追加',
+          icon: '📥',
+          disabled: !currentUser || !isWikiMode,
+          tooltip: !currentUser ? 'ログインが必要です' : 
+                   !isWikiMode ? 'Wikiモードでのみ利用可能' : '現在の検索結果を個人ファイルに追加'
+        },
+        {
+          id: 'import-wiki-timeline',
+          label: '表示年表を個人に追加',
+          icon: '📋',
+          disabled: !currentUser || !isWikiMode,
+          tooltip: !currentUser ? 'ログインが必要です' : 
+                   !isWikiMode ? 'Wikiモードでのみ利用可能' : '現在表示中の年表を個人ファイルに追加'
         }
       ]
     },
@@ -197,7 +236,8 @@ const Sidebar = ({
         }
       ]
     }
-  ];
+  // メニューアイテム動的生成関数
+  const getMenuItems = () => [
 
   const handleItemClick = (itemId, section) => {
     if (onMenuItemClick) {
@@ -219,7 +259,7 @@ const Sidebar = ({
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      paddingTop: '12px', // 76から12に変更
+      paddingTop: '12px',
     },
     logoContainer: {
       width: 40,
@@ -273,6 +313,14 @@ const Sidebar = ({
       fontSize: '14px',
       fontWeight: '600',
       color: '#374151',
+      justifyContent: 'space-between'
+    },
+    modeIndicator: {
+      fontSize: '12px',
+      padding: '4px 8px',
+      borderRadius: '12px',
+      fontWeight: '500',
+      marginRight: '12px'
     },
     content: {
       flex: 1,
@@ -376,6 +424,8 @@ const Sidebar = ({
     }
   };
 
+  const menuItems = getMenuItems();
+
   return (
     <>
       {/* コンパクトサイドバー */}
@@ -387,7 +437,7 @@ const Sidebar = ({
           onMouseLeave={() => setIsHovering(false)}
           title={isOpen ? 'サイドバーを閉じる' : 'サイドバーを開く'}
         >
-          <img src={logoImage} alt="Logo" style={sidebarStyles.logo} />
+          <img src={logoSrc || logoImage} alt="Logo" style={sidebarStyles.logo} />
           <div style={sidebarStyles.menuIcon}>
             <svg 
               width="20" 
@@ -412,6 +462,15 @@ const Sidebar = ({
       <div style={sidebarStyles.fullSidebar}>
         <div style={sidebarStyles.headerSpace}>
           #ハッシュタグ年表
+          
+          {/* ページモード表示 */}
+          <span style={{
+            ...sidebarStyles.modeIndicator,
+            backgroundColor: isWikiMode ? '#dbeafe' : '#ecfdf5',
+            color: isWikiMode ? '#1d4ed8' : '#059669'
+          }}>
+            {isWikiMode ? '📚 Wiki' : '📁 個人'}
+          </span>
         </div>
         
         <div style={sidebarStyles.content}>
@@ -445,30 +504,18 @@ const Sidebar = ({
                         style={{
                           ...sidebarStyles.menuItem,
                           ...(item.disabled ? sidebarStyles.menuItemDisabled : {}),
-                          ...(item.danger ? sidebarStyles.menuItemDanger : {}),
+                          ...(item.danger ? sidebarStyles.menuItemDanger : {})
                         }}
-                        onClick={() => {
-                          if (item.disabled) return;
-                          if (item.subItems) {
-                            toggleSubmenu(item.id);
-                          } else {
-                            handleItemClick(item.id, section);
-                          }
-                        }}
+                        onClick={() => !item.disabled && (item.subItems ? toggleSubmenu(item.id) : handleItemClick(item.id, section))}
                         onMouseEnter={(e) => {
                           if (!item.disabled) {
-                            e.currentTarget.style.backgroundColor = '#f3f4f6';
-                          }
-                          if (item.tooltip) {
-                            const tooltip = e.currentTarget.querySelector('.tooltip');
-                            if (tooltip) tooltip.style.opacity = '1';
+                            e.target.style.backgroundColor = '#f3f4f6';
                           }
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
-                          const tooltip = e.currentTarget.querySelector('.tooltip');
-                          if (tooltip) tooltip.style.opacity = '0';
+                          e.target.style.backgroundColor = 'transparent';
                         }}
+                        title={item.tooltip}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
                           <span style={sidebarStyles.menuItemIcon}>{item.icon}</span>
@@ -477,8 +524,8 @@ const Sidebar = ({
                             <span 
                               style={{
                                 ...sidebarStyles.chevron,
-                                marginLeft: '8px',
-                                transform: expandedSubmenus.has(item.id) ? 'rotate(90deg)' : 'rotate(0deg)'
+                                transform: expandedSubmenus.has(item.id) ? 
+                                  'rotate(90deg)' : 'rotate(0deg)'
                               }}
                             >
                               ▶
@@ -487,11 +534,6 @@ const Sidebar = ({
                         </div>
                         {item.shortcut && (
                           <span style={sidebarStyles.shortcut}>{item.shortcut}</span>
-                        )}
-                        {item.tooltip && (
-                          <div className="tooltip" style={sidebarStyles.tooltip}>
-                            {item.tooltip}
-                          </div>
                         )}
                       </div>
                       
@@ -522,7 +564,10 @@ const Sidebar = ({
         {/* フッター */}
         <div style={sidebarStyles.footer}>
           <div style={{ marginBottom: '4px' }}>
-            ヒント: ヘッダーで現在のファイル操作
+            {currentPageMode === 'wiki' ? 
+              'TLwiki - 共同編集モード' : 
+              '個人ファイル - 編集モード'
+            }
           </div>
           {currentUser ? (
             <div style={{ fontSize: '10px' }}>
@@ -530,7 +575,7 @@ const Sidebar = ({
             </div>
           ) : (
             <div style={{ fontSize: '10px' }}>
-              ログインで保存機能が利用可能
+              ログインで保存・Wiki機能が利用可能
             </div>
           )}
         </div>

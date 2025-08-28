@@ -1,6 +1,6 @@
 // components/tabs/VisualTab.js - 既存実装を尊重した修正版
 import React, { useRef, useCallback, useState, useEffect, useMemo } from "react";
-import { SearchPanel } from "../ui/SearchPanel";
+import SearchPanel from "../ui/SearchPanel"; // ← named import を default import に変更
 import { TimelineCard } from "../ui/TimelineCard";
 import { EventModal } from "../modals/EventModal";
 import TimelineModal from "../modals/TimelineModal";
