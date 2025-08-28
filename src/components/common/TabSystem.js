@@ -1,10 +1,9 @@
-// src/components/common/TabSystem.js - 全タブ統合完成版
+// src/components/common/TabSystem.js - VisualTab統合対応版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
-// 実際のタブコンポーネントをインポート
-import TimelineTab from '../tabs/TimelineTab';
-import NetworkTab from '../tabs/NetworkTab';
+// 統合されたビジュアルタブとその他のタブコンポーネントをインポート
+import VisualTab from '../tabs/VisualTab';
 import TableTab from '../tabs/TableTab';
 import EventEditTab from '../tabs/EventEditTab';
 import RevisionTab from '../tabs/RevisionTab';
@@ -21,15 +20,7 @@ const TabSystem = ({
   
   // Timeline/Network固有
   timelineRef,
-  scale,
-  panX,
-  panY,
-  currentPixelsPerYear,
-  onWheel,
-  onMouseDown,
-  onMouseMove,
-  onMouseUp,
-  onDoubleClick,
+  coordinates, // 統合座標管理オブジェクト
   highlightedEvents,
   searchTerm,
   
@@ -76,18 +67,10 @@ const TabSystem = ({
       currentPageMode
     };
     
-    // Timeline/Network共通のprops
+    // VisualTab（Timeline/Network）共通のprops
     const visualProps = {
       timelineRef,
-      scale,
-      panX,
-      panY,
-      currentPixelsPerYear,
-      onWheel,
-      onMouseDown,
-      onMouseMove,
-      onMouseUp,
-      onDoubleClick,
+      coordinates, // 統合座標管理を使用
       highlightedEvents,
       onResetView,
       searchTerm,
@@ -106,18 +89,19 @@ const TabSystem = ({
     switch (currentTab) {
       case 'timeline':
         return (
-          <TimelineTab
+          <VisualTab
             {...commonProps}
             {...visualProps}
+            viewMode="timeline"
           />
         );
         
       case 'network':
         return (
-          <NetworkTab
+          <VisualTab
             {...commonProps}
             {...visualProps}
-            showMultipleTimelineConnections={true}
+            viewMode="network"
           />
         );
         
@@ -214,7 +198,7 @@ const TabSystem = ({
             color: '#6b7280',
             fontSize: '14px'
           }}>
-            🕸️ {currentTab === 'network' ? 'ネットワーク' : currentTab} タブを読み込み中...
+            {currentTab === 'network' ? '🕸️ ネットワーク' : currentTab === 'timeline' ? '📊 年表' : currentTab} タブを読み込み中...
           </div>
         }
       >
