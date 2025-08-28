@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - 表示修正版
+// src/components/tabs/VisualTab.js - Wiki統合版
 import React, { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -17,6 +17,7 @@ const VisualTab = ({
   // データ
   events = [],
   timelines = [],
+  tempTimelines = [], // 新規：Wiki一時年表
   user,
   isPersonalMode,
   isWikiMode,
@@ -31,7 +32,9 @@ const VisualTab = ({
   onAddEvent,
   onTimelineUpdate,
   onCreateTimeline,
+  onCreateTempTimeline, // 新規：一時年表作成
   onDeleteTimeline,
+  onDeleteTempTimeline, // 新規：一時年表削除
   onEventClick,
   onTimelineClick,
 
@@ -77,6 +80,43 @@ const VisualTab = ({
     resetToInitialPosition
   } = coordinates;
 
+  // 表示用の統合年表データ（個人年表 + 一時年表）
+  const displayTimelines = useMemo(() => {
+    if (isWikiMode) {
+      // Wiki一時年表をtimelineInfos形式に変換
+      const convertedTempTimelines = tempTimelines.map(tempTimeline => ({
+        ...tempTimeline,
+        isVisible: true,
+        type: 'temporary'
+      }));
+      return [...timelines, ...convertedTempTimelines];
+    }
+    return timelines;
+  }, [isWikiMode, timelines, tempTimelines]);
+
+  // 表示用イベントデータ（一時年表のイベント関連付け込み）
+  const displayEvents = useMemo(() => {
+    if (!isWikiMode) return events;
+
+    // Wiki一時年表のイベントに仮想的なtimelineInfosを追加
+    return events.map(event => {
+      const tempTimelineInfos = tempTimelines.reduce((acc, tempTimeline) => {
+        if (tempTimeline.eventIds?.includes(event.id)) {
+          acc.push({
+            timelineId: tempTimeline.id,
+            isTemporary: false
+          });
+        }
+        return acc;
+      }, []);
+
+      return {
+        ...event,
+        timelineInfos: [...(event.timelineInfos || []), ...tempTimelineInfos]
+      };
+    });
+  }, [isWikiMode, events, tempTimelines]);
+
   // 全体レイアウト管理
   const {
     layoutEvents,
@@ -85,7 +125,7 @@ const VisualTab = ({
     yearMarkers,
     mainTimelineLine,
     layoutInfo
-  } = useVisualLayout(events, timelines, coordinates, viewMode);
+  } = useVisualLayout(displayEvents, displayTimelines, coordinates, viewMode);
 
   // 年マーカー生成
   const generateYearMarkers = useMemo(() => {
@@ -120,6 +160,12 @@ const VisualTab = ({
   }, [onEventClick]);
 
   const handleAddEvent = useCallback(() => {
+    if (isWikiMode) {
+      // Wikiモードでは承認申請へ誘導
+      alert("Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。");
+      return;
+    }
+    
     console.log("VisualTab: Add event button clicked - onAddEvent:", !!onAddEvent);
     if (onAddEvent) {
       const result = onAddEvent({
@@ -132,17 +178,23 @@ const VisualTab = ({
     } else {
       console.error("VisualTab: onAddEvent関数が提供されていません");
     }
-  }, [onAddEvent]);
+  }, [onAddEvent, isWikiMode]);
 
   const handleCreateTimeline = useCallback(() => {
-    console.log("VisualTab: Create timeline clicked - onCreateTimeline:", !!onCreateTimeline, "highlighted:", highlightedEvents?.length || 0);
-    if (onCreateTimeline) {
-      const result = onCreateTimeline();
-      console.log("VisualTab: 年表作成結果:", result);
+    if (isWikiMode) {
+      console.log("VisualTab: Wiki一時年表作成:", onCreateTempTimeline);
+      if (onCreateTempTimeline) {
+        const result = onCreateTempTimeline();
+        console.log("VisualTab: 一時年表作成結果:", result);
+      }
     } else {
-      console.error("VisualTab: onCreateTimeline関数が提供されていません");
+      console.log("VisualTab: 個人年表作成:", onCreateTimeline);
+      if (onCreateTimeline) {
+        const result = onCreateTimeline();
+        console.log("VisualTab: 年表作成結果:", result);
+      }
     }
-  }, [onCreateTimeline, highlightedEvents]);
+  }, [onCreateTimeline, onCreateTempTimeline, isWikiMode]);
 
   const handleTimelineDoubleClick = useCallback((e) => {
     console.log("VisualTab: Timeline double click detected");
@@ -156,14 +208,17 @@ const VisualTab = ({
   const handleTimelineHover = useCallback(() => {}, []);
 
   console.log(`VisualTab ${isNetworkMode ? 'Network' : 'Timeline'} render:`, {
-    events: events?.length || 0,
-    timelines: timelines?.length || 0,
+    events: displayEvents?.length || 0,
+    timelines: displayTimelines?.length || 0,
+    tempTimelines: tempTimelines?.length || 0,
     layoutEvents: layoutEvents?.length || 0,
     connections: networkConnections?.length || 0,
     scale: scale?.toFixed(2),
     viewMode,
+    isWikiMode,
     onAddEvent: !!onAddEvent,
-    onCreateTimeline: !!onCreateTimeline
+    onCreateTimeline: !!onCreateTimeline,
+    onCreateTempTimeline: !!onCreateTempTimeline
   });
 
   return (
@@ -287,30 +342,41 @@ const VisualTab = ({
         })}
 
         {/* 年表概要カード */}
-        {timelineAxes.map((axis) => (
-          <TimelineCard
-            key={`timeline-card-${axis.id}`}
-            timeline={timelines?.find((t) => t.id === axis.id)}
-            position={{ x: axis.cardX, y: axis.yPosition + panY - 30 }}
-            onEdit={() => {
-              const timeline = timelines?.find((t) => t.id === axis.id);
-              console.log('VisualTab: TimelineCard onEdit呼び出し:', timeline?.name);
-              if (timeline && onTimelineClick) {
-                onTimelineClick(timeline);
-              }
-            }}
-            onDelete={() => onDeleteTimeline && onDeleteTimeline(axis.id)}
-            onToggleVisibility={(timelineId) => {
-              if (onTimelineUpdate) {
-                const updatedTimelines = timelines.map((t) => 
-                  t.id === timelineId ? { ...t, isVisible: !t.isVisible } : t
-                );
-                onTimelineUpdate(updatedTimelines);
-              }
-            }}
-            className="no-pan"
-          />
-        ))}
+        {timelineAxes.map((axis) => {
+          const timeline = displayTimelines?.find((t) => t.id === axis.id);
+          const isTemporary = timeline?.type === 'temporary';
+          
+          return (
+            <TimelineCard
+              key={`timeline-card-${axis.id}`}
+              timeline={timeline}
+              position={{ x: axis.cardX, y: axis.yPosition + panY - 30 }}
+              isTemporary={isTemporary}
+              onEdit={() => {
+                console.log('VisualTab: TimelineCard onEdit呼び出し:', timeline?.name);
+                if (timeline && onTimelineClick) {
+                  onTimelineClick(timeline);
+                }
+              }}
+              onDelete={() => {
+                if (isTemporary && onDeleteTempTimeline) {
+                  onDeleteTempTimeline(axis.id);
+                } else if (!isTemporary && onDeleteTimeline) {
+                  onDeleteTimeline(axis.id);
+                }
+              }}
+              onToggleVisibility={(timelineId) => {
+                if (onTimelineUpdate && !isTemporary) {
+                  const updatedTimelines = timelines.map((t) => 
+                    t.id === timelineId ? { ...t, isVisible: !t.isVisible } : t
+                  );
+                  onTimelineUpdate(updatedTimelines);
+                }
+              }}
+              className="no-pan"
+            />
+          );
+        })}
 
         {/* 現在線 */}
         <div style={{
@@ -334,17 +400,19 @@ const VisualTab = ({
         position: "absolute", 
         left: "20px", 
         top: "20px", 
-        zIndex: 30,
-        width: "280px" // サイズを適切に制限
+        zIndex: 30
       }}>
         <SearchPanel
           searchTerm={searchTerm}
           highlightedEvents={highlightedEvents}
           onSearchChange={onSearchChange}
           onCreateTimeline={handleCreateTimeline}
+          onCreateTempTimeline={onCreateTempTimeline}
           onDeleteTimeline={onDeleteTimeline}
+          onDeleteTempTimeline={onDeleteTempTimeline}
           getTopTagsFromSearch={getTopTagsFromSearch}
           timelines={timelines}
+          tempTimelines={tempTimelines}
           isWikiMode={isWikiMode}
         />
       </div>
@@ -356,7 +424,7 @@ const VisualTab = ({
         borderRadius: "6px", fontSize: "12px", color: "#6b7280",
         border: "1px solid #e5e7eb"
       }}>
-        {isNetworkMode ? "🕸️ ネットワークモード" : "📊 年表モード"}
+        {isWikiMode ? "📚 Wiki" : "👤 個人"} | {isNetworkMode ? "🕸️ ネットワーク" : "📊 年表"}
       </div>
 
       {/* ボタン群 */}
@@ -371,12 +439,14 @@ const VisualTab = ({
         }} title="初期位置に戻す">初期位置</button>
         
         <button onClick={handleAddEvent} style={{
-          backgroundColor: "#3b82f6", color: "white", border: "none",
+          backgroundColor: isWikiMode ? "#6b7280" : "#3b82f6", 
+          color: "white", border: "none",
           borderRadius: "50%", width: "56px", height: "56px",
-          fontSize: "24px", cursor: "pointer",
+          fontSize: "24px", cursor: isWikiMode ? "not-allowed" : "pointer",
           boxShadow: "0 4px 12px rgba(59, 130, 246, 0.4)",
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }} title="イベントを追加">+</button>
+          display: "flex", alignItems: "center", justifyContent: "center",
+          opacity: isWikiMode ? 0.5 : 1
+        }} title={isWikiMode ? "Wikiでは承認申請が必要です" : "イベントを追加"}>+</button>
       </div>
 
       {/* モーダル（App.jsで管理） */}
@@ -387,7 +457,7 @@ const VisualTab = ({
           onUpdate={onEventUpdate}
           onDelete={onEventDelete}
           isWikiMode={isWikiMode}
-          timelines={timelines || []}
+          timelines={displayTimelines || []}
         />
       )}
 
@@ -396,8 +466,9 @@ const VisualTab = ({
           timeline={selectedTimeline}
           onClose={onCloseTimelineModal}
           onUpdate={onTimelineUpdate}
-          onDelete={onDeleteTimeline}
+          onDelete={selectedTimeline?.type === 'temporary' ? onDeleteTempTimeline : onDeleteTimeline}
           isWikiMode={isWikiMode}
+          isTemporary={selectedTimeline?.type === 'temporary'}
         />
       )}
     </div>

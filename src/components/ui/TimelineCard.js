@@ -1,251 +1,205 @@
-// TimelineCard.js の適切な修正
-// 既存の実装を尊重し、panY の適切な反映のみを修正
+// src/components/ui/TimelineCard.js - 一時年表対応版
+import React from 'react';
 
-import React, { memo } from 'react';
-
-const TimelineCard = memo(({
+export const TimelineCard = ({
   timeline,
-  position, // { x, y } - y は既に panY が考慮済み
-  compact = false,
+  position = { x: 0, y: 0 },
+  isTemporary = false, // 新規：一時年表フラグ
   onEdit,
   onDelete,
   onToggleVisibility,
-  onClick,
-  style = {}
+  onSaveToPersonal, // 新規：個人ファイルに保存
+  className = "",
+  user = null
 }) => {
-  // 統計情報の計算（既存ロジックを維持）
-  const stats = {
-    originalEvents: timeline.events?.length || 0,
-    temporaryEvents: timeline.temporaryEvents?.length || 0,
-    removedEvents: timeline.removedEvents?.length || 0,
-    get totalEvents() {
-      return this.originalEvents + this.temporaryEvents;
+  if (!timeline) return null;
+
+  const handleDoubleClick = (e) => {
+    e.stopPropagation();
+    if (onEdit) {
+      onEdit(timeline);
     }
   };
 
-  // 日付範囲の計算
-  let dateRange = null;
-  const allEvents = [...(timeline.events || []), ...(timeline.temporaryEvents || [])];
-  if (allEvents.length > 0) {
-    const dates = allEvents
-      .filter(event => event.startDate)
-      .map(event => new Date(event.startDate))
-      .sort((a, b) => a - b);
-    
-    if (dates.length > 0) {
-      const minYear = dates[0].getFullYear();
-      const maxYear = dates[dates.length - 1].getFullYear();
-      dateRange = minYear === maxYear ? `${minYear}年` : `${minYear}年〜${maxYear}年`;
+  const handleSaveToPersonal = (e) => {
+    e.stopPropagation();
+    if (onSaveToPersonal) {
+      onSaveToPersonal(timeline);
     }
-  }
+  };
+
+  // 一時年表用のスタイル
+  const tempStyles = isTemporary ? {
+    border: '2px dashed #3b82f6',
+    backgroundColor: '#dbeafe',
+    opacity: 0.9
+  } : {};
 
   const baseStyles = {
-    position: "absolute",
+    position: 'absolute',
     left: `${position.x}px`,
-    top: `${position.y}px`, // panY は呼び出し側で既に考慮済み
-    width: compact ? "180px" : "220px",
-    minHeight: compact ? "80px" : "120px",
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    backdropFilter: "blur(8px)",
-    border: "1px solid #e5e7eb",
-    borderRadius: "8px",
-    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-    cursor: onClick ? "pointer" : "default",
-    padding: compact ? "8px" : "12px",
-    zIndex: 25,
-    ...style
-  };
-
-  const headerStyles = {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: compact ? "6px" : "8px"
-  };
-
-  const titleStyles = {
-    fontSize: compact ? "12px" : "14px",
-    fontWeight: "600",
-    color: "#1f2937",
-    lineHeight: "1.2",
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    flex: 1
-  };
-
-  const buttonStyles = {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    padding: "4px",
-    fontSize: compact ? "12px" : "14px",
-    width: compact ? "16px" : "20px",
-    height: compact ? "16px" : "20px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "3px",
-    transition: "all 0.2s"
-  };
-
-  const statsStyles = {
-    fontSize: compact ? "10px" : "11px",
-    color: "#6b7280",
-    marginBottom: compact ? "4px" : "6px"
-  };
-
-  const dateRangeStyles = {
-    fontSize: compact ? "9px" : "10px",
-    color: "#9ca3af",
-    fontWeight: "500"
-  };
-
-  const colorIndicatorStyles = {
-    position: "absolute",
-    top: "0",
-    left: "0",
-    right: "0",
-    height: "3px",
-    backgroundColor: timeline.color || "#e5e7eb",
-    borderRadius: "6px 6px 0 0"
+    top: `${position.y}px`,
+    width: '200px',
+    padding: '12px',
+    backgroundColor: '#f9fafb',
+    border: '1px solid #e5e7eb',
+    borderRadius: '8px',
+    boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+    cursor: 'pointer',
+    zIndex: 15,
+    fontSize: '12px',
+    userSelect: 'none',
+    ...tempStyles
   };
 
   return (
     <div
+      className={className}
       style={baseStyles}
-      onClick={onClick}
-      className="no-pan" // パン操作を無効化
+      onDoubleClick={handleDoubleClick}
+      title={isTemporary ? "一時作成年表 - ダブルクリックで操作" : "ダブルクリックで編集"}
     >
-      {/* カラーインジケーター */}
-      <div style={colorIndicatorStyles} />
-      
       {/* ヘッダー */}
-      <div style={headerStyles}>
-        <div style={titleStyles}>
-          {timeline.name || '無題の年表'}
-          {timeline.isTemporary && (
-            <span style={{
-              fontSize: "8px",
-              padding: "2px 6px",
-              borderRadius: "8px",
-              fontWeight: "600",
-              color: "white",
-              backgroundColor: "#f59e0b",
-              marginLeft: "4px"
-            }}>
-              仮
-            </span>
-          )}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: '8px'
+      }}>
+        <div style={{
+          fontSize: '13px',
+          fontWeight: '600',
+          color: isTemporary ? '#1e40af' : '#374151',
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}>
+          {isTemporary ? '📋' : '📊'} {timeline.name}
         </div>
         
-        <div style={{ display: "flex", gap: "2px" }}>
-          {/* 表示/非表示切り替え */}
-          {onToggleVisibility && (
+        {/* 操作ボタン群 */}
+        <div style={{ display: 'flex', gap: '4px', marginLeft: '8px' }}>
+          {/* 表示切替（通常年表のみ） */}
+          {!isTemporary && onToggleVisibility && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleVisibility(timeline.id);
               }}
               style={{
-                ...buttonStyles,
-                color: timeline.isVisible ? "#6b7280" : "#d1d5db"
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                padding: '2px',
+                opacity: timeline.isVisible ? 1 : 0.5
               }}
-              title={timeline.isVisible ? "非表示にする" : "表示する"}
+              title={timeline.isVisible ? '年表を非表示' : '年表を表示'}
             >
-              {timeline.isVisible ? "👁️" : "👁️‍🗨️"}
+              {timeline.isVisible ? '👁️' : '🙈'}
             </button>
           )}
-          
-          {/* 編集ボタン */}
-          {onEdit && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(timeline);
-              }}
-              style={buttonStyles}
-              title="編集"
-            >
-              ✏️
-            </button>
-          )}
-          
+
           {/* 削除ボタン */}
           {onDelete && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (window.confirm(`年表「${timeline.name}」を削除しますか？`)) {
+                const confirmMessage = isTemporary 
+                  ? `一時年表「${timeline.name}」を削除しますか？`
+                  : `年表「${timeline.name}」を削除しますか？`;
+                if (window.confirm(confirmMessage)) {
                   onDelete(timeline.id);
                 }
               }}
               style={{
-                ...buttonStyles,
-                color: "#ef4444"
+                background: 'none',
+                border: 'none',
+                color: '#ef4444',
+                cursor: 'pointer',
+                fontSize: '12px',
+                padding: '2px 4px',
+                borderRadius: '2px'
               }}
-              title="削除"
+              title={isTemporary ? '一時年表を削除' : '年表を削除'}
             >
-              🗑️
+              ×
             </button>
           )}
         </div>
       </div>
-      
-      {/* 統計情報（非コンパクトモード） */}
-      {!compact && (
-        <div style={statsStyles}>
-          {stats.totalEvents > 0 && `📊 ${stats.totalEvents}件`}
-          {stats.temporaryEvents > 0 && ` (仮: ${stats.temporaryEvents})`}
-          {stats.removedEvents > 0 && ` (削除: ${stats.removedEvents})`}
-        </div>
+
+      {/* 統計情報 */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        fontSize: '11px',
+        color: '#6b7280',
+        marginBottom: '8px'
+      }}>
+        <span>
+          {timeline.eventCount || timeline.eventIds?.length || 0} イベント
+        </span>
+        {timeline.color && (
+          <div
+            style={{
+              width: '12px',
+              height: '12px',
+              borderRadius: '50%',
+              backgroundColor: timeline.color,
+              border: '1px solid #e5e7eb'
+            }}
+          />
+        )}
+      </div>
+
+      {/* 一時年表専用：個人ファイル保存ボタン */}
+      {isTemporary && user && onSaveToPersonal && (
+        <button
+          onClick={handleSaveToPersonal}
+          style={{
+            width: '100%',
+            padding: '6px 12px',
+            backgroundColor: '#10b981',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            fontSize: '11px',
+            fontWeight: '500',
+            cursor: 'pointer',
+            marginTop: '4px'
+          }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#059669'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#10b981'}
+        >
+          📥 個人ファイルに保存
+        </button>
       )}
-      
-      {/* 日付範囲 */}
-      {!compact && dateRange && (
-        <div style={dateRangeStyles}>
-          📅 {dateRange}
-        </div>
-      )}
-      
-      {/* タグ表示（非コンパクトモード） */}
-      {!compact && timeline.tags && timeline.tags.length > 0 && (
+
+      {/* 一時年表の説明 */}
+      {isTemporary && (
         <div style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "2px",
-          marginTop: "4px"
+          fontSize: '10px',
+          color: '#6b7280',
+          marginTop: '6px',
+          fontStyle: 'italic'
         }}>
-          {timeline.tags.slice(0, 3).map((tag, index) => (
-            <span
-              key={index}
-              style={{
-                fontSize: "8px",
-                padding: "1px 4px",
-                backgroundColor: "#f3f4f6",
-                color: "#6b7280",
-                borderRadius: "6px",
-                fontWeight: "500"
-              }}
-            >
-              #{tag}
-            </span>
-          ))}
-          {timeline.tags.length > 3 && (
-            <span style={{
-              fontSize: "8px",
-              color: "#9ca3af",
-              fontStyle: "italic"
-            }}>
-              +{timeline.tags.length - 3}
-            </span>
-          )}
+          一時作成された年表です
+        </div>
+      )}
+
+      {/* 通常年表の作成日時 */}
+      {!isTemporary && timeline.createdAt && (
+        <div style={{
+          fontSize: '10px',
+          color: '#9ca3af',
+          marginTop: '4px'
+        }}>
+          {new Date(timeline.createdAt).toLocaleDateString('ja-JP')}
         </div>
       )}
     </div>
   );
-});
-
-TimelineCard.displayName = 'TimelineCard';
-
-export { TimelineCard };
+};
