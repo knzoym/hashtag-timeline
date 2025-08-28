@@ -45,16 +45,34 @@ const AppContent = () => {
   const coordinates = useUnifiedCoordinates(timelineRef);
   
   // データ管理（App.jsレベルで統一管理）
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([
+    // 初期サンプルデータ（テスト用）
+    {
+      id: 1,
+      title: "サンプルイベント1",
+      startDate: new Date(2023, 0, 15),
+      endDate: new Date(2023, 0, 15),
+      description: "これはサンプルイベントです",
+      tags: ["テスト", "サンプル"]
+    },
+    {
+      id: 2,
+      title: "サンプルイベント2", 
+      startDate: new Date(2023, 5, 10),
+      endDate: new Date(2023, 5, 10),
+      description: "2つ目のサンプルイベント",
+      tags: ["テスト", "例"]
+    }
+  ]);
   const [timelines, setTimelines] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedTimeline, setSelectedTimeline] = useState(null);
   const [hoveredGroup, setHoveredGroup] = useState(null);
   
-  // 検索でハイライトされるイベント
+  // 検索でハイライトされるイベント（配列形式でSearchPanelに対応）
   const highlightedEvents = useMemo(() => {
-    if (!searchTerm.trim()) return new Set();
+    if (!searchTerm.trim()) return [];
     
     const term = searchTerm.toLowerCase();
     const matchingEvents = events.filter(event => {
@@ -63,18 +81,21 @@ const AppContent = () => {
              event.tags?.some(tag => tag.toLowerCase().includes(term));
     });
     
-    return new Set(matchingEvents.map(e => e.id));
+    return matchingEvents;
   }, [searchTerm, events]);
   
   // イベント操作
-  const addEvent = useCallback((newEvent) => {
+  const addEvent = useCallback((newEventData) => {
     const event = {
-      ...newEvent,
-      id: newEvent.id || Date.now(),
-      startDate: new Date(newEvent.date || newEvent.startDate),
-      endDate: new Date(newEvent.date || newEvent.endDate || newEvent.startDate)
+      id: Date.now(),
+      title: newEventData?.title || '新規イベント',
+      startDate: newEventData?.startDate || new Date(),
+      endDate: newEventData?.endDate || newEventData?.startDate || new Date(),
+      description: newEventData?.description || '',
+      tags: newEventData?.tags || []
     };
     setEvents(prev => [...prev, event]);
+    console.log('イベント追加:', event.title);
     return event;
   }, []);
 
@@ -90,11 +111,7 @@ const AppContent = () => {
   
   // 年表操作
   const createTimeline = useCallback((timelineData) => {
-    const highlightedEventsList = events.filter(event => 
-      highlightedEvents.has(event.id)
-    );
-    
-    if (highlightedEventsList.length === 0) {
+    if (highlightedEvents.length === 0) {
       alert("検索でイベントを選択してから年表を作成してください");
       return null;
     }
@@ -103,23 +120,26 @@ const AppContent = () => {
       id: Date.now(),
       name: timelineData?.name || `年表_${new Date().toLocaleDateString()}`,
       color: timelineData?.color || `hsl(${Math.random() * 360}, 70%, 50%)`,
-      events: highlightedEventsList,
+      events: [...highlightedEvents], // 配列から直接コピー
       isVisible: true,
       createdAt: new Date(),
       ...timelineData
     };
     
     setTimelines(prev => [...prev, timeline]);
+    console.log('年表作成:', timeline.name, '含むイベント:', timeline.events.length);
     return timeline;
-  }, [events, highlightedEvents]);
+  }, [highlightedEvents]);
 
   const deleteTimeline = useCallback((timelineId) => {
     setTimelines(prev => prev.filter(timeline => timeline.id !== timelineId));
   }, []);
   
   // UI操作
-  const handleSearchChange = useCallback((term) => {
-    setSearchTerm(term || '');
+  const handleSearchChange = useCallback((e) => {
+    const value = typeof e === 'string' ? e : (e?.target?.value || '');
+    setSearchTerm(value);
+    console.log('検索語変更:', value);
   }, []);
   
   const closeEventModal = useCallback(() => {
@@ -130,9 +150,20 @@ const AppContent = () => {
     setSelectedTimeline(null);
   }, []);
   
+  // イベントクリック時のモーダル表示
+  const handleEventClick = useCallback((event) => {
+    console.log('App.js: handleEventClick呼び出し:', event.title);
+    setSelectedEvent(event);
+  }, []);
+  
+  // タイムラインクリック時のモーダル表示  
+  const handleTimelineClick = useCallback((timeline) => {
+    console.log('App.js: handleTimelineClick呼び出し:', timeline.name);
+    setSelectedTimeline(timeline);
+  }, []);
+  
   const getTopTagsFromSearch = useCallback(() => {
-    const searchedEvents = events.filter(event => highlightedEvents.has(event.id));
-    const allTags = searchedEvents.flatMap(event => event.tags || []);
+    const allTags = highlightedEvents.flatMap(event => event.tags || []);
     const tagCount = {};
     allTags.forEach(tag => {
       tagCount[tag] = (tagCount[tag] || 0) + 1;
@@ -142,7 +173,7 @@ const AppContent = () => {
       .sort(([,a], [,b]) => b - a)
       .slice(0, 3)
       .map(([tag]) => tag);
-  }, [events, highlightedEvents]);
+  }, [highlightedEvents]);
   
   // ドラッグ&ドロップ対応
   const { handleDrop } = useDragDrop(setEvents, setTimelines);
@@ -212,7 +243,11 @@ const AppContent = () => {
     events: events.length,
     timelines: timelines.length,
     currentTab,
-    isMyPageMode
+    isMyPageMode,
+    selectedEvent: !!selectedEvent,
+    selectedTimeline: !!selectedTimeline,
+    selectedEventTitle: selectedEvent?.title,
+    selectedTimelineName: selectedTimeline?.name
   });
   
   return (
@@ -272,6 +307,8 @@ const AppContent = () => {
             onCreateTimeline={createTimeline}
             onDeleteTimeline={deleteTimeline}
             getTopTagsFromSearch={getTopTagsFromSearch}
+            onEventClick={handleEventClick}
+            onTimelineClick={handleTimelineClick}
             
             currentPageMode={currentPageMode}
             currentTab={currentTab}

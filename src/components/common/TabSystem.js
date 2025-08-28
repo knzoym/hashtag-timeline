@@ -35,6 +35,8 @@ const TabSystem = ({
   onCreateTimeline,
   onDeleteTimeline,
   getTopTagsFromSearch,
+  onEventClick,
+  onTimelineClick,
   
   // モーダル関連
   selectedEvent,
@@ -93,6 +95,8 @@ const TabSystem = ({
             {...commonProps}
             {...visualProps}
             viewMode="timeline"
+            onEventClick={onEventClick}
+            onTimelineClick={onTimelineClick}
           />
         );
         
@@ -102,6 +106,8 @@ const TabSystem = ({
             {...commonProps}
             {...visualProps}
             viewMode="network"
+            onEventClick={onEventClick}
+            onTimelineClick={onTimelineClick}
           />
         );
         
