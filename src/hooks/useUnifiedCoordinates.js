@@ -1,10 +1,14 @@
-// src/hooks/useUnifiedCoordinates.js - React Hook依存関係修正版
+// src/hooks/useUnifiedCoordinates.js - 座標変換修正版
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { TIMELINE_CONFIG } from '../constants/timelineConfig';
 
 export const useUnifiedCoordinates = (timelineRef) => {
   // 座標とズーム状態
-  const [scale, setScale] = useState(1);
-  const [panX, setPanX] = useState(0);
+  const [scale, setScale] = useState(TIMELINE_CONFIG.DEFAULT_SCALE);
+  const [panX, setPanX] = useState(() => {
+    const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
+    return window.innerWidth / 2 - (2080 - (-5000)) * initialPixelsPerYear;
+  });
   const [panY, setPanY] = useState(0);
   
   // マウス操作の状態
@@ -12,54 +16,58 @@ export const useUnifiedCoordinates = (timelineRef) => {
   const dragStartRef = useRef({ x: 0, y: 0 });
   const lastPanRef = useRef({ x: 0, y: 0 });
   
-  // 定数
-  const PIXELS_PER_YEAR_BASE = 100;
-  const MIN_SCALE = 0.1;
-  const MAX_SCALE = 10;
+  // 現在のピクセル/年計算（古いVisualTab互換）
+  const pixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * scale;
   
-  // 現在のピクセル/年計算
-  const currentPixelsPerYear = PIXELS_PER_YEAR_BASE * scale;
+  // 年からX座標への変換（古いVisualTab互換）
+  const getXFromYear = useCallback((year) => {
+    return (year - (-5000)) * pixelsPerYear + panX;
+  }, [pixelsPerYear, panX]);
+  
+  // X座標から年への変換（古いVisualTab互換）
+  const getYearFromX = useCallback((x) => {
+    return (-5000) + (x - panX) / pixelsPerYear;
+  }, [pixelsPerYear, panX]);
   
   // 初期位置にリセット
   const resetToInitialPosition = useCallback(() => {
-    setScale(1);
-    setPanX(0);
+    const initialPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * TIMELINE_CONFIG.DEFAULT_SCALE;
+    const initialPanX = window.innerWidth / 2 - (2080 - (-5000)) * initialPixelsPerYear;
+    
+    setScale(TIMELINE_CONFIG.DEFAULT_SCALE);
+    setPanX(initialPanX);
     setPanY(0);
     setIsDragging(false);
   }, []);
   
-  // ホイールによるズーム
+  // ホイールによるズーム（古いVisualTab互換）
   const handleWheel = useCallback((e) => {
     e.preventDefault();
+    if (!timelineRef.current) return;
     
-    const deltaY = e.deltaY;
-    const zoomFactor = deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * zoomFactor));
+    const rect = timelineRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const yearAtMouse = getYearFromX(mouseX);
     
-    if (newScale !== scale) {
-      // マウス位置を中心にズーム
-      const rect = timelineRef?.current?.getBoundingClientRect();
-      if (rect) {
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
-        
-        // ズーム中心を調整
-        const scaleRatio = newScale / scale;
-        const newPanX = mouseX - (mouseX - panX) * scaleRatio;
-        const newPanY = mouseY - (mouseY - panY) * scaleRatio;
-        
-        setScale(newScale);
-        setPanX(newPanX);
-        setPanY(newPanY);
-      } else {
-        setScale(newScale);
-      }
-    }
-  }, [scale, panX, panY, timelineRef]);
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.05, Math.min(100, scale * zoomFactor));
+    const newPixelsPerYear = TIMELINE_CONFIG.BASE_PIXELS_PER_YEAR * newScale;
+    
+    let newPanX = mouseX - (yearAtMouse - (-5000)) * newPixelsPerYear;
+    
+    const timelineWidth = (5000 - (-5000)) * newPixelsPerYear;
+    const viewportWidth = window.innerWidth;
+    const minPanX = -(timelineWidth - viewportWidth);
+    const maxPanX = 0;
+    newPanX = Math.max(minPanX, Math.min(maxPanX, newPanX));
+    
+    setScale(newScale);
+    setPanX(newPanX);
+  }, [scale, getYearFromX, timelineRef]);
   
   // マウスダウン開始
   const handleMouseDown = useCallback((e) => {
-    if (e.button !== 0) return; // 左クリックのみ
+    if (e.target.closest('.no-pan')) return;
     
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX, y: e.clientY };
@@ -75,90 +83,65 @@ export const useUnifiedCoordinates = (timelineRef) => {
     const deltaX = e.clientX - dragStartRef.current.x;
     const deltaY = e.clientY - dragStartRef.current.y;
     
-    setPanX(lastPanRef.current.x + deltaX);
-    setPanY(lastPanRef.current.y + deltaY);
-  }, [isDragging]);
+    let newPanX = lastPanRef.current.x + deltaX;
+    const newPanY = lastPanRef.current.y + deltaY;
+    
+    const timelineWidth = (5000 - (-5000)) * pixelsPerYear;
+    const viewportWidth = window.innerWidth;
+    const minPanX = -(timelineWidth - viewportWidth);
+    const maxPanX = 0;
+    newPanX = Math.max(minPanX, Math.min(maxPanX, newPanX));
+    
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }, [isDragging, lastPanRef, pixelsPerYear]);
   
   // マウスアップ終了
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
   }, []);
   
-  // ダブルクリック（ズームリセット）
-  const handleDoubleClick = useCallback((e) => {
-    e.preventDefault();
-    resetToInitialPosition();
-  }, [resetToInitialPosition]);
-  
   // グローバルマウスイベント設定
   useEffect(() => {
-    if (isDragging) {
-      const handleGlobalMouseMove = (e) => handleMouseMove(e);
-      const handleGlobalMouseUp = () => handleMouseUp();
-      
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-      
-      return () => {
-        document.removeEventListener('mousemove', handleGlobalMouseMove);
-        document.removeEventListener('mouseup', handleGlobalMouseUp);
-      };
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-  
-  // 座標変換ユーティリティ
-  const screenToWorld = useCallback((screenX, screenY) => {
-    return {
-      x: (screenX - panX) / scale,
-      y: (screenY - panY) / scale
+    const handleGlobalMouseMove = (e) => {
+      handleMouseMove(e);
     };
-  }, [panX, panY, scale]);
-  
-  const worldToScreen = useCallback((worldX, worldY) => {
-    return {
-      x: worldX * scale + panX,
-      y: worldY * scale + panY
+    
+    const handleGlobalMouseUp = (e) => {
+      handleMouseUp(e);
     };
-  }, [panX, panY, scale]);
-  
-  // 年からX座標への変換
-  const yearToX = useCallback((year) => {
-    return year * currentPixelsPerYear;
-  }, [currentPixelsPerYear]);
-  
-  // X座標から年への変換
-  const xToYear = useCallback((x) => {
-    return x / currentPixelsPerYear;
-  }, [currentPixelsPerYear]);
+    
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
   
   return {
-    // 状態
+    // 状態（古いVisualTab互換）
     scale,
-    setScale,
     panX,
-    setPanX,
     panY,
-    setPanY,
+    pixelsPerYear,
     isDragging,
-    currentPixelsPerYear,
+    
+    // 座標変換（古いVisualTab互換）
+    getXFromYear,
+    getYearFromX,
     
     // イベントハンドラー
     handleWheel,
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
-    handleDoubleClick,
-    
-    // ユーティリティ
     resetToInitialPosition,
-    screenToWorld,
-    worldToScreen,
-    yearToX,
-    xToYear,
     
-    // 定数
-    PIXELS_PER_YEAR_BASE,
-    MIN_SCALE,
-    MAX_SCALE
+    // 設定用関数
+    setScale,
+    setPanX,
+    setPanY
   };
 };

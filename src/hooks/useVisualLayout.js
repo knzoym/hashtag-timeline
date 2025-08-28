@@ -1,16 +1,7 @@
-// src/hooks/useVisualLayout.js - VisualTab全体レイアウト管理フック
+// src/hooks/useVisualLayout.js - レイアウト管理修正版
 import { useMemo, useCallback } from 'react';
 import { TIMELINE_CONFIG } from '../constants/timelineConfig';
-import { useTimelineRowLayout } from '../components/layout/TimelineRowSystem';
 
-/**
- * VisualTab全体のレイアウトを管理するフック
- * - タイムライン/ネットワークモードの切り替え
- * - 年マーカー生成
- * - 年表軸データ生成
- * - ネットワーク接続線データ生成
- * - イベントレイアウトの統合管理
- */
 export const useVisualLayout = (
   events,
   timelines,
@@ -19,39 +10,33 @@ export const useVisualLayout = (
 ) => {
   const isNetworkMode = viewMode === "network";
 
-  // テキスト幅計算（簡易版）
-  const calculateTextWidth = useCallback((text) => {
-    return (text?.length || 0) * 8;
+  // テキスト幅計算
+  const calculateTextWidth = useCallback((text, fontSize = 11) => {
+    try {
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      context.font = `${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
+      return context.measureText(text || '').width;
+    } catch (error) {
+      return (text?.length || 0) * 8;
+    }
   }, []);
 
-  // 縦方向配置システム（TimelineRowSystemを活用）
-  const { layoutEvents: rowLayoutEvents, timelineRows } = useTimelineRowLayout(
-    events,
-    timelines,
-    coordinates,
-    calculateTextWidth
-  );
-
-  // 年マーカー生成
+  // 年マーカー生成（古いVisualTab互換）
   const yearMarkers = useMemo(() => {
     if (!coordinates?.getXFromYear || !coordinates?.getYearFromX || !coordinates?.scale) {
       return [];
     }
 
     const markers = [];
-    const leftYear = coordinates.getYearFromX(-100);
-    const rightYear = coordinates.getYearFromX(window.innerWidth + 100);
-    const startYear = Math.floor(leftYear / 100) * 100;
-    const endYear = Math.ceil(rightYear / 100) * 100;
-
+    const startYear = Math.floor(coordinates.getYearFromX(0) / 100) * 100;
+    const endYear = Math.ceil(coordinates.getYearFromX(window.innerWidth) / 100) * 100;
+    
     for (let year = startYear; year <= endYear; year += 100) {
       const x = coordinates.getXFromYear(year);
       if (x >= -50 && x <= window.innerWidth + 50) {
-        const fontSize = Math.max(
-          8,
-          Math.min(12, 10 * Math.max(0.01, coordinates.scale) * 2)
-        );
-
+        const fontSize = Math.max(8, Math.min(12, 10 * Math.max(0.01, coordinates.scale) * 2));
+        
         markers.push({
           id: year,
           x,
@@ -63,153 +48,183 @@ export const useVisualLayout = (
     return markers;
   }, [coordinates]);
 
-  // 年表軸データ生成（タイムラインモード用）
+  // 年表軸データ生成（古いVisualTab互換）
   const timelineAxes = useMemo(() => {
     if (!timelines || !coordinates?.getXFromYear) return [];
     
-    return timelines.map((timeline, index) => {
-      const timelineEvents = events.filter(event => 
-        event.timelineInfos?.some(info => 
-          info.timelineId === timeline.id && !info.isTemporary
-        )
-      );
-      
-      if (timelineEvents.length === 0) return null;
-      
-      const years = timelineEvents
-        .filter(e => e.startDate)
-        .map(e => e.startDate.getFullYear());
+    console.log('timelineAxes計算開始:', {
+      timelinesCount: timelines.length,
+      visibleTimelines: timelines.filter(t => t.isVisible).length
+    });
+    
+    const axes = timelines.filter(timeline => timeline.isVisible)
+      .map((timeline, index) => {
+        console.log(`年表「${timeline.name}」処理開始`);
         
-      if (years.length === 0) return null;
-      
-      const minYear = Math.min(...years);
-      const maxYear = Math.max(...years);
-      
-      const startX = coordinates.getXFromYear(minYear);
-      const endX = coordinates.getXFromYear(maxYear);
-      const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + index * 120; // ROW_SYSTEM.ROW_HEIGHTと同等
-      
-      return {
-        id: timeline.id,
-        name: timeline.name,
-        color: timeline.color || '#6b7280',
-        yPosition: baseY + 60, // 行の中央
-        startX,
-        endX,
-        minYear,
-        maxYear,
-        cardX: Math.max(20, startX - 120),
-        eventCount: timelineEvents.length
-      };
-    }).filter(Boolean);
+        // timelineInfosから年表に属するイベントを抽出
+        const timelineEvents = events.filter(event => {
+          if (!event.timelineInfos || !Array.isArray(event.timelineInfos)) {
+            return false;
+          }
+          
+          // この年表に属し、仮削除されていないイベントを対象
+          return event.timelineInfos.some(info => 
+            info.timelineId === timeline.id && !info.isTemporary
+          );
+        });
+        
+        console.log(`年表「${timeline.name}」のイベント数:`, timelineEvents.length);
+        
+        if (timelineEvents.length === 0) {
+          console.log(`年表「${timeline.name}」: イベントがないためスキップ`);
+          return null;
+        }
+
+        const baseY = TIMELINE_CONFIG.FIRST_ROW_Y + index * TIMELINE_CONFIG.ROW_HEIGHT;
+        const axisY = baseY + TIMELINE_CONFIG.ROW_HEIGHT / 2;
+
+        const years = timelineEvents
+          .filter(e => e.startDate)
+          .map(e => e.startDate.getFullYear());
+        const minYear = Math.min(...years);
+        const maxYear = Math.max(...years);
+
+        const startX = coordinates.getXFromYear(minYear);
+        const endX = coordinates.getXFromYear(maxYear);
+
+        const axisData = {
+          id: timeline.id,
+          name: timeline.name,
+          color: timeline.color,
+          yPosition: axisY,
+          startX,
+          endX,
+          minYear,
+          maxYear,
+          cardX: Math.max(20, startX - 120),
+          eventCount: timelineEvents.length
+        };
+        
+        console.log(`年表「${timeline.name}」軸データ:`, axisData);
+        return axisData;
+      })
+      .filter(Boolean);
+    
+    console.log('timelineAxes計算完了:', axes.length, '本の軸を作成');
+    return axes;
   }, [timelines, events, coordinates]);
+
+  // イベントレイアウト処理（古いVisualTab互換）
+  const layoutEvents = useMemo(() => {
+    if (!events || events.length === 0) return [];
+
+    const layoutResults = [];
+    const occupiedPositions = new Map();
+
+    const sortedEvents = [...events].sort((a, b) => {
+      const aYear = a.startDate ? a.startDate.getFullYear() : 2000;
+      const bYear = b.startDate ? b.startDate.getFullYear() : 2000;
+      return aYear - bYear;
+    });
+
+    sortedEvents.forEach((event) => {
+      const eventX = event.startDate ? coordinates.getXFromYear(event.startDate.getFullYear()) : 100;
+      const textWidth = calculateTextWidth ? calculateTextWidth(event.title || '') : 60;
+      const eventWidth = Math.max(60, textWidth + 20);
+      
+      let eventY = TIMELINE_CONFIG.MAIN_TIMELINE_Y;
+      let level = 0;
+
+      while (level < 20) {
+        const currentY = TIMELINE_CONFIG.MAIN_TIMELINE_Y + level * (TIMELINE_CONFIG.EVENT_HEIGHT + 15);
+        const occupiedAtThisY = occupiedPositions.get(currentY) || [];
+
+        const hasCollision = occupiedAtThisY.some((occupiedEvent) => {
+          const distance = Math.abs(eventX - occupiedEvent.x);
+          const minDistance = (eventWidth + occupiedEvent.width) / 2 + 10;
+          return distance < minDistance;
+        });
+
+        if (!hasCollision) {
+          eventY = currentY;
+          if (!occupiedPositions.has(currentY)) {
+            occupiedPositions.set(currentY, []);
+          }
+          occupiedPositions.get(currentY).push({
+            x: eventX,
+            width: eventWidth,
+            eventId: event.id
+          });
+          break;
+        }
+        level++;
+      }
+
+      layoutResults.push({
+        ...event,
+        adjustedPosition: { x: eventX, y: eventY },
+        calculatedWidth: eventWidth,
+        level
+      });
+    });
+
+    return layoutResults;
+  }, [events, coordinates, calculateTextWidth]);
 
   // ネットワーク接続線データ生成
   const networkConnections = useMemo(() => {
-    if (!isNetworkMode || !events || !timelines) return [];
+    if (!isNetworkMode || !timelines || !layoutEvents) return [];
     
     const connections = [];
-    
-    // 複数の年表に属するイベントの接続線を生成
-    events.forEach(event => {
-      if (!event.timelineInfos || event.timelineInfos.length <= 1) return;
-      
-      const eventTimelineInfos = event.timelineInfos.filter(info => !info.isTemporary);
-      if (eventTimelineInfos.length <= 1) return;
-      
-      const eventX = coordinates?.getXFromYear?.(event.startDate?.getFullYear?.()) || 0;
-      
-      // このイベントから各年表への接続線
-      eventTimelineInfos.forEach(timelineInfo => {
-        const timeline = timelines.find(t => t.id === timelineInfo.timelineId);
-        if (!timeline) return;
+    timelines.forEach(timeline => {
+      if (!timeline.isVisible) return;
+
+      const connectionPoints = [];
+      layoutEvents.forEach(eventPos => {
+        // timelineInfosから年表所属を判定
+        const belongsToThisTimeline = eventPos.timelineInfos?.some(info =>
+          info.timelineId === timeline.id && !info.isTemporary
+        );
         
-        const timelineIndex = timelines.findIndex(t => t.id === timeline.id);
-        const timelineY = TIMELINE_CONFIG.FIRST_ROW_Y + timelineIndex * 120 + 60;
-        
+        if (belongsToThisTimeline) {
+          connectionPoints.push({
+            x: eventPos.adjustedPosition.x,
+            y: eventPos.adjustedPosition.y + TIMELINE_CONFIG.EVENT_HEIGHT / 2
+          });
+        }
+      });
+
+      if (connectionPoints.length > 1) {
         connections.push({
-          id: `${event.id}-${timeline.id}`,
-          eventId: event.id,
-          timelineId: timeline.id,
-          startX: eventX,
-          startY: TIMELINE_CONFIG.MAIN_TIMELINE_Y,
-          endX: eventX,
-          endY: timelineY,
-          color: timeline.color || '#6b7280'
+          id: timeline.id,
+          name: timeline.name,
+          color: timeline.color,
+          points: connectionPoints
         });
-      });
+      }
     });
-    
+
     return connections;
-  }, [isNetworkMode, events, timelines, coordinates]);
+  }, [isNetworkMode, timelines, layoutEvents]);
 
-  // レイアウト済みイベントデータ（モード別調整）
-  const layoutEvents = useMemo(() => {
-    if (isNetworkMode) {
-      // ネットワークモード：メインタイムライン上に集約
-      return events.map(event => {
-        const eventX = coordinates?.getXFromYear?.(event.startDate?.getFullYear?.()) || 0;
-        const textWidth = calculateTextWidth(event.title || "");
-        const eventWidth = Math.max(60, textWidth + 20);
-        
-        return {
-          ...event,
-          adjustedPosition: { 
-            x: eventX, 
-            y: TIMELINE_CONFIG.MAIN_TIMELINE_Y 
-          },
-          calculatedWidth: eventWidth,
-          viewMode: 'network'
-        };
-      });
-    } else {
-      // タイムラインモード：行・段システムの結果を使用
-      return rowLayoutEvents;
-    }
-  }, [isNetworkMode, events, rowLayoutEvents, coordinates, calculateTextWidth]);
-
-  // メインタイムライン線の情報
-  const mainTimelineLine = {
+  // メインタイムライン線データ
+  const mainTimelineLine = useMemo(() => ({
     y: TIMELINE_CONFIG.MAIN_TIMELINE_Y,
-    color: '#374151',
-    width: '3px'
-  };
-
-  // レイアウト情報の統合
-  const layoutInfo = {
-    viewMode,
-    isNetworkMode,
-    containerStyles: {
-      width: "100%",
-      height: "100%",
-      position: "relative",
-      overflow: "hidden",
-      backgroundColor: "#f8fafc"
-    },
-    panelStyles: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      right: 0,
-      zIndex: 20
-    }
-  };
+    width: "3px",
+    color: "#374151"
+  }), []);
 
   return {
-    // レイアウトデータ
     layoutEvents,
     timelineAxes,
     networkConnections,
     yearMarkers,
-    timelineRows, // 詳細な行データ（TimelineRowSystemから）
-    
-    // UI要素
     mainTimelineLine,
-    
-    // レイアウト情報
-    layoutInfo,
-    
-    // ユーティリティ
-    calculateTextWidth
+    layoutInfo: {
+      isNetworkMode,
+      eventsCount: events?.length || 0,
+      timelinesCount: timelines?.length || 0,
+      visibleTimelines: timelines?.filter(t => t.isVisible).length || 0
+    }
   };
 };
