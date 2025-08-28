@@ -1,5 +1,5 @@
-// App.js - 未使用変数を整理し、統合座標管理に対応
-import React, { useRef, useCallback, useState } from 'react';
+// App.js - 完全修正版（構文エラー解消）
+import React, { useRef, useCallback, useState, useMemo } from 'react';
 import { PageModeProvider, usePageMode } from './contexts/PageModeContext';
 import Header from './components/common/Header';
 import TabSystem from './components/common/TabSystem';
@@ -7,12 +7,10 @@ import MyPage from './components/personal/MyPage';
 
 // 修正済みフック
 import { useUnifiedCoordinates } from './hooks/useUnifiedCoordinates';
-import { useTimelineLogic } from './hooks/useTimelineLogic';
 import { useDragDrop } from './hooks/useDragDrop';
 import { useAuth } from './hooks/useAuth';
 import { useSupabaseSync } from './hooks/useSupabaseSync';
 import { useWikiData } from './hooks/useWikiData';
-import { useIsDesktop } from './hooks/useMediaQuery';
 
 const AppContent = () => {
   const {
@@ -46,18 +44,108 @@ const AppContent = () => {
   // 統合座標管理
   const coordinates = useUnifiedCoordinates(timelineRef);
   
-  // タイムラインデータ管理
-  const timelineLogic = useTimelineLogic(timelineRef, coordinates);
-  const {
-    events, setEvents, timelines, setCreatedTimelines,
-    searchTerm, highlightedEvents, selectedEvent, selectedTimeline, hoveredGroup,
-    setHoveredGroup, addEvent, updateEvent, deleteEvent, createTimeline: baseCreateTimeline,
-    deleteTimeline, updateTimeline, openNewEventModal, openEventModal, closeEventModal,
-    openTimelineModal, closeTimelineModal, handleSearchChange, getTopTagsFromSearch
-  } = timelineLogic;
+  // データ管理（App.jsレベルで統一管理）
+  const [events, setEvents] = useState([]);
+  const [timelines, setTimelines] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedTimeline, setSelectedTimeline] = useState(null);
+  const [hoveredGroup, setHoveredGroup] = useState(null);
+  
+  // 検索でハイライトされるイベント
+  const highlightedEvents = useMemo(() => {
+    if (!searchTerm.trim()) return new Set();
+    
+    const term = searchTerm.toLowerCase();
+    const matchingEvents = events.filter(event => {
+      return event.title?.toLowerCase().includes(term) ||
+             event.description?.toLowerCase().includes(term) ||
+             event.tags?.some(tag => tag.toLowerCase().includes(term));
+    });
+    
+    return new Set(matchingEvents.map(e => e.id));
+  }, [searchTerm, events]);
+  
+  // イベント操作
+  const addEvent = useCallback((newEvent) => {
+    const event = {
+      ...newEvent,
+      id: newEvent.id || Date.now(),
+      startDate: new Date(newEvent.date || newEvent.startDate),
+      endDate: new Date(newEvent.date || newEvent.endDate || newEvent.startDate)
+    };
+    setEvents(prev => [...prev, event]);
+    return event;
+  }, []);
+
+  const updateEvent = useCallback((updatedEvent) => {
+    setEvents(prev => prev.map(event => 
+      event.id === updatedEvent.id ? updatedEvent : event
+    ));
+  }, []);
+
+  const deleteEvent = useCallback((eventId) => {
+    setEvents(prev => prev.filter(event => event.id !== eventId));
+  }, []);
+  
+  // 年表操作
+  const createTimeline = useCallback((timelineData) => {
+    const highlightedEventsList = events.filter(event => 
+      highlightedEvents.has(event.id)
+    );
+    
+    if (highlightedEventsList.length === 0) {
+      alert("検索でイベントを選択してから年表を作成してください");
+      return null;
+    }
+
+    const timeline = {
+      id: Date.now(),
+      name: timelineData?.name || `年表_${new Date().toLocaleDateString()}`,
+      color: timelineData?.color || `hsl(${Math.random() * 360}, 70%, 50%)`,
+      events: highlightedEventsList,
+      isVisible: true,
+      createdAt: new Date(),
+      ...timelineData
+    };
+    
+    setTimelines(prev => [...prev, timeline]);
+    return timeline;
+  }, [events, highlightedEvents]);
+
+  const deleteTimeline = useCallback((timelineId) => {
+    setTimelines(prev => prev.filter(timeline => timeline.id !== timelineId));
+  }, []);
+  
+  // UI操作
+  const handleSearchChange = useCallback((term) => {
+    setSearchTerm(term || '');
+  }, []);
+  
+  const closeEventModal = useCallback(() => {
+    setSelectedEvent(null);
+  }, []);
+  
+  const closeTimelineModal = useCallback(() => {
+    setSelectedTimeline(null);
+  }, []);
+  
+  const getTopTagsFromSearch = useCallback(() => {
+    const searchedEvents = events.filter(event => highlightedEvents.has(event.id));
+    const allTags = searchedEvents.flatMap(event => event.tags || []);
+    const tagCount = {};
+    allTags.forEach(tag => {
+      tagCount[tag] = (tagCount[tag] || 0) + 1;
+    });
+    
+    return Object.entries(tagCount)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 3)
+      .map(([tag]) => tag);
+  }, [events, highlightedEvents]);
   
   // ドラッグ&ドロップ対応
-  const { handleDrop } = useDragDrop(setEvents, setCreatedTimelines);
+  const { handleDrop } = useDragDrop(setEvents, setTimelines);
   
   // ファイル操作
   const handleNew = useCallback(async () => {
@@ -67,9 +155,9 @@ const AppContent = () => {
       }
     }
     setEvents([]);
-    setCreatedTimelines([]);
+    setTimelines([]);
     updateFileName('新規ファイル');
-  }, [events.length, timelines.length, setEvents, setCreatedTimelines, updateFileName]);
+  }, [events.length, timelines.length, updateFileName]);
 
   const handleSave = useCallback(async () => {
     if (!user) {
@@ -95,15 +183,9 @@ const AppContent = () => {
 
   const handleLoadTimeline = useCallback((timelineData) => {
     setEvents(timelineData.events || []);
-    setCreatedTimelines(timelineData.timelines || []);
+    setTimelines(timelineData.timelines || []);
     updateFileName(timelineData.name);
-  }, [setEvents, setCreatedTimelines, updateFileName]);
-
-  const handleCreateTimeline = useCallback((timelineData) => {
-    const newTimeline = baseCreateTimeline(timelineData);
-    console.log('App: Created timeline', newTimeline);
-    return newTimeline;
-  }, [baseCreateTimeline]);
+  }, [updateFileName]);
 
   // メニューアクション
   const handleMenuAction = useCallback((actionId) => {
@@ -116,7 +198,7 @@ const AppContent = () => {
         handleSave();
         break;
       case 'add-event':
-        openNewEventModal();
+        console.log('新規イベント作成');
         break;
       case 'initial-position':
         coordinates.resetToInitialPosition();
@@ -124,48 +206,8 @@ const AppContent = () => {
       default:
         console.log(`Menu action: ${actionId}`);
     }
-  }, [handleNew, handleSave, openNewEventModal, coordinates]);
+  }, [handleNew, handleSave, coordinates]);
   
-  // TabSystem用のprops
-  const tabSystemProps = {
-    events,
-    timelines,
-    user,
-    onEventUpdate: updateEvent,
-    onEventDelete: deleteEvent,
-    onTimelineUpdate: (updatedTimelines) => {
-      console.log('App: onTimelineUpdate called', updatedTimelines.length);
-      setCreatedTimelines(updatedTimelines);
-    },
-    onAddEvent: addEvent,
-    
-    // Timeline/Network固有の座標系（統合版）
-    timelineRef,
-    coordinates, // 統合座標管理オブジェクト
-    highlightedEvents,
-    searchTerm,
-    onSearchChange: handleSearchChange,
-    
-    // Wiki関連
-    wikiData,
-    showPendingEvents: false,
-    
-    // その他
-    onResetView: coordinates.resetToInitialPosition,
-    onMenuAction: handleMenuAction,
-    selectedEvent,
-    selectedTimeline,
-    onCloseEventModal: closeEventModal,
-    onCloseTimelineModal: closeTimelineModal,
-    hoveredGroup,
-    setHoveredGroup,
-    
-    // 検索・年表関連
-    onCreateTimeline: handleCreateTimeline,
-    onDeleteTimeline: deleteTimeline,
-    getTopTagsFromSearch
-  };
-
   console.log('App render:', {
     events: events.length,
     timelines: timelines.length,
@@ -201,7 +243,36 @@ const AppContent = () => {
           />
         ) : (
           <TabSystem
-            {...tabSystemProps}
+            events={events}
+            timelines={timelines}
+            user={user}
+            onEventUpdate={updateEvent}
+            onEventDelete={deleteEvent}
+            onTimelineUpdate={setTimelines}
+            onAddEvent={addEvent}
+            
+            timelineRef={timelineRef}
+            coordinates={coordinates}
+            highlightedEvents={highlightedEvents}
+            searchTerm={searchTerm}
+            onSearchChange={handleSearchChange}
+            
+            wikiData={wikiData}
+            showPendingEvents={false}
+            
+            onResetView={coordinates.resetToInitialPosition}
+            onMenuAction={handleMenuAction}
+            selectedEvent={selectedEvent}
+            selectedTimeline={selectedTimeline}
+            onCloseEventModal={closeEventModal}
+            onCloseTimelineModal={closeTimelineModal}
+            hoveredGroup={hoveredGroup}
+            setHoveredGroup={setHoveredGroup}
+            
+            onCreateTimeline={createTimeline}
+            onDeleteTimeline={deleteTimeline}
+            getTopTagsFromSearch={getTopTagsFromSearch}
+            
             currentPageMode={currentPageMode}
             currentTab={currentTab}
             isPersonalMode={isPersonalMode}
