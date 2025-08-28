@@ -456,14 +456,14 @@ const VisualTab = ({
 
           return (
             <React.Fragment key={`event-${event.id}-${index}`}>
-              {/* 年号表示 */}
+              {/* 年号表示（小型化） */}
               <div
                 style={{
                   position: "absolute",
                   left: `${eventX}px`,
-                  top: `${eventY - 20}px`,
+                  top: `${eventY - 16}px`,  // イベントカードが小さくなった分調整
                   transform: "translateX(-50%)",
-                  fontSize: "10px",
+                  fontSize: "9px",  // フォントサイズを10px→9pxに縮小
                   color: event.timelineColor || "#999",
                   fontWeight: "500",
                   textAlign: "center",
@@ -491,39 +491,39 @@ const VisualTab = ({
                 />
               )}
 
-              {/* イベントカード */}
+              {/* イベントカード（小型化） */}
               <div
                 data-event-id={event.id}
                 className="no-pan"
                 style={{
                   position: "absolute",
                   left: `${eventX - eventWidth / 2}px`,
-                  top: `${eventY - TIMELINE_CONFIG.EVENT_HEIGHT / 2}px`,
-                  width: `${eventWidth}px`,
-                  height: `${TIMELINE_CONFIG.EVENT_HEIGHT}px`,
+                  top: `${eventY - 12}px`,  // 高さを24pxに縮小（12px上下）
+                  width: `${Math.max(40, eventWidth * 0.8)}px`,  // 幅を80%に縮小、最小40px
+                  height: "24px",  // 高さを32px→24pxに縮小
                   backgroundColor: event.timelineInfo ? 
-                    getDarkerColor(event.timelineColor) : // 年表イベント：暗めの有彩色
-                    (isHighlighted ? "#4b5563" : "#6b7280"), // メインタイムライン：グレー
-                  color: "white", // 常に白文字
-                  border: `2px solid ${
+                    getDarkerColor(event.timelineColor) : 
+                    (isHighlighted ? "#4b5563" : "#6b7280"),
+                  color: "white",
+                  border: `1px solid ${  // 境界線を2px→1pxに縮小
                     isHighlighted ? "#f59e0b" : 
                     event.timelineInfo ? getDarkerColor(event.timelineColor, 20) : "#4b5563"
                   }`,
-                  borderRadius: "6px",
+                  borderRadius: "4px",  // 角丸を6px→4pxに縮小
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                   cursor: "pointer",
-                  fontSize: "11px",
+                  fontSize: "10px",  // フォントサイズを11px→10pxに縮小
                   fontWeight: "500",
                   boxShadow: isHighlighted
-                    ? "0 4px 12px rgba(245, 158, 11, 0.4)"
-                    : "0 2px 4px rgba(0, 0, 0, 0.1)",
+                    ? "0 2px 8px rgba(245, 158, 11, 0.4)"  // 影を縮小
+                    : "0 1px 3px rgba(0, 0, 0, 0.1)",
                   zIndex: isHighlighted ? 20 : 10,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
-                  padding: "0 8px",
+                  padding: "0 6px",  // パディングを8px→6pxに縮小
                   transition: "all 0.2s ease",
                 }}
                 onDoubleClick={(e) => {
@@ -532,7 +532,7 @@ const VisualTab = ({
                 }}
                 onMouseDown={(e) => e.stopPropagation()}
                 onMouseEnter={(e) => {
-                  e.target.style.transform = "scale(1.02)";
+                  e.target.style.transform = "scale(1.05)";  // ホバー時の拡大率を縮小
                 }}
                 onMouseLeave={(e) => {
                   e.target.style.transform = "scale(1)";
@@ -541,7 +541,7 @@ const VisualTab = ({
                   event.startDate?.toLocaleDateString("ja-JP") || ""
                 }\nダブルクリックで編集`}
               >
-                {truncateTitle ? truncateTitle(event.title, 12) : event.title}
+                {truncateTitle ? truncateTitle(event.title, 8) : event.title}  {/* 文字数制限を12→8に */}
               </div>
             </React.Fragment>
           );
@@ -567,9 +567,9 @@ const VisualTab = ({
             <EventGroupIcon
               key={`group-icon-${groupData.id}`}
               groupData={groupData}
-              position={groupData.position}  // そのまま渡す（過去の正常動作版）
+              position={groupData.position}  // そのまま渡す（修正済み）
               panY={panY}
-              panX={panX}  // panXもそのまま渡す
+              panX={0}  // panXは加算しない（修正）
               timelineColor={groupData.timelineColor || '#6b7280'}
               onHover={setHoveredGroup}
               onClick={toggleEventGroup}
@@ -593,7 +593,7 @@ const VisualTab = ({
             groupData={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)}
             position={layoutEventsWithGroups.eventGroups.find(g => g.id === hoveredGroup)?.position}
             panY={panY}
-            panX={panX}
+            panX={0}  // panXは加算しない
           />
         )}
 
@@ -611,7 +611,7 @@ const VisualTab = ({
                 y: groupData.position.y - 50
               }}
               panY={panY}
-              panX={panX}
+              panX={0}  // panXは加算しない
               timelineColor={groupData.timelineColor}
               onEventDoubleClick={handleEventDoubleClick}
               onClose={() => toggleEventGroup(groupId)}
