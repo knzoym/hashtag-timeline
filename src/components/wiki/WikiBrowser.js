@@ -4,28 +4,34 @@
 // - slug は使わず eventId 基準
 // - useWikiData 側に getWikiEvents / getWikiTimelines が無い場合はフォールバック
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import WikiEventCard from './WikiEventCard';
-import WikiEventForm from '../WikiEventForm';
-import { VersionToggle } from '../VotingComponents';
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import WikiEventCard from "./WikiEventCard";
+import WikiEventForm from "../WikiEventForm";
+import { VersionToggle } from "../VotingComponents";
 
 const DEBOUNCE_MS = 500;
 const PAGE_LIMIT = 100;
 
 const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
   // タブ: 一覧 or 履歴（必要なら拡張）
-  const [currentTab, setCurrentTab] = useState('browse');
+  const [currentTab, setCurrentTab] = useState("browse");
 
   // 初期表示は latest 推奨（stable は承認済みが無いと空になりがち）
-  const [viewMode, setViewMode] = useState('latest'); // 'latest' | 'stable'
+  const [viewMode, setViewMode] = useState("latest"); // 'latest' | 'stable'
 
   // 検索
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
 
-  // データ
-  const [latestEvents, setLatestEvents] = useState([]); // 最新（共有）一覧
-  const [stableEvents, setStableEvents] = useState([]); // 安定版（承認済み）一覧
+  // 読み込み中でも前回結果を保持して「空」に戻さないための管理
+  const [latestEvents, setLatestEvents] = useState([]); // 既存があれば流用OK
+  const [stableEvents, setStableEvents] = useState([]); // 既存があれば流用OK
+  const [loadingFor, setLoadingFor] = useState(null); // 'latest' | 'stable' | null
+  const [didLoadLatest, setDidLoadLatest] = useState(false);
+  const [didLoadStable, setDidLoadStable] = useState(false);
+
+  // レース対策：最後に発行したリクエスト番号を保持
+  const reqSeqRef = useRef(0);
 
   // 年表プリセット
   const [timelines, setTimelines] = useState([]);
@@ -80,78 +86,88 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
   const filterByPreset = useCallback((events, preset) => {
     if (!preset || !preset.tags?.length) return events;
     const tags = preset.tags;
-    const mode = preset.tag_mode || 'AND';
-    return (events || []).filter(ev => {
+    const mode = preset.tag_mode || "AND";
+    return (events || []).filter((ev) => {
       const evTags = Array.isArray(ev?.tags) ? ev.tags : [];
-      return mode === 'AND'
-        ? tags.every(t => evTags.includes(t))
-        : tags.some(t => evTags.includes(t));
+      return mode === "AND"
+        ? tags.every((t) => evTags.includes(t))
+        : tags.some((t) => evTags.includes(t));
     });
   }, []);
 
-  // 取得ヘルパ：latest
-  const loadLatest = useCallback(async (q) => {
-    if (!wikiData) return;
-    setBusy(true);
+  // latest 取得（前の表示を維持して、古いレスポンスは破棄）
+  async function fetchLatest(search = "") {
+    const seq = ++reqSeqRef.current;
+    setLoadingFor("latest");
     try {
-      // 優先：getWikiEvents({mode:'latest'})、なければ getSharedEvents(q)
-      const rows = getWikiEvents
-        ? await getWikiEvents({ mode: 'latest', searchTerm: q, limit: PAGE_LIMIT })
-        : await (getSharedEvents ? getSharedEvents(q, PAGE_LIMIT) : Promise.resolve([]));
+      // wikiData.getWikiEvents({mode:'latest'}) があれば優先、なければ getSharedEvents
+      const rows = await (wikiData?.getWikiEvents
+        ? wikiData.getWikiEvents({
+            mode: "latest",
+            searchTerm: search,
+            limit: 100,
+          })
+        : wikiData?.getSharedEvents?.(search, 100));
+      // 途中で別リクエストが走っていたら、この結果は破棄
+      if (reqSeqRef.current !== seq) return;
       setLatestEvents(Array.isArray(rows) ? rows : []);
+      setDidLoadLatest(true);
     } catch (e) {
-      console.error('loadLatest error:', e);
-      setLatestEvents([]);
+      console.error("fetchLatest error:", e);
     } finally {
-      setBusy(false);
+      // 自分が最後のリクエストのままなら loading 表示を消す
+      if (reqSeqRef.current === seq) setLoadingFor(null);
     }
-  }, [wikiData, getWikiEvents, getSharedEvents]);
+  }
 
-  // 取得ヘルパ：stable（events 風に整形）
-  const loadStable = useCallback(async (q) => {
-    if (!wikiData) return;
-    setBusy(true);
+  // stable 取得（events 風に整形）
+  async function fetchStable(search = "") {
+    const seq = ++reqSeqRef.current;
+    setLoadingFor("stable");
     try {
-      if (getWikiEvents) {
-        const rows = await getWikiEvents({ mode: 'stable', searchTerm: q, limit: PAGE_LIMIT });
-        setStableEvents(Array.isArray(rows) ? rows : []);
-      } else if (getEventsWithScores) {
-        const rows = await getEventsWithScores(q, PAGE_LIMIT);
-        const mapped = (rows || []).map(r => {
-          // event_stable + events の結合結果を events 風に整形
+      let rows = [];
+      if (wikiData?.getWikiEvents) {
+        rows = await wikiData.getWikiEvents({
+          mode: "stable",
+          searchTerm: search,
+          limit: 100,
+        });
+      } else if (wikiData?.getEventsWithScores) {
+        const scored = await wikiData.getEventsWithScores(search, 100);
+        rows = (scored || []).map((r) => {
           const ev = r.events || r.event || {};
           return {
             ...ev,
             startDate: new Date(ev.date_start || ev.start_date),
-            endDate: ev.date_end ? new Date(ev.date_end) : new Date(ev.date_start || ev.start_date),
+            endDate: ev.date_end
+              ? new Date(ev.date_end)
+              : new Date(ev.date_start || ev.start_date),
             tags: Array.isArray(ev.tags) ? ev.tags : [],
             sources: Array.isArray(ev.sources) ? ev.sources : [],
-            // 参考情報（必要ならカードで使用）
             stableScore: r.stable_score ?? 0,
             stableRevisionId: r.stable_revision_id ?? null,
           };
         });
-        setStableEvents(mapped);
-      } else {
-        setStableEvents([]);
       }
+      if (reqSeqRef.current !== seq) return;
+      setStableEvents(Array.isArray(rows) ? rows : []);
+      setDidLoadStable(true);
     } catch (e) {
-      console.error('loadStable error:', e);
-      setStableEvents([]);
+      console.error("fetchStable error:", e);
     } finally {
-      setBusy(false);
+      if (reqSeqRef.current === seq) setLoadingFor(null);
     }
-  }, [wikiData, getWikiEvents, getEventsWithScores]);
+  }
 
   // 一覧読み込み（タブ= browse のときだけ）
   useEffect(() => {
-    if (currentTab !== 'browse') return;
-    if (viewMode === 'latest') {
+    if (currentTab !== "browse") return;
+    if (viewMode === "latest") {
       loadLatest(debounced);
     } else {
       loadStable(debounced);
     }
-  }, [currentTab, viewMode, debounced, loadLatest, loadStable]);
+  }, [currentTab, viewMode, debounced]);
 
   // 履歴タブ
   const loadHistory = useCallback(async () => {
@@ -161,7 +177,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
       const rows = await getRecentActivity(20);
       setRecentActivity(Array.isArray(rows) ? rows : []);
     } catch (e) {
-      console.error('getRecentActivity error:', e);
+      console.error("getRecentActivity error:", e);
       setRecentActivity([]);
     } finally {
       setBusy(false);
@@ -169,7 +185,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
   }, [getRecentActivity]);
 
   useEffect(() => {
-    if (currentTab === 'history') loadHistory();
+    if (currentTab === "history") loadHistory();
   }, [currentTab, loadHistory]);
 
   // 編集保存（新規/更新を一括で扱う）
@@ -186,19 +202,28 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
         setShowEventForm(false);
         setEditingEvent(null);
         // 再読込
-        if (viewMode === 'latest') {
+        if (viewMode === "latest") {
           await loadLatest(debounced);
         } else {
           await loadStable(debounced);
         }
       } catch (e) {
-        console.error('save event error:', e);
-        alert('保存に失敗しました。コンソールのエラーをご確認ください。');
+        console.error("save event error:", e);
+        alert("保存に失敗しました。コンソールのエラーをご確認ください。");
       } finally {
         setBusy(false);
       }
     },
-    [wikiData, editingEvent, viewMode, debounced, loadLatest, loadStable, createSharedEvent, updateSharedEvent]
+    [
+      wikiData,
+      editingEvent,
+      viewMode,
+      debounced,
+      loadLatest,
+      loadStable,
+      createSharedEvent,
+      updateSharedEvent,
+    ]
   );
 
   // インポート（親から渡されていれば優先し、無ければ useWikiData の関数を利用）
@@ -208,11 +233,11 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
         if (onImportEvent) return await onImportEvent(ev);
         if (importEventToPersonal) {
           await importEventToPersonal(ev);
-          alert('タイムラインにインポートしました。');
+          alert("タイムラインにインポートしました。");
         }
       } catch (e) {
-        console.error('import error:', e);
-        alert('インポートに失敗しました。');
+        console.error("import error:", e);
+        alert("インポートに失敗しました。");
       }
     },
     [onImportEvent, importEventToPersonal]
@@ -224,10 +249,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
     [timelines, selectedTimelineId]
   );
 
-  const eventsToRender = useMemo(() => {
-    const base = viewMode === 'latest' ? latestEvents : stableEvents;
-    return viewMode === 'latest' ? filterByPreset(base, activePreset) : base;
-  }, [viewMode, latestEvents, stableEvents, filterByPreset, activePreset]);
+  const eventsToRender = viewMode === "latest" ? latestEvents : stableEvents;
 
   const stableCount = stableEvents.length;
   const latestCount = latestEvents.length;
@@ -235,49 +257,69 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
   // UI: 基本スタイル（素朴に）
   const styles = {
     container: { padding: 12 },
-    header: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+    header: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 8,
+      flexWrap: "wrap",
+    },
     grow: { flex: 1, minWidth: 240 },
     search: {
-      width: '100%',
-      padding: '8px 10px',
-      border: '1px solid #e5e7eb',
+      width: "100%",
+      padding: "8px 10px",
+      border: "1px solid #e5e7eb",
       borderRadius: 8,
-      outline: 'none',
+      outline: "none",
     },
-    toolbar: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
-    list: { display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 8 },
-    tabs: { display: 'flex', gap: 8, marginBottom: 8 },
+    toolbar: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap",
+    },
+    list: {
+      display: "grid",
+      gridTemplateColumns: "1fr",
+      gap: 12,
+      marginTop: 8,
+    },
+    tabs: { display: "flex", gap: 8, marginBottom: 8 },
     tabBtn: (active) => ({
-      padding: '6px 10px',
+      padding: "6px 10px",
       borderRadius: 8,
-      border: '1px solid ' + (active ? '#3b82f6' : '#e5e7eb'),
-      background: active ? '#3b82f6' : '#fff',
-      color: active ? '#fff' : '#374151',
-      cursor: 'pointer',
+      border: "1px solid " + (active ? "#3b82f6" : "#e5e7eb"),
+      background: active ? "#3b82f6" : "#fff",
+      color: active ? "#fff" : "#374151",
+      cursor: "pointer",
     }),
     smallBtn: {
-      padding: '6px 10px',
+      padding: "6px 10px",
       borderRadius: 8,
-      border: '1px solid #e5e7eb',
-      background: '#fff',
-      cursor: 'pointer',
+      border: "1px solid #e5e7eb",
+      background: "#fff",
+      cursor: "pointer",
     },
-    hint: { color: '#6b7280', fontSize: 12 },
+    hint: { color: "#6b7280", fontSize: 12 },
   };
+
+  const didLoad = viewMode === "latest" ? didLoadLatest : didLoadStable;
+
+  const isLoading = loadingFor === viewMode;
 
   return (
     <div style={styles.container}>
       {/* タブ切替 */}
       <div style={styles.tabs}>
         <button
-          style={styles.tabBtn(currentTab === 'browse')}
-          onClick={() => setCurrentTab('browse')}
+          style={styles.tabBtn(currentTab === "browse")}
+          onClick={() => setCurrentTab("browse")}
         >
           一覧
         </button>
         <button
-          style={styles.tabBtn(currentTab === 'history')}
-          onClick={() => setCurrentTab('history')}
+          style={styles.tabBtn(currentTab === "history")}
+          onClick={() => setCurrentTab("history")}
         >
           履歴
         </button>
@@ -288,7 +330,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
         )}
       </div>
 
-      {currentTab === 'browse' && (
+      {currentTab === "browse" && (
         <>
           {/* ツールバー */}
           <div style={styles.header}>
@@ -306,7 +348,11 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
                 style={styles.search}
               />
               <div style={styles.hint}>
-                {busy || apiLoading ? '読み込み中…' : apiError ? `エラー: ${apiError}` : '\u00A0'}
+                {busy || apiLoading
+                  ? "読み込み中…"
+                  : apiError
+                  ? `エラー: ${apiError}`
+                  : "\u00A0"}
               </div>
             </div>
             <button
@@ -325,9 +371,9 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
             <div style={{ ...styles.header, marginTop: 0 }}>
               <label style={{ fontSize: 14 }}>TLwiki 年表:</label>
               <select
-                value={selectedTimelineId || ''}
+                value={selectedTimelineId || ""}
                 onChange={(e) => setSelectedTimelineId(e.target.value || null)}
-                style={{ ...styles.smallBtn, padding: '6px 8px' }}
+                style={{ ...styles.smallBtn, padding: "6px 8px" }}
               >
                 <option value="">（すべて）</option>
                 {timelines.map((tl) => (
@@ -338,7 +384,8 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
               </select>
               {activePreset && (
                 <span style={styles.hint}>
-                  条件: {activePreset.tag_mode} / {activePreset.tags?.join(', ')}
+                  条件: {activePreset.tag_mode} /{" "}
+                  {activePreset.tags?.join(", ")}
                 </span>
               )}
             </div>
@@ -347,13 +394,17 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
           {/* 一覧 */}
           <div style={styles.list}>
             {eventsToRender.length === 0 && (
-              <div style={{ color: '#6b7280', padding: 24, textAlign: 'center' }}>
-                {busy || apiLoading ? '読み込み中…' : 'イベントが見つかりません'}
+              <div
+                style={{ color: "#6b7280", padding: 24, textAlign: "center" }}
+              >
+                {busy || apiLoading
+                  ? "読み込み中…"
+                  : "イベントが見つかりません"}
               </div>
             )}
 
             {eventsToRender.map((ev) => {
-              const canEdit = !!user && (ev.created_by === user.id);
+              const canEdit = !!user && ev.created_by === user.id;
               return (
                 <WikiEventCard
                   key={ev.id}
@@ -366,7 +417,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
                     setShowEventForm(true);
                   }}
                   onImport={makeImportHandler(ev)}
-                  showRevisions={viewMode === 'stable'} // stable 表示時にリビジョン面も見たい場合
+                  showRevisions={viewMode === "stable"} // stable 表示時にリビジョン面も見たい場合
                 />
               );
             })}
@@ -374,26 +425,33 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
         </>
       )}
 
-      {currentTab === 'history' && (
+      {currentTab === "history" && (
         <div style={styles.list}>
           {recentActivity.length === 0 ? (
-            <div style={{ color: '#6b7280', padding: 24, textAlign: 'center' }}>
-              {busy || apiLoading ? '読み込み中…' : '履歴がありません'}
+            <div style={{ color: "#6b7280", padding: 24, textAlign: "center" }}>
+              {busy || apiLoading ? "読み込み中…" : "履歴がありません"}
             </div>
           ) : (
             recentActivity.map((row) => (
               <div
-                key={row.id || `${row.rev_id}-${row.event_id}-${row.created_at}`}
+                key={
+                  row.id || `${row.rev_id}-${row.event_id}-${row.created_at}`
+                }
                 style={{
                   padding: 12,
-                  border: '1px solid #e5e7eb',
+                  border: "1px solid #e5e7eb",
                   borderRadius: 8,
-                  background: '#fff',
+                  background: "#fff",
                 }}
               >
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{row.title || row.event_title || '（無題）'}</div>
-                <div style={{ color: '#6b7280', fontSize: 12 }}>
-                  rev: {row.rev_id || '-'} / {new Date(row.created_at || row.createdAt || Date.now()).toLocaleString()}
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {row.title || row.event_title || "（無題）"}
+                </div>
+                <div style={{ color: "#6b7280", fontSize: 12 }}>
+                  rev: {row.rev_id || "-"} /{" "}
+                  {new Date(
+                    row.created_at || row.createdAt || Date.now()
+                  ).toLocaleString()}
                 </div>
               </div>
             ))
