@@ -10,6 +10,9 @@ export const NetworkView = ({
   onTimelineClick,
   handleEventDoubleClick,
   calculateTextWidth,
+  // 新しく追加するプロパティ
+  timelineAxes = [],
+  onEventUpdate,
 }) => {
   return (
     <>
@@ -45,6 +48,9 @@ export const NetworkView = ({
             onMouseDown={(e) => e.stopPropagation()}
             calculateTextWidth={calculateTextWidth}
             className="no-pan"
+            // ドラッグに必要なプロパティを追加
+            timelineAxes={timelineAxes}
+            onEventUpdate={onEventUpdate}
           />
         );
       })}

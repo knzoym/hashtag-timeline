@@ -12,6 +12,9 @@ export const TimelineView = ({
   toggleEventGroup,
   handleEventDoubleClick,
   calculateTextWidth,
+  // 新しく追加するプロパティ
+  timelineAxes = [],
+  onEventUpdate,
 }) => {
   const { allEvents, eventGroups } = layoutData;
 
@@ -57,6 +60,9 @@ export const TimelineView = ({
                 onMouseDown={(e) => e.stopPropagation()}
                 calculateTextWidth={calculateTextWidth}
                 className="no-pan"
+                // ドラッグに必要なプロパティを追加
+                timelineAxes={timelineAxes}
+                onEventUpdate={onEventUpdate}
               />
               {/* 延長線 */}
               {event.timelineInfo?.needsExtensionLine && (
@@ -89,43 +95,38 @@ export const TimelineView = ({
           timelineColor={groupData.timelineColor || '#6b7280'}
           onHover={setHoveredGroup}
           onClick={toggleEventGroup}
-          onDoubleClick={(e, group) => {
-            e.stopPropagation();
-            if (group.events.length === 1) {
-              handleEventDoubleClick(group.events[0]);
-            } else {
-              toggleEventGroup(group.id);
-            }
-          }}
-          isHighlighted={hoveredGroup === groupData.id}
+          className="no-pan"
         />
       ))}
 
-      {/* グループツールチップ */}
-      {hoveredGroup && eventGroups.find((g) => g.id === hoveredGroup) && (
+      {/* ホバー中のグループツールチップ */}
+      {hoveredGroup && (
         <GroupTooltip
-          groupData={eventGroups.find((g) => g.id === hoveredGroup)}
-          position={eventGroups.find((g) => g.id === hoveredGroup)?.position}
+          groupData={hoveredGroup}
+          position={hoveredGroup.position}
           panY={panY}
-          panX={0}
         />
       )}
 
       {/* 展開されたグループカード */}
       {Array.from(expandedGroups).map((groupId) => {
-        const groupData = eventGroups.find((g) => g.id === groupId);
+        const groupData = eventGroups?.find((g) => g.id === groupId);
         if (!groupData) return null;
+
         return (
           <GroupCard
-            key={`group-card-${groupId}`}
+            key={`expanded-group-${groupId}`}
             groupData={groupData}
-            position={{ x: groupData.position.x + 30, y: groupData.position.y - 50 }}
+            position={groupData.position}
             panY={panY}
             panX={0}
             timelineColor={groupData.timelineColor || '#6b7280'}
             onEventDoubleClick={handleEventDoubleClick}
             onClose={() => toggleEventGroup(groupId)}
-            onEventClick={handleEventDoubleClick}
+            calculateTextWidth={calculateTextWidth}
+            // グループ内EventCardにもプロパティを渡す
+            timelineAxes={timelineAxes}
+            onEventUpdate={onEventUpdate}
           />
         );
       })}

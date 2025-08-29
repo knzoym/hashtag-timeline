@@ -1,4 +1,4 @@
-// components/ui/EventCard.js - 長押しドラッグ・仮登録対応版
+// components/ui/EventCard.js - 修正版
 import React, { useState, useRef, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
@@ -55,14 +55,18 @@ export const EventCard = ({
   isHighlighted = false,
   onDoubleClick,
   onMouseDown,
-  onDragStart, // 新規：ドラッグ開始ハンドラー
-  isDragging = false, // 新規：ドラッグ状態
+  onDragStart, // 統合ドラッグ開始ハンドラー
+  onEventUpdate, // イベント更新関数を直接受け取る
+  timelineAxes = [], // 年表軸データを受け取る
+  isDragging = false, // ドラッグ状態
   style = {},
   className = "",
   calculateTextWidth = null,
   ...props
 }) => {
   const [isPressed, setIsPressed] = useState(false);
+  const [isInternalDragging, setIsInternalDragging] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const longPressTimer = useRef(null);
   const pressStartPos = useRef({ x: 0, y: 0 });
 
@@ -75,8 +79,8 @@ export const EventCard = ({
       return null; // メインタイムライン
     }
 
-    const tempInfo = event.timelineInfos.find(info => info.isTemporary);
-    return tempInfo ? 'temporary' : 'registered';
+    const tempInfo = event.timelineInfos.find((info) => info.isTemporary);
+    return tempInfo ? "temporary" : "registered";
   };
 
   const temporaryStatus = getTemporaryStatus();
@@ -84,18 +88,32 @@ export const EventCard = ({
   // 年表情報に基づく色設定（仮登録対応）
   const getEventColors = () => {
     let baseBackgroundColor = "#6b7280"; // デフォルト色
-    
+
     if (event.timelineInfo) {
       baseBackgroundColor = event.timelineInfo.timelineColor;
     } else if (isHighlighted) {
       baseBackgroundColor = "#3b82f6";
     }
 
+    // ホバー時の色調整
+    if (isHovered && !isInternalDragging) {
+      // ホバー時は少し明るくする
+      if (baseBackgroundColor.startsWith("hsl")) {
+        const match = baseBackgroundColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+        if (match) {
+          const h = match[1];
+          const s = match[2];
+          const l = Math.min(100, parseInt(match[3]) + 10);
+          baseBackgroundColor = `hsl(${h}, ${s}%, ${l}%)`;
+        }
+      }
+    }
+
     // 仮登録・仮削除状態での色調整
     let backgroundColor = baseBackgroundColor;
     let opacity = 1;
-    
-    if (temporaryStatus === 'temporary') {
+
+    if (temporaryStatus === "temporary") {
       // 仮削除状態：半透明にして視覚的に区別
       opacity = 0.6;
       backgroundColor = darkenColor(baseBackgroundColor, 20);
@@ -114,62 +132,185 @@ export const EventCard = ({
 
   const colors = getEventColors();
 
-  // 長押し開始
-  const handleMouseDownInternal = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  // 300ms長押し後の直接ドラッグ処理
+  const handleMouseDownInternal = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const startPos = {
-      x: e.clientX,
-      y: e.clientY,
-    };
+      const startPos = {
+        x: e.clientX,
+        y: e.clientY,
+      };
 
-    pressStartPos.current = startPos;
-    setIsPressed(true);
+      pressStartPos.current = startPos;
+      setIsPressed(true);
 
-    // 通常のonMouseDownも呼び出し
-    if (onMouseDown) {
-      onMouseDown(e);
-    }
+      console.log(`EventCard: マウスダウン開始 "${event.title}"`);
 
-    // 長押しタイマー開始
-    longPressTimer.current = setTimeout(() => {
-      // ドラッグ開始
-      if (onDragStart) {
-        const dragData = {
-          ...event,
-          startPosition: startPos,
-          type: 'event'
-        };
-        onDragStart(e, dragData);
+      // 通常のonMouseDownも呼び出し
+      if (onMouseDown) {
+        onMouseDown(e);
       }
-      setIsPressed(false);
-    }, 500); // 500msで長押し判定
 
-    // 早期移動検出
-    const handleEarlyMove = (moveEvent) => {
-      const deltaX = Math.abs(moveEvent.clientX - startPos.x);
-      const deltaY = Math.abs(moveEvent.clientY - startPos.y);
+      // 300ms長押しタイマー開始
+      longPressTimer.current = setTimeout(() => {
+        console.log(`EventCard: 300ms長押し完了、ドラッグ開始 "${event.title}"`);
 
-      if (deltaX > 5 || deltaY > 5) {
-        // 移動が検出されたら長押しをキャンセル
+        // ドラッグ状態開始
+        setIsInternalDragging(true);
+        setIsPressed(false);
+        document.body.style.cursor = "grabbing";
+
+        // 元の位置を保存
+        const originalStyle = e.target.style.cssText;
+        let currentY = startPos.y;
+
+        // ドラッグ中のマウス移動監視
+        const handleDragMove = (moveEvent) => {
+          // 縦方向のみの移動制限
+          const verticalDelta = moveEvent.clientY - startPos.y;
+          currentY = startPos.y + verticalDelta;
+          
+          // イベントカードを実際に移動させる
+          const eventElement = e.target.closest('[data-event-id]');
+          if (eventElement) {
+            const currentTop = parseInt(eventElement.style.top) || 0;
+            const newTop = currentTop + verticalDelta;
+            eventElement.style.top = `${newTop}px`;
+            eventElement.style.zIndex = "999"; // 最前面に表示
+            eventElement.style.pointerEvents = "none"; // ドラッグ中はイベントを無効化
+          }
+          
+          // 次回の差分計算のため開始位置を更新
+          startPos.y = moveEvent.clientY;
+
+          if (Math.abs(verticalDelta) > 5) {
+            console.log(`ドラッグ中: 縦移動量=${verticalDelta.toFixed(0)}px, 現在Y=${currentY.toFixed(0)}`);
+          }
+        };
+
+        // ドラッグ終了処理
+        const handleDragEnd = (upEvent) => {
+          console.log(`EventCard: ドラッグ終了 "${event.title}"`);
+
+          const dropY = upEvent.clientY;
+          let targetTimeline = null;
+
+          // 年表軸との判定
+          if (timelineAxes && timelineAxes.length > 0) {
+            targetTimeline = timelineAxes.find((axis) => {
+              const headerHeight = 64;
+              const adjustedAxisY = axis.yPosition + headerHeight;
+              const axisRect = {
+                top: adjustedAxisY - 40,
+                bottom: adjustedAxisY + 40,
+              };
+
+              const isInRange = dropY >= axisRect.top && dropY <= axisRect.bottom;
+              console.log(
+                `年表判定 "${axis.name}": 軸Y=${adjustedAxisY}, 範囲=${axisRect.top}-${axisRect.bottom}, ドロップY=${dropY}, 判定=${isInRange}`
+              );
+              return isInRange;
+            });
+          }
+
+          // イベント更新処理
+          if (onEventUpdate) {
+            const updatedTimelineInfos = [...(event.timelineInfos || [])];
+
+            if (targetTimeline) {
+              // 年表に仮登録
+              console.log(
+                `仮登録実行: "${event.title}" を年表 "${targetTimeline.name}" に仮登録`
+              );
+
+              const existingIndex = updatedTimelineInfos.findIndex(
+                (info) => info.timelineId === targetTimeline.id
+              );
+
+              if (existingIndex >= 0) {
+                // 既存関連を正式登録に変更
+                updatedTimelineInfos[existingIndex] = {
+                  ...updatedTimelineInfos[existingIndex],
+                  isTemporary: false,
+                };
+              } else {
+                // 新規登録
+                updatedTimelineInfos.push({
+                  timelineId: targetTimeline.id,
+                  isTemporary: false,
+                });
+              }
+
+              const updatedEvent = {
+                ...event,
+                timelineInfos: updatedTimelineInfos,
+              };
+              onEventUpdate(updatedEvent);
+            } else {
+              // 年表外へのドロップ - 仮削除処理
+              if (updatedTimelineInfos.length > 0) {
+                console.log(`仮削除実行: "${event.title}" を仮削除状態に変更`);
+
+                const updatedEvent = {
+                  ...event,
+                  timelineInfos: updatedTimelineInfos.map((info) => ({
+                    ...info,
+                    isTemporary: true,
+                  })),
+                };
+                onEventUpdate(updatedEvent);
+              }
+            }
+          }
+
+          // イベントカードのスタイルをリセット
+          const eventElement = e.target.closest('[data-event-id]');
+          if (eventElement) {
+            eventElement.style.cssText = originalStyle;
+            eventElement.style.pointerEvents = "auto";
+          }
+
+          // クリーンアップ
+          setIsInternalDragging(false);
+          document.body.style.cursor = "default";
+          document.removeEventListener("mousemove", handleDragMove);
+          document.removeEventListener("mouseup", handleDragEnd);
+        };
+
+        // イベントリスナー追加
+        document.addEventListener("mousemove", handleDragMove);
+        document.addEventListener("mouseup", handleDragEnd);
+      }, 300); // 300msで長押し判定
+
+      // 早期移動検出（5px閾値）
+      const handleEarlyMove = (moveEvent) => {
+        const deltaX = Math.abs(moveEvent.clientX - startPos.x);
+        const deltaY = Math.abs(moveEvent.clientY - startPos.y);
+
+        if (deltaX > 5 || deltaY > 5) {
+          // 移動が検出されたら長押しをキャンセル
+          console.log("EventCard: 早期移動検出で長押しキャンセル");
+          clearTimeout(longPressTimer.current);
+          setIsPressed(false);
+          document.removeEventListener("mousemove", handleEarlyMove);
+        }
+      };
+
+      // 早期リリース検出
+      const handleEarlyUp = () => {
         clearTimeout(longPressTimer.current);
         setIsPressed(false);
         document.removeEventListener("mousemove", handleEarlyMove);
-      }
-    };
+        document.removeEventListener("mouseup", handleEarlyUp);
+      };
 
-    // 早期リリース検出
-    const handleEarlyUp = () => {
-      clearTimeout(longPressTimer.current);
-      setIsPressed(false);
-      document.removeEventListener("mousemove", handleEarlyMove);
-      document.removeEventListener("mouseup", handleEarlyUp);
-    };
-
-    document.addEventListener("mousemove", handleEarlyMove);
-    document.addEventListener("mouseup", handleEarlyUp);
-  }, [onMouseDown, onDragStart, event]);
+      document.addEventListener("mousemove", handleEarlyMove);
+      document.addEventListener("mouseup", handleEarlyUp);
+    },
+    [onMouseDown, event, timelineAxes, onEventUpdate]
+  );
 
   // 仮登録状態のスタイル調整
   const getCardStyles = () => {
@@ -181,14 +322,15 @@ export const EventCard = ({
       height: `${displayInfo.height}px`,
       backgroundColor: colors.backgroundColor,
       color: colors.color,
-      border: temporaryStatus === 'temporary' 
-        ? `2px dashed ${colors.borderColor}` // 仮削除は破線
-        : `1px solid ${colors.borderColor}`,
+      border:
+        temporaryStatus === "temporary"
+          ? `2px dashed ${colors.borderColor}` // 仮削除は破線
+          : `1px solid ${colors.borderColor}`,
       borderRadius: "6px",
       padding: "3px 6px",
       fontSize: "10px",
       fontWeight: "500",
-      cursor: isDragging ? "grabbing" : "pointer",
+      cursor: isDragging || isInternalDragging ? "grabbing" : "pointer",
       userSelect: "none",
       boxShadow: isHighlighted
         ? "0 3px 8px rgba(59, 130, 246, 0.4)"
@@ -202,44 +344,30 @@ export const EventCard = ({
       textAlign: "center",
       lineHeight: "1.2",
       overflow: "hidden",
-      zIndex: isDragging ? 30 : (isHighlighted ? 20 : 10),
+      zIndex: isDragging || isInternalDragging ? 30 : isHighlighted ? 20 : 10,
       opacity: colors.opacity,
       willChange: "transform",
       backfaceVisibility: "hidden",
+      // スケール効果は削除し、色の変化のみでホバーを表現
       ...style,
     };
 
     return baseStyles;
   };
 
-  // ホバー効果
-  const handleMouseEnter = (e) => {
-    if (!isDragging) {
-      e.target.style.transform = "scale(1.05)";
-      e.target.style.zIndex = "25";
+  // ホバー効果（色の変化のみ、サイズ変更なし）
+  const handleMouseEnter = useCallback(() => {
+    if (!isDragging && !isInternalDragging) {
+      setIsHovered(true);
     }
-  };
+  }, [isDragging, isInternalDragging]);
 
-  const handleMouseLeave = (e) => {
-    if (!isDragging) {
-      e.target.style.transform = "scale(1)";
-      e.target.style.zIndex = isHighlighted ? "20" : "10";
-    }
-  };
+  const handleMouseLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
 
   return (
     <div>
-      {/* 年号表示 */}
-      <div
-        style={{
-          fontSize: "8px",
-          opacity: 0.9,
-          marginTop: "1px",
-        }}
-      >
-        {displayInfo.year}
-      </div>
-
       <div
         style={getCardStyles()}
         className={className}
@@ -248,7 +376,9 @@ export const EventCard = ({
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         data-event-id={event.id}
-        title={`${displayInfo.title} (${displayInfo.year})${temporaryStatus === 'temporary' ? ' - 仮削除' : ''}`}
+        title={`${displayInfo.title} (${displayInfo.year})${
+          temporaryStatus === "temporary" ? " - 仮削除" : ""
+        }`}
         {...props}
       >
         {/* イベントタイトル */}
@@ -265,8 +395,19 @@ export const EventCard = ({
           {displayInfo.title}
         </div>
 
+        {/* 年号表示 */}
+        <div
+          style={{
+            fontSize: "8px",
+            opacity: 0.9,
+            marginTop: "1px",
+          }}
+        >
+          {displayInfo.year}
+        </div>
+
         {/* 仮登録・仮削除インジケーター */}
-        {temporaryStatus === 'temporary' && (
+        {temporaryStatus === "temporary" && (
           <div
             style={{
               position: "absolute",
@@ -283,7 +424,7 @@ export const EventCard = ({
         )}
 
         {/* 年表所属インジケーター */}
-        {displayInfo.hasTimelineInfo && temporaryStatus !== 'temporary' && (
+        {displayInfo.hasTimelineInfo && temporaryStatus !== "temporary" && (
           <div
             style={{
               position: "absolute",
@@ -312,7 +453,7 @@ export const EventCard = ({
         )}
 
         {/* ドラッグ中インジケーター */}
-        {isDragging && (
+        {(isDragging || isInternalDragging) && (
           <div
             style={{
               position: "absolute",
