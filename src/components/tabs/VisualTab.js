@@ -7,9 +7,17 @@ import { EventModal } from "../modals/EventModal";
 import TimelineModal from "../modals/TimelineModal";
 import { SmoothLines } from "../ui/SmoothLines";
 import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
-import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
+
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem";
+import { YearMarkers } from "../ui/YearMarkers";
+import { TimelineAxes } from "../ui/TimelineAxes";
+
+import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
+
+import { FloatingUI } from "../ui/FloatingUI";
+import { TimelineView } from "../views/TimelineView";
+import { NetworkView } from "../views/NetworkView";
 
 const VisualTab = ({
   // データ
@@ -519,37 +527,7 @@ const VisualTab = ({
         onDoubleClick={handleTimelineDoubleClick}
       >
         {/* 年マーカー */}
-        {yearMarkers.map((marker) => (
-          <div
-            key={marker.year}
-            style={{
-              position: "absolute",
-              left: `${marker.x}px`,
-              top: "0px",
-              height: "100%",
-              borderLeft: "1px solid #ddd",
-              pointerEvents: "none",
-              zIndex: 5,
-            }}
-          >
-            <span
-              style={{
-                position: "absolute",
-                top: "10px",
-                left: "5px",
-                fontSize: `${marker.fontSize}px`,
-                color: "#666",
-                fontWeight: "500",
-                userSelect: "none",
-                backgroundColor: "rgba(255, 255, 255, 0.9)",
-                padding: "2px 6px",
-                borderRadius: "3px",
-              }}
-            >
-              {marker.year}
-            </span>
-          </div>
-        ))}
+        <YearMarkers markers={yearMarkers} />
         {/* メインタイムライン線 */}
         <div
           style={{
@@ -562,210 +540,40 @@ const VisualTab = ({
             zIndex: 1,
           }}
         />
-        {/* タイムラインモード：年表軸（ネットワークモードでは非表示） */}
-        {!isNetworkMode &&
-          timelineAxes.map((axis, index) => {
-            const baselineY = window.innerHeight * 0.3;
-            const axisY = baselineY + 100 + index * 120;
-
-            return (
-              <div
-                key={`timeline-axis-${axis.id}`}
-                style={{
-                  position: "absolute",
-                  left: "0px",
-                  right: "0px",
-                  top: `${axisY + panY}px`,
-                  width: "100%",
-                  height: "3px",
-                  backgroundColor: axis.color,
-                  zIndex: 2,
-                  opacity: 0.8,
-                }}
-              />
-            );
-          })}
-        {/* ネットワークモード：滑らかな接続線（デバッグ情報付き） */}
-        {isNetworkMode && (
+        {/* viewModeに応じて描画コンポーネントを切り替え */}
+        {isNetworkMode ? (
+          <NetworkView
+            networkLayout={networkLayout}
+            networkConnections={networkConnections}
+            panY={panY}
+            highlightedEvents={highlightedEvents || []}
+            onTimelineClick={onTimelineClick}
+            handleEventDoubleClick={handleEventDoubleClick}
+            calculateTextWidth={calculateTextWidth}
+          />
+        ) : (
           <>
-            {console.log("🌐 ネットワークモード: SmoothLinesをレンダリング中", {
-              connectionsCount: networkConnections.length,
-              connections: networkConnections.map((c) => ({
-                id: c.id,
-                name: c.name,
-                pointsCount: c.points?.length || 0,
-              })),
-            })}
-            {networkConnections.map((timeline, index) => (
-              <SmoothLines
-                key={timeline.id}
-                timeline={timeline}
-                panY={panY}
-                displayState="default"
-                onHover={() => {}}
-                onClick={onTimelineClick}
-                zIndex={10 + index}
-              />
-            ))}
+            <TimelineAxes
+              axes={timelineAxes}
+              displayTimelines={displayTimelines}
+              panY={panY}
+              onTimelineClick={onTimelineClick}
+              onDeleteTempTimeline={onDeleteTempTimeline}
+              onDeleteTimeline={onDeleteTimeline}
+            />
+            <TimelineView
+              layoutData={layoutEventsWithGroups}
+              panY={panY}
+              highlightedEvents={highlightedEvents || []}
+              hoveredGroup={hoveredGroup}
+              expandedGroups={expandedGroups}
+              setHoveredGroup={setHoveredGroup}
+              toggleEventGroup={toggleEventGroup}
+              handleEventDoubleClick={handleEventDoubleClick}
+              calculateTextWidth={calculateTextWidth}
+            />
           </>
         )}
-        {/* 通常イベント表示（修正版：currentLayoutを使用） */}
-        {currentLayout.allEvents
-          .filter((event) => !event.hiddenByGroup) // グループ化されたイベントを除外
-          .map((event, index) => {
-            const eventX = event.adjustedPosition.x;
-            const eventY = event.adjustedPosition.y + panY;
-            const isHighlighted =
-              highlightedEvents?.some?.((e) => e.id === event.id) || false;
-
-            return (
-              <React.Fragment key={`event-${event.id}-${index}`}>
-                <EventCard
-                  event={event}
-                  style={{
-                    position: "absolute",
-                    left: `${eventX}px`,
-                    top: `${eventY}px`,
-                    transform: "translateX(-50%)",
-                  }}
-                  isHighlighted={isHighlighted}
-                  onDoubleClick={() => handleEventDoubleClick(event)}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  calculateTextWidth={calculateTextWidth}
-                  className="no-pan"
-                />
-
-                {/* 延長線の描画（年表イベントで必要な場合、ネットワークモードでは非表示） */}
-                {!isNetworkMode && event.timelineInfo?.needsExtensionLine && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: `${eventX}px`,
-                      top: `${Math.min(
-                        eventY,
-                        event.timelineInfo.axisY + panY
-                      )}px`,
-                      width: "2px",
-                      height: `${Math.abs(
-                        eventY - (event.timelineInfo.axisY + panY)
-                      )}px`,
-                      backgroundColor: event.timelineColor || "#6b7280",
-                      opacity: 0.6,
-                      zIndex: 1,
-                      pointerEvents: "none",
-                    }}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-        {/* イベントグループアイコン（修正版：年表色を正しく渡す） */}
-        {layoutEventsWithGroups.eventGroups?.map((groupData, index) => {
-          console.log(`グループ ${index}:`, {
-            id: groupData.id,
-            position: groupData.position,
-            events: groupData.events?.length || 0,
-            timelineColor: groupData.timelineColor,
-          });
-
-          if (!groupData.position) {
-            console.error(`グループ ${groupData.id} の position が未定義`);
-            return null;
-          }
-
-          return (
-            <EventGroupIcon
-              key={`group-icon-${groupData.id}`}
-              groupData={groupData}
-              position={groupData.position}
-              panY={panY}
-              panX={0}
-              timelineColor={groupData.timelineColor || "#6b7280"} // 年表色を正しく渡す
-              onHover={setHoveredGroup}
-              onClick={toggleEventGroup}
-              onDoubleClick={(e, group) => {
-                e.stopPropagation();
-                if (group.events.length === 1) {
-                  handleEventDoubleClick(group.events[0]);
-                } else {
-                  toggleEventGroup(group.id);
-                }
-              }}
-              isHighlighted={hoveredGroup === groupData.id}
-            />
-          );
-        })}
-        {/* グループツールチップ（修正版） */}
-        {hoveredGroup &&
-          layoutEventsWithGroups.eventGroups.find(
-            (g) => g.id === hoveredGroup
-          ) && (
-            <GroupTooltip
-              groupData={layoutEventsWithGroups.eventGroups.find(
-                (g) => g.id === hoveredGroup
-              )}
-              position={
-                layoutEventsWithGroups.eventGroups.find(
-                  (g) => g.id === hoveredGroup
-                )?.position
-              }
-              panY={panY}
-              panX={0}
-            />
-          )}
-        {/* 展開されたグループカード（修正版） */}
-        {Array.from(expandedGroups).map((groupId) => {
-          const groupData = layoutEventsWithGroups.eventGroups.find(
-            (g) => g.id === groupId
-          );
-          if (!groupData) return null;
-
-          return (
-            <GroupCard
-              key={`group-card-${groupId}`}
-              groupData={groupData}
-              position={{
-                x: groupData.position.x + 30,
-                y: groupData.position.y - 50,
-              }}
-              panY={panY}
-              panX={0}
-              timelineColor={groupData.timelineColor || "#6b7280"} // 年表色を正しく渡す
-              onEventDoubleClick={handleEventDoubleClick}
-              onClose={() => toggleEventGroup(groupId)}
-              onEventClick={handleEventDoubleClick}
-            />
-          );
-        })}
-        {/* 年表概要カード */}
-        {timelineAxes.map((axis, index) => {
-          const timeline = displayTimelines?.find((t) => t.id === axis.id);
-          const isTemporary = timeline?.type === "temporary";
-
-          return (
-            <TimelineCard
-              key={`timeline-card-${axis.id}`}
-              timeline={timeline}
-              position={{ x: axis.cardX, y: axis.yPosition + 70 }}
-              isTemporary={isTemporary}
-              panY={panY}
-              panX={0}
-              onEdit={() => {
-                if (timeline && onTimelineClick) {
-                  onTimelineClick(timeline);
-                }
-              }}
-              onDelete={() => {
-                if (isTemporary && onDeleteTempTimeline) {
-                  onDeleteTempTimeline(axis.id);
-                } else if (!isTemporary && onDeleteTimeline) {
-                  onDeleteTimeline(axis.id);
-                }
-              }}
-              className="no-pan"
-            />
-          );
-        })}
         {/* 現在線 */}
         <div
           style={{
@@ -797,84 +605,19 @@ const VisualTab = ({
         </div>
       </div>
 
-      {/* フローティングUI：左上の検索パネル */}
-      <div
-        className="no-pan"
-        style={{
-          position: "absolute",
-          left: "20px",
-          top: "20px",
-          zIndex: 30,
-        }}
-      >
-        <SearchPanel
-          searchTerm={searchTerm}
-          highlightedEvents={highlightedEvents}
-          onSearchChange={onSearchChange}
-          onCreateTimeline={handleCreateTimeline}
-          getTopTagsFromSearch={getTopTagsFromSearch}
-          timelines={timelines}
-          tempTimelines={tempTimelines}
-          isWikiMode={isWikiMode}
-        />
-      </div>
-
-      {/* ボタン群 */}
-      <div
-        className="no-pan"
-        style={{
-          position: "absolute",
-          right: "20px",
-          bottom: "20px",
-          zIndex: 30,
-          display: "flex",
-          gap: "10px",
-        }}
-      >
-        <button
-          onClick={resetToInitialPosition}
-          style={{
-            backgroundColor: "#6b7280",
-            color: "white",
-            border: "none",
-            borderRadius: "8px",
-            padding: "8px 12px",
-            fontSize: "12px",
-            cursor: "pointer",
-            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.2)",
-          }}
-          title="初期位置に戻す"
-        >
-          初期位置
-        </button>
-
-        <button
-          onClick={() =>
-            handleAddEventAtPosition(
-              window.innerWidth / 2,
-              window.innerHeight / 2
-            )
-          }
-          style={{
-            backgroundColor: isWikiMode ? "#6b7280" : "#3b82f6",
-            color: "white",
-            border: "none",
-            borderRadius: "50%",
-            width: "56px",
-            height: "56px",
-            fontSize: "24px",
-            cursor: isWikiMode ? "not-allowed" : "pointer",
-            boxShadow: "0 4px 12px rgba(59, 130, 246, 0.4)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: isWikiMode ? 0.5 : 1,
-          }}
-          title={isWikiMode ? "Wikiでは承認申請が必要です" : "イベントを追加"}
-        >
-          +
-        </button>
-      </div>
+      {/* ★ フローティングUIをコンポーネントに置き換え */}
+      <FloatingUI
+        searchTerm={searchTerm}
+        highlightedEvents={highlightedEvents}
+        onSearchChange={onSearchChange}
+        handleCreateTimeline={handleCreateTimeline}
+        getTopTagsFromSearch={getTopTagsFromSearch}
+        timelines={timelines}
+        tempTimelines={tempTimelines}
+        isWikiMode={isWikiMode}
+        resetToInitialPosition={resetToInitialPosition}
+        handleAddEventAtPosition={handleAddEventAtPosition}
+      />
 
       {/* モーダル（App.jsで管理） */}
       {selectedEvent && (
