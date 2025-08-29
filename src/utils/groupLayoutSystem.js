@@ -1,4 +1,4 @@
-// src/utils/groupLayoutSystem.js - 統合グループ化システム（正確なサイズ計算対応）
+// src/utils/groupLayoutSystem.js - 統合グループ化システム（重なり回避・位置修正版）
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { calculateEventWidth, calculateEventHeight, getEventBounds, checkEventCollision, checkMultipleCollisions } from './eventSizeUtils';
 
@@ -58,17 +58,20 @@ export class ThreeTierLayoutSystem {
    */
   checkTierCollision(tier, event, eventX, eventY) {
     const newPosition = { x: eventX, y: eventY };
+    const eventWidth = this.getEventWidth(event);
+    const margin = TIMELINE_CONFIG.EVENT_MARGIN || 15;
     
-    return tier.find(occupied => 
-      checkEventCollision(
-        event, 
-        newPosition, 
-        occupied.event, 
-        occupied.position, 
-        this.calculateTextWidth, 
-        TIMELINE_CONFIG.EVENT_MARGIN
-      )
-    );
+    // 新しいイベントの境界を計算
+    const newLeft = eventX - eventWidth / 2;
+    const newRight = eventX + eventWidth / 2;
+    
+    return tier.find(occupied => {
+      const occupiedLeft = occupied.position.x - occupied.width / 2;
+      const occupiedRight = occupied.position.x + occupied.width / 2;
+      
+      // X軸での重なり判定（マージンを含む）
+      return !(newRight + margin < occupiedLeft || newLeft - margin > occupiedRight);
+    });
   }
 
   /**
@@ -86,7 +89,7 @@ export class ThreeTierLayoutSystem {
   }
 
   /**
-   * 年表のイベントレイアウト計算（修正版：適切なグループ化対応）
+   * 年表のイベントレイアウト計算（修正版：グループ化優先）
    */
   layoutTimelineEvents(timeline, timelineIndex, events, baseY) {
     const results = [];
@@ -126,12 +129,61 @@ export class ThreeTierLayoutSystem {
       []  // 下段
     ];
 
-    // グループ候補の管理（近接イベントをグループ化）
-    let currentGroup = null;
-    const groupEvents = new Set(); // グループ化されたイベントのトラッキング
+    // グループ候補の管理
+    const groupEvents = new Set();
+    const groupCandidates = [];
 
-    // 各イベントの配置処理
+    // フェーズ1: 近接イベントのグループ化判定
+    for (let i = 0; i < sortedEvents.length - 1; i++) {
+      const currentEvent = sortedEvents[i];
+      const nextEvent = sortedEvents[i + 1];
+      
+      if (groupEvents.has(currentEvent.id) || groupEvents.has(nextEvent.id)) {
+        continue;
+      }
+
+      const currentX = this.coordinates.getXFromYear(currentEvent.startDate?.getFullYear() || 2024);
+      const nextX = this.coordinates.getXFromYear(nextEvent.startDate?.getFullYear() || 2024);
+      const currentWidth = this.getEventWidth(currentEvent);
+      const nextWidth = this.getEventWidth(nextEvent);
+      
+      // 重なり判定：実際のカード幅を使用
+      const distance = Math.abs(nextX - currentX);
+      const minRequiredDistance = (currentWidth + nextWidth) / 2 + TIMELINE_CONFIG.EVENT_MARGIN;
+      
+      if (distance < minRequiredDistance) {
+        console.log(`📦 グループ化判定: "${currentEvent.title}" + "${nextEvent.title}" (距離: ${distance.toFixed(0)}px < 必要: ${minRequiredDistance.toFixed(0)}px)`);
+        
+        // 既存グループに追加するか新規グループ作成
+        let addedToGroup = false;
+        
+        for (const group of groupCandidates) {
+          if (group.events.includes(currentEvent)) {
+            group.addEvent(nextEvent);
+            groupEvents.add(nextEvent.id);
+            addedToGroup = true;
+            break;
+          }
+        }
+        
+        if (!addedToGroup) {
+          const newGroup = new EventGroup([currentEvent, nextEvent], timeline.id);
+          groupCandidates.push(newGroup);
+          groupEvents.add(currentEvent.id);
+          groupEvents.add(nextEvent.id);
+          groups.set(newGroup.id, newGroup);
+          console.log(`🆕 新規グループ作成: ${newGroup.id} (${newGroup.events.length}イベント)`);
+        }
+      }
+    }
+
+    // フェーズ2: 残りのイベントを3段システムで配置
     sortedEvents.forEach((event, index) => {
+      // グループ化されたイベントはスキップ
+      if (groupEvents.has(event.id)) {
+        return;
+      }
+
       const eventX = this.coordinates.getXFromYear(event.startDate?.getFullYear() || 2024);
       const eventWidth = this.getEventWidth(event);
       const eventHeight = this.getEventHeight(event);
@@ -141,14 +193,13 @@ export class ThreeTierLayoutSystem {
       // 段配置の決定（中段 → 上段 → 下段の優先順位）
       let tierIndex = 1; // デフォルトは中段
       let placed = false;
-      let needsGrouping = false;
 
       const tierOrder = [1, 0, 2]; // 中段、上段、下段の順
 
       for (const tryTier of tierOrder) {
         const tierY = timelineY + (tryTier - 1) * TIMELINE_CONFIG.TIER_HEIGHT;
         
-        // この段に配置可能かチェック（正確な衝突判定）
+        // この段に配置可能かチェック（実際のイベント幅使用）
         const collision = this.checkTierCollision(tiers[tryTier], event, eventX, tierY);
         
         if (!collision) {
@@ -169,92 +220,42 @@ export class ThreeTierLayoutSystem {
         }
       }
 
-      // 3段すべてが満杯の場合はグループ化が必要
+      // 配置失敗時の処理
       if (!placed) {
-        console.log(`    🔄 全段満杯 → グループ化処理開始`);
-        needsGrouping = true;
-        
-        // 最も近い既存イベントを探してグループ化
-        let closestEvent = null;
-        let minDistance = Infinity;
-        
-        // 中段（軸上）の既存イベントから最も近いものを探す
-        tiers[1].forEach(occupied => {
-          const distance = Math.abs(eventX - occupied.position.x);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestEvent = occupied.event;
-          }
+        console.warn(`⚠️ イベント「${event.title}」: 全段満杯のため中段に強制配置`);
+        tierIndex = 1;
+        const tierY = timelineY;
+        tiers[1].push({
+          event,
+          position: { x: eventX, y: tierY },
+          width: eventWidth,
+          height: eventHeight
         });
-        
-        if (closestEvent && minDistance <= TIMELINE_CONFIG.GROUP_THRESHOLD) {
-          // 近接イベントとグループ化
-          const groupKey = `${timeline.id}_${closestEvent.id}`;
-          
-          if (groups.has(groupKey)) {
-            // 既存グループに追加
-            groups.get(groupKey).addEvent(event);
-            console.log(`    📦 既存グループに追加: "${event.title}"`);
-          } else {
-            // 新規グループ作成
-            const newGroup = new EventGroup([closestEvent, event], timeline.id);
-            groups.set(groupKey, newGroup);
-            
-            // 元のイベントもグループ化済みとしてマーク
-            groupEvents.add(closestEvent.id);
-            console.log(`    🆕 新規グループ作成: "${closestEvent.title}" + "${event.title}"`);
-          }
-          
-          // このイベントをグループ化済みとしてマーク
-          groupEvents.add(event.id);
-        } else {
-          // グループ化できない場合は強制的に中段に配置
-          console.log(`    ⚠️ グループ化不可 → 中段に強制配置`);
-          tierIndex = 1;
-          const tierY = timelineY;
-          tiers[1].push({
-            event,
-            position: { x: eventX, y: tierY },
-            width: eventWidth,
-            height: eventHeight
-          });
-          placed = true;
-        }
       }
 
-      // 配置されたイベントのレイアウト結果を作成
-      if (placed && !needsGrouping) {
-        const finalY = timelineY + (tierIndex - 1) * TIMELINE_CONFIG.TIER_HEIGHT;
-        const needsExtensionLine = tierIndex !== 1;
+      // レイアウト結果を作成
+      const finalY = timelineY + (tierIndex - 1) * TIMELINE_CONFIG.TIER_HEIGHT;
+      const needsExtensionLine = tierIndex !== 1;
 
-        const layoutResult = {
-          ...event,
-          adjustedPosition: { x: eventX, y: finalY },
-          calculatedWidth: eventWidth,
-          calculatedHeight: eventHeight,
-          timelineColor: timeline.color || '#6b7280',
-          tierIndex,
+      results.push({
+        ...event,
+        adjustedPosition: { x: eventX, y: finalY },
+        calculatedWidth: eventWidth,
+        calculatedHeight: eventHeight,
+        timelineColor: timeline.color || '#6b7280',
+        tierIndex,
+        needsExtensionLine,
+        hiddenByGroup: false,
+        timelineInfo: {
+          timelineId: timeline.id,
+          timelineName: timeline.name,
+          timelineColor: timeline.color,
           needsExtensionLine,
-          hiddenByGroup: groupEvents.has(event.id), // グループ化されている場合は非表示
-          timelineInfo: {
-            timelineId: timeline.id,
-            timelineName: timeline.name,
-            timelineColor: timeline.color,
-            needsExtensionLine
-          }
-        };
+          axisY: timelineY
+        }
+      });
 
-        results.push(layoutResult);
-        console.log(`    📍 配置完了: Y=${finalY}, 延長線=${needsExtensionLine}, 非表示=${layoutResult.hiddenByGroup}`);
-      }
-    });
-
-    // グループ化されたイベントを結果から適切にマーク
-    results.forEach(result => {
-      if (groupEvents.has(result.id)) {
-        result.hiddenByGroup = true;
-        console.log(`    🙈 グループ化により非表示: "${result.title}"`);
-      }
+      console.log(`    📍 配置完了: Y=${finalY}, 延長線=${needsExtensionLine}`);
     });
 
     // グループの最終処理
@@ -312,8 +313,8 @@ export class ThreeTierLayoutSystem {
                              earliestEvent.timelineColor || 
                              '#6b7280';
         
-        // 位置とメタデータを更新
-        group.position = { x: centerX, y: timelineY + 80 };
+        // 位置とメタデータを更新（年表軸の少し上に配置）
+        group.position = { x: centerX, y: timelineY - 20 };
         group.timelineColor = timelineColor;
         group.timelineId = group.timelineId;
         
@@ -338,15 +339,16 @@ export class UnifiedLayoutSystem {
     this.coordinates = coordinates;
     this.calculateTextWidth = calculateTextWidth;
     this.layoutSystem = new ThreeTierLayoutSystem(coordinates, calculateTextWidth);
-    console.log('統合レイアウトシステム初期化完了（正確なサイズ計算対応）');
+    console.log('統合レイアウトシステム初期化完了（重なり回避・位置修正対応）');
   }
 
   /**
-   * メインタイムラインのレイアウト（正確な干渉判定対応）
+   * メインタイムラインのレイアウト（40%位置・上方向回避改善版）
    */
   layoutMainTimelineEvents(events, timelineAxes) {
     const results = [];
-    const baselineY = window.innerHeight * 0.3;
+    // 40%位置に変更
+    const baselineY = window.innerHeight * 0.4;
     
     // 年表に属さないイベントを抽出
     const ungroupedEvents = events.filter(event => 
@@ -357,12 +359,19 @@ export class UnifiedLayoutSystem {
       )
     );
 
-    console.log(`メインタイムラインイベント: ${ungroupedEvents.length}個`);
+    console.log(`メインタイムライン（40%位置）: ${ungroupedEvents.length}個のイベント`);
 
     // 配置済みイベントの記録（正確な境界情報）
     const occupiedPositions = [];
     
-    ungroupedEvents.forEach(event => {
+    // X座標でソート（左から右へ配置）
+    const sortedEvents = [...ungroupedEvents].sort((a, b) => {
+      const aYear = a.startDate ? a.startDate.getFullYear() : 0;
+      const bYear = b.startDate ? b.startDate.getFullYear() : 0;
+      return aYear - bYear;
+    });
+
+    sortedEvents.forEach(event => {
       const eventX = this.coordinates.getXFromYear(event.startDate?.getFullYear() || 2024);
       const eventWidth = calculateEventWidth(event, this.calculateTextWidth);
       const eventHeight = calculateEventHeight(event);
@@ -372,43 +381,54 @@ export class UnifiedLayoutSystem {
       // 上方向への段階的配置（正確な衝突判定）
       let finalY = baselineY;
       let placed = false;
+      const maxTiers = TIMELINE_CONFIG.MAX_TIERS || 10;
+      const tierHeight = TIMELINE_CONFIG.TIER_HEIGHT || 50;
       
-      for (let tier = 0; tier < TIMELINE_CONFIG.MAX_TIERS; tier++) {
-        const testY = baselineY - (tier * TIMELINE_CONFIG.TIER_HEIGHT);
+      for (let tier = 0; tier < maxTiers; tier++) {
+        const testY = baselineY - (tier * tierHeight);
         const testPosition = { x: eventX, y: testY };
         
-        // 既存イベントとの衝突チェック
-        const collisionResult = checkMultipleCollisions(
-          event, 
-          testPosition, 
-          occupiedPositions.map(occupied => ({
-            event: occupied.event,
-            position: occupied.position
-          })), 
-          this.calculateTextWidth,
-          TIMELINE_CONFIG.EVENT_MARGIN
-        );
+        // 既存イベントとの衝突チェック（実際のイベント幅使用）
+        let hasCollision = false;
         
-        if (!collisionResult.hasCollision) {
+        for (const occupied of occupiedPositions) {
+          const margin = TIMELINE_CONFIG.EVENT_MARGIN || 15;
+          const thisLeft = eventX - eventWidth / 2;
+          const thisRight = eventX + eventWidth / 2;
+          const occupiedLeft = occupied.position.x - occupied.bounds.width / 2;
+          const occupiedRight = occupied.position.x + occupied.bounds.width / 2;
+          
+          // Y軸も考慮した衝突判定
+          const yDistance = Math.abs(testY - occupied.position.y);
+          const xOverlap = !(thisRight + margin < occupiedLeft || thisLeft - margin > occupiedRight);
+          
+          if (xOverlap && yDistance < eventHeight + margin) {
+            hasCollision = true;
+            console.log(`    衝突検出: "${occupied.event.title}" との重なり`);
+            break;
+          }
+        }
+        
+        if (!hasCollision) {
           finalY = testY;
           occupiedPositions.push({
             event,
             position: testPosition,
-            bounds: getEventBounds(event, testPosition, this.calculateTextWidth)
+            bounds: { width: eventWidth, height: eventHeight }
           });
           placed = true;
-          console.log(`    配置成功: 段=${tier}, Y=${finalY}`);
+          console.log(`    配置成功: 段=${tier}, Y=${finalY.toFixed(0)}`);
           break;
         }
       }
       
       if (!placed) {
         console.warn(`⚠️ メインイベント「${event.title}」: 全段が満杯のため最上段に強制配置`);
-        finalY = baselineY - (TIMELINE_CONFIG.MAX_TIERS * TIMELINE_CONFIG.TIER_HEIGHT);
+        finalY = baselineY - (maxTiers * tierHeight);
         occupiedPositions.push({
           event,
           position: { x: eventX, y: finalY },
-          bounds: getEventBounds(event, { x: eventX, y: finalY }, this.calculateTextWidth)
+          bounds: { width: eventWidth, height: eventHeight }
         });
       }
       
@@ -423,7 +443,7 @@ export class UnifiedLayoutSystem {
       });
     });
 
-    console.log(`✅ メインタイムラインレイアウト完了: ${results.length}イベント`);
+    console.log(`✅ メインタイムラインレイアウト完了: ${results.length}イベント (40%位置)`);
     return results;
   }
 
@@ -435,9 +455,9 @@ export class UnifiedLayoutSystem {
     const eventGroups = [];
 
     console.log(`🎨 レイアウト実行開始: ${events.length}イベント, ${timelineAxes.length}年表`);
-    console.log(`📏 統一サイズ計算システム使用`);
+    console.log(`📏 正確なイベント幅計算・重なり回避システム使用`);
 
-    // メインタイムラインのレイアウト
+    // メインタイムラインのレイアウト（40%位置）
     const mainTimelineResults = this.layoutMainTimelineEvents(events, timelineAxes);
     allEvents.push(...mainTimelineResults);
 

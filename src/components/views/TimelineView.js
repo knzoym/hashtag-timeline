@@ -15,6 +15,23 @@ export const TimelineView = ({
 }) => {
   const { allEvents, eventGroups } = layoutData;
 
+  // highlightedEventsの型を統一的にチェックする関数
+  const isEventHighlighted = (eventId) => {
+    if (!highlightedEvents) return false;
+    
+    // Setの場合
+    if (highlightedEvents.has) {
+      return highlightedEvents.has(eventId);
+    }
+    
+    // 配列の場合
+    if (Array.isArray(highlightedEvents)) {
+      return highlightedEvents.some((e) => e.id === eventId);
+    }
+    
+    return false;
+  };
+
   return (
     <>
       {/* 通常イベント表示 */}
@@ -23,7 +40,7 @@ export const TimelineView = ({
         .map((event, index) => {
           const eventX = event.adjustedPosition.x;
           const eventY = event.adjustedPosition.y + panY;
-          const isHighlighted = highlightedEvents?.some((e) => e.id === event.id) || false;
+          const isHighlighted = isEventHighlighted(event.id);
 
           return (
             <React.Fragment key={`event-${event.id}-${index}`}>
