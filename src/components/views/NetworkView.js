@@ -10,9 +10,11 @@ export const NetworkView = ({
   onTimelineClick,
   handleEventDoubleClick,
   calculateTextWidth,
-  // 新しく追加するプロパティ
+  // ドラッグ関連のプロパティ
   timelineAxes = [],
   onEventUpdate,
+  onDragStart, // 追加
+  isDragging = false, // 追加
 }) => {
   return (
     <>
@@ -48,9 +50,9 @@ export const NetworkView = ({
             onMouseDown={(e) => e.stopPropagation()}
             calculateTextWidth={calculateTextWidth}
             className="no-pan"
-            // ドラッグに必要なプロパティを追加
-            timelineAxes={timelineAxes}
-            onEventUpdate={onEventUpdate}
+            // ドラッグに必要なプロパティ
+            onDragStart={onDragStart}
+            isDragging={isDragging}
           />
         );
       })}

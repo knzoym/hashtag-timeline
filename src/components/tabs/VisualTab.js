@@ -167,6 +167,184 @@ const VisualTab = ({
     handleEventAddToTimeline,
     handleEventRemoveFromTimeline
   );
+  // EventCard用のドラッグ開始ハンドラー
+  const handleDragStart = useCallback((e, dragType, dragData) => {
+    console.log("EventCard → VisualTab ドラッグ開始:", dragData.title);
+    
+    // 既存のuseDragDropシステムを使用
+    dragSystem.handleMouseDown(e, dragType, dragData);
+  }, [dragSystem]);
+
+  const handleDragEnd = useCallback((e) => {
+    if (!dragState.isDragging || !dragState.draggedEvent) return;
+
+    const dropY = e.clientY;
+    console.log("ドロップ位置 Y:", dropY);
+
+    // 年表軸との重なりをチェック
+    let targetTimeline = null;
+
+    if (timelineAxes && timelineAxes.length > 0) {
+      targetTimeline = timelineAxes.find((axis) => {
+        const headerOffset = 64;
+        const axisScreenY = axis.yPosition + panY + headerOffset;
+        const dropZoneTop = axisScreenY - 40;
+        const dropZoneBottom = axisScreenY + 40;
+        return dropY >= dropZoneTop && dropY <= dropZoneBottom;
+      });
+    }
+
+    const draggedEvent = dragState.draggedEvent;
+
+    if (targetTimeline) {
+      // 年表エリアにドロップ：仮登録
+      console.log(`イベント「${draggedEvent.title}」を年表「${targetTimeline.name}」に仮登録`);
+
+      const updatedTimelineInfos = [...(draggedEvent.timelineInfos || [])];
+      const existingIndex = updatedTimelineInfos.findIndex(
+        (info) => info.timelineId === targetTimeline.id
+      );
+
+      if (existingIndex >= 0) {
+        updatedTimelineInfos[existingIndex] = {
+          ...updatedTimelineInfos[existingIndex],
+          isTemporary: false,
+        };
+      } else {
+        updatedTimelineInfos.push({
+          timelineId: targetTimeline.id,
+          isTemporary: false,
+        });
+      }
+
+      const updatedEvent = {
+        ...draggedEvent,
+        timelineInfos: updatedTimelineInfos,
+      };
+
+      if (onEventUpdate) {
+        onEventUpdate(updatedEvent);
+      }
+    } else {
+      // 年表エリア外にドロップ：仮削除処理
+      if (draggedEvent.timelineInfos && draggedEvent.timelineInfos.length > 0) {
+        console.log(`イベント「${draggedEvent.title}」を仮削除状態に変更`);
+
+        const updatedTimelineInfos = draggedEvent.timelineInfos.map((info) => ({
+          ...info,
+          isTemporary: true,
+        }));
+
+        const updatedEvent = {
+          ...draggedEvent,
+          timelineInfos: updatedTimelineInfos,
+        };
+
+        if (onEventUpdate) {
+          onEventUpdate(updatedEvent);
+        }
+      }
+    }
+
+    // ドラッグ状態リセット
+    setDragState({
+      isDragging: false,
+      draggedEvent: null,
+      startPosition: { x: 0, y: 0 },
+      currentPosition: { x: 0, y: 0 },
+    });
+
+    document.body.style.cursor = "default";
+  }, [dragState, timelineAxes, panY, onEventUpdate]);
+  const handleEventMove = useCallback((eventId, newY, conflictingEvents) => {
+    console.log(`イベント移動: ${eventId} を Y=${newY} に移動`);
+    // メインタイムラインでの位置調整ロジック
+    const targetEvent = events.find(e => e.id === eventId);
+    if (targetEvent && onEventUpdate) {
+      const updatedEvent = {
+        ...targetEvent,
+        adjustedPosition: {
+          ...targetEvent.adjustedPosition,
+          y: newY
+        }
+      };
+      onEventUpdate(updatedEvent);
+    }
+  }, [events, onEventUpdate]);
+
+  const handleTimelineMove = useCallback((timelineId, newPosition) => {
+    console.log(`年表移動: ${timelineId}`);
+    // 年表移動処理（必要に応じて実装）
+  }, []);
+
+  const handleEventAddToTimeline = useCallback((event, timelineId) => {
+    console.log(`仮登録処理: イベント「${event.title}」を年表ID「${timelineId}」に仮登録`);
+    
+    if (!onEventUpdate) return;
+
+    const updatedTimelineInfos = [...(event.timelineInfos || [])];
+    const existingIndex = updatedTimelineInfos.findIndex(
+      (info) => info.timelineId === timelineId
+    );
+
+    if (existingIndex >= 0) {
+      // 既存の関連を正式登録に変更（仮削除→正式登録）
+      updatedTimelineInfos[existingIndex] = {
+        ...updatedTimelineInfos[existingIndex],
+        isTemporary: false,
+      };
+      console.log(`既存関連を正式登録に変更: ${event.title}`);
+    } else {
+      // 新規仮登録
+      updatedTimelineInfos.push({
+        timelineId: timelineId,
+        isTemporary: false, // 仮登録ではなく正式登録として追加
+      });
+      console.log(`新規登録: ${event.title} を年表に追加`);
+    }
+
+    const updatedEvent = {
+      ...event,
+      timelineInfos: updatedTimelineInfos,
+    };
+
+    onEventUpdate(updatedEvent);
+  }, [onEventUpdate]);
+
+  const handleEventRemoveFromTimeline = useCallback((timelineId, eventId) => {
+    console.log(`仮削除処理: イベントID「${eventId}」を年表ID「${timelineId}」から仮削除`);
+    
+    if (!onEventUpdate) return;
+
+    const targetEvent = events.find(e => e.id === eventId);
+    if (!targetEvent) return;
+
+    if (targetEvent.timelineInfos && targetEvent.timelineInfos.length > 0) {
+      // timelineInfos方式: 該当する年表情報を仮削除状態に変更
+      const updatedTimelineInfos = targetEvent.timelineInfos.map((info) => {
+        if (info.timelineId === timelineId) {
+          return { ...info, isTemporary: true };
+        }
+        return info;
+      });
+
+      const updatedEvent = {
+        ...targetEvent,
+        timelineInfos: updatedTimelineInfos,
+      };
+
+      onEventUpdate(updatedEvent);
+      console.log(`timelineInfos方式で仮削除: ${targetEvent.title}`);
+    }
+  }, [events, onEventUpdate]);
+
+  // 統合ドラッグシステム
+  const dragSystem = useDragDrop(
+    handleEventMove,
+    handleTimelineMove,
+    handleEventAddToTimeline,
+    handleEventRemoveFromTimeline
+  );
 
   // テキスト幅計算
   const calculateTextWidth = useCallback((text) => {
@@ -655,9 +833,9 @@ const VisualTab = ({
             onTimelineClick={onTimelineClick}
             handleEventDoubleClick={handleEventDoubleClick}
             calculateTextWidth={calculateTextWidth}
-            // ドラッグに必要なプロパティを追加
-            timelineAxes={timelineAxes}
-            onEventUpdate={onEventUpdate}
+            // ドラッグ統合
+            onDragStart={handleDragStart}
+            isDragging={dragSystem.isDragging}
           />
         ) : (
           <>
@@ -679,9 +857,9 @@ const VisualTab = ({
               toggleEventGroup={toggleEventGroup}
               handleEventDoubleClick={handleEventDoubleClick}
               calculateTextWidth={calculateTextWidth}
-              // ドラッグに必要なプロパティを追加
-              timelineAxes={timelineAxes}
-              onEventUpdate={onEventUpdate}
+              // ドラッグ統合
+              onDragStart={handleDragStart}
+              isDragging={dragSystem.isDragging}
             />
           </>
         )}

@@ -12,17 +12,25 @@ export const useWikiData = (user) => {
       setLoading(true);
       setError(null);
 
+      // 検索時は一時的に取得件数を増やす（後でフロント側で絞り込む）
+      const fetchLimit = searchTerm.trim() ? Math.max(limit, 200) : limit;
+
       let query = supabase
         .from("events")
-        .select(`
+        .select(
+          `
           *,
           profiles:created_by(display_name, username)
-        `)
+        `
+        )
         .order("created_at", { ascending: false })
-        .limit(limit);
+        .limit(fetchLimit);
 
       if (searchTerm.trim()) {
-        query = query.or(`title.ilike.%${searchTerm}%,tags.cs.{${searchTerm}}`);
+        // サーバー側では title/description の部分一致を担当させる
+        // （tags の部分一致は後段でクライアント側フィルタ）
+        const s = searchTerm.trim();
+        query = query.or(`title.ilike.%${s}%,description.ilike.%${s}%`);
       }
 
       const { data, error } = await query;
@@ -32,12 +40,33 @@ export const useWikiData = (user) => {
       const formattedData = (data || []).map((event) => ({
         ...event,
         startDate: new Date(event.date_start || event.start_date),
-        endDate: event.date_end ? new Date(event.date_end) : new Date(event.date_start || event.start_date),
+        endDate: event.date_end
+          ? new Date(event.date_end)
+          : new Date(event.date_start || event.start_date),
         tags: Array.isArray(event.tags) ? event.tags : [],
         sources: Array.isArray(event.sources) ? event.sources : [],
       }));
 
-      return formattedData;
+      // ここで tags の部分一致フィルタを実施（大文字小文字を無視）
+      if (!searchTerm.trim()) {
+        return formattedData;
+      }
+      const q = searchTerm.trim().toLowerCase();
+      const tagMatched = formattedData.filter((ev) =>
+        ev.tags?.some((t) => String(t).toLowerCase().includes(q))
+      );
+
+      // title/description で拾えたものと tag 部分一致をマージして重複除去
+      const merged = [];
+      const seen = new Set();
+      for (const ev of [...formattedData, ...tagMatched]) {
+        if (!seen.has(ev.id)) {
+          seen.add(ev.id);
+          merged.push(ev);
+        }
+      }
+      // 元の limit で切り戻す
+      return merged.slice(0, limit);
     } catch (err) {
       console.error("共用イベント取得エラー:", err);
       setError(err.message);
@@ -61,12 +90,14 @@ export const useWikiData = (user) => {
           .insert({
             title: eventData.title,
             date_start: eventData.startDate.toISOString().split("T")[0],
-            date_end: eventData.endDate ? eventData.endDate.toISOString().split("T")[0] : eventData.startDate.toISOString().split("T")[0],
+            date_end: eventData.endDate
+              ? eventData.endDate.toISOString().split("T")[0]
+              : eventData.startDate.toISOString().split("T")[0],
             description: eventData.description || "",
             tags: eventData.tags || [],
             sources: eventData.sources || [],
             license: eventData.license || "CC0-1.0",
-            created_by: user.id
+            created_by: user.id,
           })
           .select();
 
@@ -96,7 +127,9 @@ export const useWikiData = (user) => {
 
         if (updates.startDate) {
           updateData.date_start = updates.startDate.toISOString().split("T")[0];
-          updateData.date_end = updates.endDate ? updates.endDate.toISOString().split("T")[0] : updates.startDate.toISOString().split("T")[0];
+          updateData.date_end = updates.endDate
+            ? updates.endDate.toISOString().split("T")[0]
+            : updates.startDate.toISOString().split("T")[0];
           delete updateData.startDate;
           delete updateData.endDate;
         }
@@ -173,7 +206,7 @@ export const useWikiData = (user) => {
   const voteOnRevision = useCallback(
     async (revisionId, kind) => {
       if (!user) {
-        setError('ログインが必要です');
+        setError("ログインが必要です");
         return null;
       }
 
@@ -182,20 +215,23 @@ export const useWikiData = (user) => {
         setError(null);
 
         // 統一された認証方式
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('ログインが必要です');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+        if (!session) throw new Error("ログインが必要です");
 
-        console.log('投票API呼び出し開始:', { revisionId, kind });
+        console.log("投票API呼び出し開始:", { revisionId, kind });
 
         const response = await fetch(
           `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-vote`,
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+              apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
             },
             body: JSON.stringify({
               revision_id: revisionId,
@@ -208,15 +244,18 @@ export const useWikiData = (user) => {
         try {
           result = await response.json();
         } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `レスポンス解析エラー: ${response.status} ${response.statusText}`
+          );
         }
 
         if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          const errorMessage =
+            result.error || result.message || `HTTPエラー: ${response.status}`;
           throw new Error(errorMessage);
         }
 
-        console.log('投票API呼び出し成功:', result);
+        console.log("投票API呼び出し成功:", result);
         return result;
       } catch (err) {
         console.error("投票エラー:", err);
@@ -233,7 +272,7 @@ export const useWikiData = (user) => {
   const createRevision = useCallback(
     async (eventData, eventId = null) => {
       if (!user) {
-        setError('ログインが必要です');
+        setError("ログインが必要です");
         return null;
       }
 
@@ -242,16 +281,23 @@ export const useWikiData = (user) => {
         setError(null);
 
         // 統一された認証方式
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('ログインが必要です');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+        if (!session) throw new Error("ログインが必要です");
 
         // データ型の統一
         const payload = {
           title: eventData.title,
           description: eventData.description,
-          date_start: eventData.startDate ? eventData.startDate.toISOString().split("T")[0] : eventData.date_start,
-          date_end: eventData.endDate ? eventData.endDate.toISOString().split("T")[0] : eventData.date_end || eventData.date_start,
+          date_start: eventData.startDate
+            ? eventData.startDate.toISOString().split("T")[0]
+            : eventData.date_start,
+          date_end: eventData.endDate
+            ? eventData.endDate.toISOString().split("T")[0]
+            : eventData.date_end || eventData.date_start,
           tags: eventData.tags || [],
           sources: eventData.sources || [],
           license: eventData.license || "CC0-1.0",
@@ -259,10 +305,10 @@ export const useWikiData = (user) => {
 
         const requestBody = eventId ? { eventId, payload } : { payload };
 
-        console.log('リビジョン作成API呼び出し開始:', {
+        console.log("リビジョン作成API呼び出し開始:", {
           endpoint: `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-create`,
           hasEventId: !!eventId,
-          payloadKeys: Object.keys(payload)
+          payloadKeys: Object.keys(payload),
         });
 
         const response = await fetch(
@@ -270,9 +316,9 @@ export const useWikiData = (user) => {
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+              apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
             },
             body: JSON.stringify(requestBody),
           }
@@ -282,15 +328,18 @@ export const useWikiData = (user) => {
         try {
           result = await response.json();
         } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `レスポンス解析エラー: ${response.status} ${response.statusText}`
+          );
         }
 
         if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          const errorMessage =
+            result.error || result.message || `HTTPエラー: ${response.status}`;
           throw new Error(errorMessage);
         }
 
-        console.log('リビジョン作成API呼び出し成功:', result);
+        console.log("リビジョン作成API呼び出し成功:", result);
         return result;
       } catch (err) {
         console.error("リビジョン作成エラー:", err);
@@ -307,7 +356,7 @@ export const useWikiData = (user) => {
   const revertRevision = useCallback(
     async (revisionId) => {
       if (!user) {
-        setError('ログインが必要です');
+        setError("ログインが必要です");
         return null;
       }
 
@@ -316,20 +365,23 @@ export const useWikiData = (user) => {
         setError(null);
 
         // 統一された認証方式
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('ログインが必要です');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+        if (!session) throw new Error("ログインが必要です");
 
-        console.log('リバートAPI呼び出し開始:', { revisionId });
+        console.log("リバートAPI呼び出し開始:", { revisionId });
 
         const response = await fetch(
           `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-revert`,
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+              apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
             },
             body: JSON.stringify({
               revision_id: revisionId,
@@ -341,15 +393,18 @@ export const useWikiData = (user) => {
         try {
           result = await response.json();
         } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `レスポンス解析エラー: ${response.status} ${response.statusText}`
+          );
         }
 
         if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          const errorMessage =
+            result.error || result.message || `HTTPエラー: ${response.status}`;
           throw new Error(errorMessage);
         }
 
-        console.log('リバートAPI呼び出し成功:', result);
+        console.log("リバートAPI呼び出し成功:", result);
         return result;
       } catch (err) {
         console.error("リバートエラー:", err);
@@ -372,7 +427,8 @@ export const useWikiData = (user) => {
         // 安定版のイベント一覧を取得
         let query = supabase
           .from("event_stable")
-          .select(`
+          .select(
+            `
             event_id,
             stable_revision_id,
             stable_data,
@@ -383,7 +439,6 @@ export const useWikiData = (user) => {
             stable_created_at,
             events!inner(
               id,
-              slug,
               title,
               date_start,
               date_end,
@@ -396,7 +451,8 @@ export const useWikiData = (user) => {
               updated_at,
               profiles:created_by(display_name, username)
             )
-          `)
+          `
+          )
           .order("stable_score", { ascending: false })
           .limit(limit);
 
@@ -422,15 +478,15 @@ export const useWikiData = (user) => {
   );
 
   // リビジョン履歴取得
-  const getEventRevisions = useCallback(
-    async (eventId) => {
-      try {
-        setLoading(true);
-        setError(null);
+  const getEventRevisions = useCallback(async (eventId) => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const { data, error } = await supabase
-          .from("revision_scores")
-          .select(`
+      const { data, error } = await supabase
+        .from("revision_scores")
+        .select(
+          `
             rev_id,
             event_id,
             data,
@@ -440,42 +496,41 @@ export const useWikiData = (user) => {
             reports,
             stable_score,
             profiles:edited_by(display_name, username)
-          `)
-          .eq("event_id", eventId)
-          .order("created_at", { ascending: false });
+          `
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false });
 
-        if (error) throw error;
-        return data || [];
-      } catch (err) {
-        console.error("リビジョン履歴取得エラー:", err);
-        setError(err.message);
-        return [];
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error("リビジョン履歴取得エラー:", err);
+      setError(err.message);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // 最新のリビジョン履歴取得（全体）
   const getRecentRevisions = useCallback(
-    async (limit = 20, timeRange = '24h') => {
+    async (limit = 20, timeRange = "24h") => {
       try {
         setLoading(true);
         setError(null);
 
         let timeFilter = new Date();
         switch (timeRange) {
-          case '1h':
+          case "1h":
             timeFilter.setHours(timeFilter.getHours() - 1);
             break;
-          case '24h':
+          case "24h":
             timeFilter.setDate(timeFilter.getDate() - 1);
             break;
-          case '7d':
+          case "7d":
             timeFilter.setDate(timeFilter.getDate() - 7);
             break;
-          case '30d':
+          case "30d":
             timeFilter.setDate(timeFilter.getDate() - 30);
             break;
           default:
@@ -484,7 +539,8 @@ export const useWikiData = (user) => {
 
         const { data, error } = await supabase
           .from("revision_scores")
-          .select(`
+          .select(
+            `
             rev_id,
             event_id,
             data,
@@ -494,9 +550,10 @@ export const useWikiData = (user) => {
             reports,
             stable_score,
             profiles:edited_by(display_name, username),
-            events!inner(title, slug)
-          `)
-          .gte('created_at', timeFilter.toISOString())
+            events!inner(title,)
+          `
+          )
+          .gte("created_at", timeFilter.toISOString())
           .order("created_at", { ascending: false })
           .limit(limit);
 
@@ -514,33 +571,24 @@ export const useWikiData = (user) => {
   );
 
   // イベント詳細取得（安定版 + 最新リビジョン）
-  const getEventDetail = useCallback(
-    async (eventId, slug = null) => {
-      try {
-        setLoading(true);
-        setError(null);
+  const getEventDetail = useCallback(async (eventId = null) => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        // 安定版データ取得
-        let stableQuery = supabase.from('event_stable').select('*');
-        if (eventId) {
-          stableQuery = stableQuery.eq('event_id', eventId);
-        } else if (slug) {
-          stableQuery = stableQuery.eq('slug', slug);
-        } else {
-          throw new Error('eventIdまたはslugが必要です');
-        }
+      const { data: stable, error: stableError } = await supabase
+        .from("event_stable")
+        .select("*")
+        .eq("event_id", eventId)
+        .single();
 
-        const { data: stable, error: stableError } = await stableQuery.single();
-        if (stableError && stableError.code !== 'PGRST116') {
-          throw stableError;
-        }
-
-        let revisionHistory = [];
-        if (stable) {
-          // リビジョン履歴取得
-          const { data: revisions, error: revisionsError } = await supabase
-            .from('revision_scores')
-            .select(`
+      let revisionHistory = [];
+      if (stable) {
+        // リビジョン履歴取得
+        const { data: revisions, error: revisionsError } = await supabase
+          .from("revision_scores")
+          .select(
+            `
               rev_id,
               event_id,
               data,
@@ -550,47 +598,47 @@ export const useWikiData = (user) => {
               reports,
               stable_score,
               profiles:edited_by(display_name, username)
-            `)
-            .eq('event_id', stable.event_id)
-            .order('created_at', { ascending: false });
+            `
+          )
+          .eq("event_id", stable.event_id)
+          .order("created_at", { ascending: false });
 
-          if (revisionsError) {
-            console.warn('リビジョン履歴取得で警告:', revisionsError);
-          } else {
-            revisionHistory = revisions || [];
-          }
+        if (revisionsError) {
+          console.warn("リビジョン履歴取得で警告:", revisionsError);
+        } else {
+          revisionHistory = revisions || [];
         }
-
-        return {
-          stableVersion: stable,
-          revisionHistory,
-          latestRevision: revisionHistory.length > 0 ? revisionHistory[0] : null
-        };
-      } catch (err) {
-        console.error("イベント詳細取得エラー:", err);
-        setError(err.message);
-        return {
-          stableVersion: null,
-          revisionHistory: [],
-          latestRevision: null
-        };
-      } finally {
-        setLoading(false);
       }
-    },
-    []
-  );
+
+      return {
+        stableVersion: stable,
+        revisionHistory,
+        latestRevision: revisionHistory.length > 0 ? revisionHistory[0] : null,
+      };
+    } catch (err) {
+      console.error("イベント詳細取得エラー:", err);
+      setError(err.message);
+      return {
+        stableVersion: null,
+        revisionHistory: [],
+        latestRevision: null,
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // 承認待ちリビジョン取得
   const getPendingRevisions = useCallback(
-    async (status = 'pending', limit = 50) => {
+    async (status = "pending", limit = 50) => {
       try {
         setLoading(true);
         setError(null);
 
         let query = supabase
           .from("revision_scores")
-          .select(`
+          .select(
+            `
             rev_id,
             event_id,
             data,
@@ -604,23 +652,23 @@ export const useWikiData = (user) => {
             approved_at,
             rejection_reason,
             profiles:edited_by(display_name, username),
-            events!inner(title, slug)
-          `)
+            events!inner(title)
+          `
+          )
           .order("created_at", { ascending: false })
           .limit(limit);
 
-        if (status !== 'all') {
-          query = query.eq('approval_status', status);
+        if (status !== "all") {
+          query = query.eq("approval_status", status);
         }
 
         const { data, error } = await query;
         if (error) throw error;
 
         // 追加のイベント情報を取得
-        const enrichedData = (data || []).map(revision => ({
+        const enrichedData = (data || []).map((revision) => ({
           ...revision,
-          event_title: revision.events?.title || '無題',
-          event_slug: revision.events?.slug
+          event_title: revision.events?.title || "無題",
         }));
 
         return enrichedData;
@@ -637,9 +685,9 @@ export const useWikiData = (user) => {
 
   // リビジョン承認
   const approveRevision = useCallback(
-    async (revisionId, approvalType = 'manual') => {
+    async (revisionId, approvalType = "manual") => {
       if (!user) {
-        setError('承認にはログインが必要です');
+        setError("承認にはログインが必要です");
         return null;
       }
 
@@ -647,20 +695,23 @@ export const useWikiData = (user) => {
         setLoading(true);
         setError(null);
 
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('ログインが必要です');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+        if (!session) throw new Error("ログインが必要です");
 
-        console.log('承認API呼び出し開始:', { revisionId, approvalType });
+        console.log("承認API呼び出し開始:", { revisionId, approvalType });
 
         const response = await fetch(
           `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-approve`,
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+              apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
             },
             body: JSON.stringify({
               revision_id: revisionId,
@@ -673,15 +724,18 @@ export const useWikiData = (user) => {
         try {
           result = await response.json();
         } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `レスポンス解析エラー: ${response.status} ${response.statusText}`
+          );
         }
 
         if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          const errorMessage =
+            result.error || result.message || `HTTPエラー: ${response.status}`;
           throw new Error(errorMessage);
         }
 
-        console.log('承認API呼び出し成功:', result);
+        console.log("承認API呼び出し成功:", result);
         return result;
       } catch (err) {
         console.error("承認エラー:", err);
@@ -696,9 +750,9 @@ export const useWikiData = (user) => {
 
   // リビジョン却下
   const rejectRevision = useCallback(
-    async (revisionId, reason = '') => {
+    async (revisionId, reason = "") => {
       if (!user) {
-        setError('却下にはログインが必要です');
+        setError("却下にはログインが必要です");
         return null;
       }
 
@@ -706,20 +760,23 @@ export const useWikiData = (user) => {
         setLoading(true);
         setError(null);
 
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('ログインが必要です');
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+        if (!session) throw new Error("ログインが必要です");
 
-        console.log('却下API呼び出し開始:', { revisionId, reason });
+        console.log("却下API呼び出し開始:", { revisionId, reason });
 
         const response = await fetch(
           `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/rev-reject`,
           {
             method: "POST",
             headers: {
-              "Authorization": `Bearer ${session.access_token}`,
+              Authorization: `Bearer ${session.access_token}`,
               "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
+              apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
             },
             body: JSON.stringify({
               revision_id: revisionId,
@@ -732,15 +789,18 @@ export const useWikiData = (user) => {
         try {
           result = await response.json();
         } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `レスポンス解析エラー: ${response.status} ${response.statusText}`
+          );
         }
 
         if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
+          const errorMessage =
+            result.error || result.message || `HTTPエラー: ${response.status}`;
           throw new Error(errorMessage);
         }
 
-        console.log('却下API呼び出し成功:', result);
+        console.log("却下API呼び出し成功:", result);
         return result;
       } catch (err) {
         console.error("却下エラー:", err);
@@ -754,54 +814,57 @@ export const useWikiData = (user) => {
   );
 
   // 自動承認の実行
-  const executeAutoApproval = useCallback(
-    async () => {
+  const executeAutoApproval = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+      if (sessionError) throw new Error("認証セッションの取得に失敗しました");
+      if (!session) throw new Error("管理者権限が必要です");
+
+      console.log("自動承認API呼び出し開始");
+
+      const response = await fetch(
+        `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/auto-approve`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
+          },
+        }
+      );
+
+      let result;
       try {
-        setLoading(true);
-        setError(null);
-
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw new Error('認証セッションの取得に失敗しました');
-        if (!session) throw new Error('管理者権限が必要です');
-
-        console.log('自動承認API呼び出し開始');
-
-        const response = await fetch(
-          `${process.env.REACT_APP_SUPABASE_URL}/functions/v1/auto-approve`,
-          {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${session.access_token}`,
-              "Content-Type": "application/json",
-              "apikey": process.env.REACT_APP_SUPABASE_ANON_KEY
-            },
-          }
+        result = await response.json();
+      } catch (parseError) {
+        throw new Error(
+          `レスポンス解析エラー: ${response.status} ${response.statusText}`
         );
-
-        let result;
-        try {
-          result = await response.json();
-        } catch (parseError) {
-          throw new Error(`レスポンス解析エラー: ${response.status} ${response.statusText}`);
-        }
-
-        if (!response.ok) {
-          const errorMessage = result.error || result.message || `HTTPエラー: ${response.status}`;
-          throw new Error(errorMessage);
-        }
-
-        console.log('自動承認API呼び出し成功:', result);
-        return result;
-      } catch (err) {
-        console.error("自動承認エラー:", err);
-        setError(err.message);
-        return null;
-      } finally {
-        setLoading(false);
       }
-    },
-    [user]
-  );
+
+      if (!response.ok) {
+        const errorMessage =
+          result.error || result.message || `HTTPエラー: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+
+      console.log("自動承認API呼び出し成功:", result);
+      return result;
+    } catch (err) {
+      console.error("自動承認エラー:", err);
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
 
   return {
     loading,
@@ -819,6 +882,7 @@ export const useWikiData = (user) => {
     getEventsWithScores,
     getEventRevisions,
     getRecentRevisions,
+    getRecentActivity: getRecentRevisions,
     getEventDetail,
     // 承認システム
     getPendingRevisions,
@@ -826,6 +890,6 @@ export const useWikiData = (user) => {
     rejectRevision,
     executeAutoApproval,
     // エラー管理
-    clearError: () => setError(null)
+    clearError: () => setError(null),
   };
 };

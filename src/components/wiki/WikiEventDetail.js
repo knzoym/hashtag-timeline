@@ -6,7 +6,6 @@ import { useWikiData } from '../../hooks/useWikiData';
 
 const WikiEventDetail = ({ 
   eventId, 
-  slug, 
   user, 
   onBack,
   supabaseClient 
@@ -30,10 +29,10 @@ const WikiEventDetail = ({
       setLoading(true);
       setError(null);
 
-      console.log('イベント詳細取得開始:', { eventId, slug });
+      console.log('イベント詳細取得開始:', { eventId });
 
       // useWikiDataのgetEventDetailを使用
-      const eventDetail = await wikiData.getEventDetail(eventId, slug);
+      const eventDetail = await wikiData.getEventDetail(eventId);
       
       setStableVersion(eventDetail.stableVersion);
       setRevisionHistory(eventDetail.revisionHistory);
@@ -51,7 +50,7 @@ const WikiEventDetail = ({
     } finally {
       setLoading(false);
     }
-  }, [eventId, slug, wikiData]);
+  }, [eventId, wikiData]);
 
   // 初期読み込み
   useEffect(() => {
@@ -680,7 +679,6 @@ const WikiEventDetail = ({
         {showEditForm && (
           <WikiRevisionForm
             eventId={stableVersion?.event_id}
-            slug={slug}
             initialData={latestRevision?.data || stableVersion?.stable_data || stableVersion}
             user={user}
             supabaseClient={supabaseClient}
