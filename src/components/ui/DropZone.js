@@ -1,6 +1,5 @@
-// src/components/ui/DropZone.js - ドロップゾーン表示システム
+// src/components/ui/DropZone.js - 削除ゾーン除去・簡素化版
 import React, { useMemo } from 'react';
-import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 
 /**
  * 年表ドロップゾーン - ドラッグ中に表示される
@@ -68,7 +67,7 @@ export const TimelineDropZone = ({
         </div>
         <div>
           {isHighlighted ? 
-            `「${timeline.name}」に追加` : 
+            `「${timeline.name}」に登録` : 
             `${timeline.name} (${eventCount}件)`
           }
         </div>
@@ -87,118 +86,7 @@ export const TimelineDropZone = ({
 };
 
 /**
- * メインタイムライン削除ゾーン
- */
-export const MainTimelineDropZone = ({ 
-  yPosition, 
-  panY, 
-  isActive = false,
-  isHighlighted = false,
-  style = {}
-}) => {
-  const mainDropZoneStyles = {
-    position: 'absolute',
-    left: '50px',
-    right: '50px',
-    top: `${yPosition + panY - 25}px`,
-    height: '50px',
-    borderRadius: '8px',
-    border: isHighlighted ? '2px solid #f59e0b' : '2px dashed rgba(156, 163, 175, 0.4)',
-    backgroundColor: isHighlighted ? 'rgba(245, 158, 11, 0.1)' : 'rgba(156, 163, 175, 0.05)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: isHighlighted ? 100 : 40,
-    opacity: isActive ? 1 : 0.6,
-    transform: isHighlighted ? 'scale(1.01)' : 'scale(1)',
-    transition: 'all 0.2s ease',
-    pointerEvents: 'none',
-    ...style
-  };
-
-  const labelStyles = {
-    color: isHighlighted ? '#d97706' : '#9ca3af',
-    fontSize: '13px',
-    fontWeight: '500',
-    textAlign: 'center',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px'
-  };
-
-  return (
-    <div style={mainDropZoneStyles} data-main-timeline-dropzone="true">
-      <div style={labelStyles}>
-        <span>📍</span>
-        {isHighlighted ? 'メインタイムラインに戻す' : 'メインタイムライン'}
-      </div>
-    </div>
-  );
-};
-
-/**
- * 削除ゾーン（年表外エリア）
- */
-export const RemovalZone = ({ 
-  isActive = false,
-  isHighlighted = false,
-  draggedEvent = null,
-  style = {}
-}) => {
-  const removalZoneStyles = {
-    position: 'fixed',
-    top: '20px',
-    right: '20px',
-    width: isHighlighted ? '200px' : '150px',
-    height: isHighlighted ? '80px' : '60px',
-    borderRadius: '12px',
-    border: isHighlighted ? '3px solid #ef4444' : '2px dashed rgba(239, 68, 68, 0.4)',
-    backgroundColor: isHighlighted ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: isHighlighted ? 120 : 60,
-    opacity: isActive ? 1 : 0.8,
-    transform: isHighlighted ? 'scale(1.05)' : 'scale(1)',
-    transition: 'all 0.3s ease',
-    pointerEvents: 'none',
-    backdropFilter: 'blur(4px)',
-    boxShadow: isHighlighted ? '0 8px 24px rgba(239, 68, 68, 0.3)' : '0 4px 12px rgba(239, 68, 68, 0.1)',
-    ...style
-  };
-
-  const iconStyles = {
-    fontSize: isHighlighted ? '24px' : '20px',
-    marginBottom: '4px',
-    color: isHighlighted ? '#dc2626' : '#ef4444'
-  };
-
-  const labelStyles = {
-    color: isHighlighted ? '#dc2626' : '#ef4444',
-    fontSize: isHighlighted ? '13px' : '12px',
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: '1.2'
-  };
-
-  return (
-    <div style={removalZoneStyles} data-removal-zone="true">
-      <div style={iconStyles}>
-        {isHighlighted ? '🗑️' : '❌'}
-      </div>
-      <div style={labelStyles}>
-        {isHighlighted ? 
-          `${draggedEvent?.title || 'イベント'}を\n年表から削除` : 
-          '年表から削除'
-        }
-      </div>
-    </div>
-  );
-};
-
-/**
- * ドロップゾーン管理システム
+ * ドロップゾーン管理システム（簡素化版）
  */
 export const DropZoneManager = ({ 
   isActive = false,
@@ -206,8 +94,8 @@ export const DropZoneManager = ({
   displayTimelines = [],
   panY = 0,
   draggedEvent = null,
-  highlightedZone = null, // 'timeline-{id}' | 'main' | 'remove'
-  mainTimelineY = null,
+  highlightedZone = null, // 'timeline-{id}' のみ
+  mainTimelineY = null, // 使用しない（削除対象）
   style = {}
 }) => {
   // アクティブな年表ドロップゾーンを計算
@@ -255,7 +143,7 @@ export const DropZoneManager = ({
       </style>
       
       <div style={containerStyles}>
-        {/* 年表ドロップゾーン */}
+        {/* 年表ドロップゾーンのみ表示 */}
         {activeTimelineZones.map(zone => (
           <TimelineDropZone
             key={zone.id}
@@ -269,23 +157,6 @@ export const DropZoneManager = ({
             endX={zone.endX}
           />
         ))}
-
-        {/* メインタイムラインドロップゾーン */}
-        {mainTimelineY && (
-          <MainTimelineDropZone
-            yPosition={mainTimelineY}
-            panY={panY}
-            isActive={isActive}
-            isHighlighted={highlightedZone === 'main'}
-          />
-        )}
-
-        {/* 削除ゾーン（固定位置） */}
-        <RemovalZone
-          isActive={isActive}
-          isHighlighted={highlightedZone === 'remove'}
-          draggedEvent={draggedEvent}
-        />
       </div>
     </>
   );

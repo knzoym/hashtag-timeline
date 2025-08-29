@@ -1,5 +1,10 @@
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 
+// ID生成関数
+export const generateUniqueId = () => {
+  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+};
+
 export const extractTagsFromDescription = (description) => {
   const tagRegex = /#([^\s#]+)/g;
   const matches = [];

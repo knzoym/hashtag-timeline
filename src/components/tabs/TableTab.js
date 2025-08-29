@@ -1,7 +1,64 @@
-// components/tabs/TableTab.js - timelineInfos対応修正版
+// components/tabs/TableTab.js - 年表ベース仮状態管理版
 import React, { useState, useMemo, useCallback } from 'react';
 import { EventModal } from '../modals/EventModal';
 import TimelineModal from '../modals/TimelineModal';
+
+// 年表ベースヘルパー関数
+const getEventTimelineStatus = (event, timeline) => {
+  if (!timeline || !event) return 'none';
+  
+  if (timeline.eventIds?.includes(event.id)) {
+    return 'registered';
+  }
+  
+  if (timeline.pendingEventIds?.includes(event.id)) {
+    return 'pending';
+  }
+  
+  if (timeline.removedEventIds?.includes(event.id)) {
+    return 'removed';
+  }
+  
+  return 'none';
+};
+
+const updateTimelineEventStatus = (timeline, eventId, newStatus) => {
+  const updated = {
+    ...timeline,
+    eventIds: [...(timeline.eventIds || [])],
+    pendingEventIds: [...(timeline.pendingEventIds || [])],
+    removedEventIds: [...(timeline.removedEventIds || [])]
+  };
+  
+  // 既存の関係をクリア
+  updated.eventIds = updated.eventIds.filter(id => id !== eventId);
+  updated.pendingEventIds = updated.pendingEventIds.filter(id => id !== eventId);
+  updated.removedEventIds = updated.removedEventIds.filter(id => id !== eventId);
+  
+  // 新しい関係を設定
+  switch (newStatus) {
+    case 'registered':
+      updated.eventIds.push(eventId);
+      break;
+    case 'pending':
+      updated.pendingEventIds.push(eventId);
+      break;
+    case 'removed':
+      updated.removedEventIds.push(eventId);
+      break;
+    case 'none':
+      // 何もしない（既にクリア済み）
+      break;
+  }
+  
+  // 統計情報を更新
+  updated.eventCount = updated.eventIds.length;
+  updated.pendingCount = updated.pendingEventIds.length;
+  updated.removedCount = updated.removedEventIds.length;
+  updated.updatedAt = new Date().toISOString();
+  
+  return updated;
+};
 
 const TableTab = ({
   events = [],
@@ -17,7 +74,8 @@ const TableTab = ({
   const [selectedEvent] = useState(null);
   const [selectedTimeline] = useState(null);
   const [selectedTimelineId, setSelectedTimelineId] = useState(null);
-  const [showTemporaryEvents, setShowTemporaryEvents] = useState(false);
+  const [showPendingEvents, setShowPendingEvents] = useState(true);
+  const [showRemovedEvents, setShowRemovedEvents] = useState(false);
   const [sortConfig, setSortConfig] = useState({ key: 'startDate', direction: 'asc' });
   const [editingCell, setEditingCell] = useState(null);
   const [tempValue, setTempValue] = useState('');
@@ -27,12 +85,13 @@ const TableTab = ({
     return selectedTimelineId ? timelines.find(t => t.id === selectedTimelineId) : null;
   }, [selectedTimelineId, timelines]);
 
-  // フィルタリングされたイベント
+  // フィルタリングされたイベント（年表ベース）
   const filteredEvents = useMemo(() => {
     console.log('TableTab: フィルタリング開始', {
       totalEvents: events.length,
       selectedTimelineId,
-      showTemporaryEvents
+      showPendingEvents,
+      showRemovedEvents
     });
 
     let filtered = [...events];
@@ -40,23 +99,19 @@ const TableTab = ({
     // 年表でフィルタリング
     if (selectedTimelineForFilter) {
       filtered = events.filter(event => {
-        if (!event.timelineInfos || !Array.isArray(event.timelineInfos)) {
-          console.log(`イベント「${event.title}」: timelineInfosが無効`);
-          return false;
-        }
-
-        const timelineInfo = event.timelineInfos.find(info => info.timelineId === selectedTimelineId);
+        const status = getEventTimelineStatus(event, selectedTimelineForFilter);
         
-        if (!timelineInfo) {
-          return false; // この年表に属していない
+        switch (status) {
+          case 'registered':
+            return true; // 正式登録は常に表示
+          case 'pending':
+            return showPendingEvents; // 仮登録は表示オプション
+          case 'removed':
+            return showRemovedEvents; // 仮削除は表示オプション
+          case 'none':
+          default:
+            return false; // 関係なしは非表示
         }
-
-        // 仮削除イベントの表示判定
-        if (timelineInfo.isTemporary && !showTemporaryEvents) {
-          return false; // 仮削除されており、表示オプションがOFF
-        }
-
-        return true; // 表示対象
       });
       
       console.log(`年表「${selectedTimelineForFilter.name}」フィルタ結果: ${filtered.length}件`);
@@ -64,7 +119,7 @@ const TableTab = ({
 
     console.log('TableTab: フィルタリング完了', { filteredCount: filtered.length });
     return filtered;
-  }, [events, selectedTimelineForFilter, selectedTimelineId, showTemporaryEvents]);
+  }, [events, selectedTimelineForFilter, selectedTimelineId, showPendingEvents, showRemovedEvents]);
 
   // ソート処理
   const sortedEvents = useMemo(() => {
@@ -131,79 +186,84 @@ const TableTab = ({
     setTempValue('');
   }, []);
 
-  // 年表操作（仮登録・削除・登録）- timelineInfos対応版
+  // 年表操作（年表ベース）
   const handleTimelineOperation = useCallback((event, timelineId, operation) => {
     console.log(`年表操作: ${operation} - イベント「${event.title}」, 年表ID: ${timelineId}`);
 
-    const updatedTimelineInfos = [...(event.timelineInfos || [])];
-    const existingIndex = updatedTimelineInfos.findIndex(info => info.timelineId === timelineId);
+    const timeline = timelines.find(t => t.id === timelineId);
+    if (!timeline) {
+      console.error('年表が見つかりません:', timelineId);
+      return;
+    }
+
+    const currentStatus = getEventTimelineStatus(event, timeline);
+    let newStatus = 'none';
 
     switch (operation) {
       case 'temporary-remove':
         // 登録イベント → 仮削除
-        if (existingIndex >= 0) {
-          updatedTimelineInfos[existingIndex] = { 
-            ...updatedTimelineInfos[existingIndex], 
-            isTemporary: true 
-          };
-          console.log(`イベント「${event.title}」を仮削除に変更`);
-        }
+        newStatus = 'removed';
         break;
       case 'remove':
-        // 仮登録イベント → 完全削除
-        if (existingIndex >= 0) {
-          updatedTimelineInfos.splice(existingIndex, 1);
-          console.log(`イベント「${event.title}」を年表から完全削除`);
-        }
+        // 仮登録・仮削除イベント → 完全削除
+        newStatus = 'none';
         break;
       case 'register':
-        // 仮削除イベント → 正式登録
-        if (existingIndex >= 0) {
-          updatedTimelineInfos[existingIndex] = { 
-            ...updatedTimelineInfos[existingIndex], 
-            isTemporary: false 
-          };
-          console.log(`イベント「${event.title}」を正式登録に変更`);
-        }
+        // 仮削除・仮登録イベント → 正式登録
+        newStatus = 'registered';
         break;
       default:
         console.warn(`Unknown timeline operation: ${operation}`);
         return;
     }
 
-    onEventUpdate({ ...event, timelineInfos: updatedTimelineInfos });
-  }, [onEventUpdate]);
+    const updatedTimeline = updateTimelineEventStatus(timeline, event.id, newStatus);
+    onTimelineUpdate(timeline.id, updatedTimeline);
+  }, [timelines, onTimelineUpdate]);
 
-  // タイムラインチップのレンダリング - timelineInfos対応版
+  // タイムラインチップのレンダリング（年表ベース）
   const renderTimelineChips = useCallback((event) => {
-    const styles = getStyles(); // スタイルを関数内で取得
+    const styles = getStyles();
     
-    if (!event.timelineInfos || event.timelineInfos.length === 0) {
+    // 各年表での状態を表示
+    const timelineStatuses = timelines.map(timeline => ({
+      timeline,
+      status: getEventTimelineStatus(event, timeline)
+    })).filter(({status}) => status !== 'none');
+
+    if (timelineStatuses.length === 0) {
       return <span style={styles.noTimeline}>未分類</span>;
     }
 
     return (
       <div style={styles.chipContainer}>
-        {event.timelineInfos.map(info => {
-          const timeline = timelines.find(t => t.id === info.timelineId);
-          if (!timeline) {
-            console.warn(`年表が見つかりません: ${info.timelineId}`);
-            return null;
-          }
+        {timelineStatuses.map(({timeline, status}) => {
+          const chipStyles = {
+            ...styles.chip,
+            backgroundColor: status === 'registered' ? 'rgba(16, 185, 129, 0.1)' :
+                             status === 'pending' ? 'rgba(245, 158, 11, 0.1)' :
+                             'rgba(239, 68, 68, 0.1)',
+            color: status === 'registered' ? '#059669' :
+                   status === 'pending' ? '#d97706' :
+                   '#dc2626',
+            border: status === 'registered' ? '1px solid #10b981' :
+                    status === 'pending' ? '1px dashed #f59e0b' :
+                    '1px solid #ef4444'
+          };
+
+          const statusLabels = {
+            registered: '',
+            pending: ' (仮登録)',
+            removed: ' (仮削除)'
+          };
 
           return (
             <span
-              key={info.timelineId}
-              style={{
-                ...styles.chip,
-                backgroundColor: info.isTemporary ? 'rgba(107, 114, 128, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                color: info.isTemporary ? '#6b7280' : '#3b82f6',
-                border: info.isTemporary ? '1px dashed #d1d5db' : '1px solid #bfdbfe'
-              }}
-              title={info.isTemporary ? `${timeline.name} (仮削除)` : timeline.name}
+              key={timeline.id}
+              style={chipStyles}
+              title={`${timeline.name}${statusLabels[status]}`}
             >
-              {timeline.name}
-              {info.isTemporary && ' (仮削除)'}
+              {timeline.name}{statusLabels[status]}
             </span>
           );
         })}
@@ -211,16 +271,15 @@ const TableTab = ({
     );
   }, [timelines]);
 
-  // アクションボタンのレンダリング - timelineInfos対応版
+  // アクションボタンのレンダリング（年表ベース）
   const renderActionButtons = useCallback((event) => {
-    const styles = getStyles(); // スタイルを関数内で取得
+    const styles = getStyles();
     
     if (!selectedTimelineForFilter) return null;
 
-    const timelineInfo = event.timelineInfos?.find(info => info.timelineId === selectedTimelineId);
+    const status = getEventTimelineStatus(event, selectedTimelineForFilter);
 
-    if (!timelineInfo) {
-      // この年表に属していないイベント（通常は表示されないはず）
+    if (status === 'none') {
       return (
         <span style={{ color: '#9ca3af', fontSize: '12px' }}>
           未関連付け
@@ -228,39 +287,63 @@ const TableTab = ({
       );
     }
 
-    if (timelineInfo.isTemporary) {
-      // 仮削除状態 → 正式登録 または 完全削除
-      return (
-        <div style={styles.actionButtons}>
-          <button
-            style={{ ...styles.actionButton, ...styles.registerButton }}
-            onClick={() => handleTimelineOperation(event, selectedTimelineId, 'register')}
-            title="正式登録"
-          >
-            登録
-          </button>
-          <button
-            style={{ ...styles.actionButton, ...styles.removeButton }}
-            onClick={() => handleTimelineOperation(event, selectedTimelineId, 'remove')}
-            title="完全削除"
-          >
-            削除
-          </button>
-        </div>
-      );
-    } else {
-      // 正式登録状態 → 仮削除
-      return (
-        <div style={styles.actionButtons}>
-          <button
-            style={{ ...styles.actionButton, ...styles.temporaryRemoveButton }}
-            onClick={() => handleTimelineOperation(event, selectedTimelineId, 'temporary-remove')}
-            title="仮削除"
-          >
-            仮削除
-          </button>
-        </div>
-      );
+    switch (status) {
+      case 'removed':
+        // 仮削除状態 → 正式登録 または 完全削除
+        return (
+          <div style={styles.actionButtons}>
+            <button
+              style={{ ...styles.actionButton, ...styles.registerButton }}
+              onClick={() => handleTimelineOperation(event, selectedTimelineId, 'register')}
+              title="正式登録"
+            >
+              登録
+            </button>
+            <button
+              style={{ ...styles.actionButton, ...styles.removeButton }}
+              onClick={() => handleTimelineOperation(event, selectedTimelineId, 'remove')}
+              title="完全削除"
+            >
+              削除
+            </button>
+          </div>
+        );
+      
+      case 'pending':
+        // 仮登録状態 → 正式登録 または 削除
+        return (
+          <div style={styles.actionButtons}>
+            <button
+              style={{ ...styles.actionButton, ...styles.registerButton }}
+              onClick={() => handleTimelineOperation(event, selectedTimelineId, 'register')}
+              title="正式登録"
+            >
+              登録
+            </button>
+            <button
+              style={{ ...styles.actionButton, ...styles.removeButton }}
+              onClick={() => handleTimelineOperation(event, selectedTimelineId, 'remove')}
+              title="削除"
+            >
+              削除
+            </button>
+          </div>
+        );
+      
+      case 'registered':
+      default:
+        // 正式登録状態 → 仮削除
+        return (
+          <div style={styles.actionButtons}>
+            <button
+              style={{ ...styles.actionButton, ...styles.temporaryRemoveButton }}
+              onClick={() => handleTimelineOperation(event, selectedTimelineId, 'temporary-remove')}
+              title="仮削除"
+            >
+              仮削除
+            </button>
+          </div>
+        );
     }
   }, [selectedTimelineForFilter, selectedTimelineId, handleTimelineOperation]);
 
@@ -278,7 +361,15 @@ const TableTab = ({
       justifyContent: 'space-between',
       padding: '16px',
       borderBottom: '1px solid #e5e7eb',
-      backgroundColor: '#f9fafb'
+      backgroundColor: '#f9fafb',
+      flexWrap: 'wrap',
+      gap: '12px'
+    },
+    controls: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '16px',
+      flexWrap: 'wrap'
     },
     timelineSelect: {
       padding: '8px 12px',
@@ -287,14 +378,22 @@ const TableTab = ({
       backgroundColor: 'white',
       minWidth: '200px'
     },
+    checkboxGroup: {
+      display: 'flex',
+      gap: '16px'
+    },
     checkboxContainer: {
       display: 'flex',
       alignItems: 'center',
-      gap: '8px'
+      gap: '6px'
     },
     checkbox: {
       width: '16px',
       height: '16px'
+    },
+    checkboxLabel: {
+      fontSize: '14px',
+      color: '#374151'
     },
     stats: {
       fontSize: '14px',
@@ -371,7 +470,7 @@ const TableTab = ({
     },
     actionButtons: {
       display: 'flex',
-      gap: '8px',
+      gap: '6px',
       justifyContent: 'center'
     },
     actionButton: {
@@ -428,33 +527,52 @@ const TableTab = ({
     <div style={styles.container}>
       {/* ヘッダーコントロール */}
       <div style={styles.header}>
-        {/* タイムライン選択 */}
-        <select
-          style={styles.timelineSelect}
-          value={selectedTimelineId || ''}
-          onChange={(e) => setSelectedTimelineId(e.target.value || null)}
-        >
-          <option value="">全ての年表</option>
-          {timelines.filter(t => t.isVisible).map(timeline => (
-            <option key={timeline.id} value={timeline.id}>
-              {timeline.name}
-            </option>
-          ))}
-        </select>
+        <div style={styles.controls}>
+          {/* タイムライン選択 */}
+          <select
+            style={styles.timelineSelect}
+            value={selectedTimelineId || ''}
+            onChange={(e) => setSelectedTimelineId(e.target.value || null)}
+          >
+            <option value="">全ての年表</option>
+            {timelines.filter(t => t.isVisible).map(timeline => (
+              <option key={timeline.id} value={timeline.id}>
+                {timeline.name} ({(timeline.eventIds?.length || 0)}件)
+              </option>
+            ))}
+          </select>
 
-        {/* 仮削除イベント表示オプション */}
-        {selectedTimelineForFilter && (
-          <div style={styles.checkboxContainer}>
-            <input
-              type="checkbox"
-              id="showTemporary"
-              style={styles.checkbox}
-              checked={showTemporaryEvents}
-              onChange={(e) => setShowTemporaryEvents(e.target.checked)}
-            />
-            <label htmlFor="showTemporary">仮削除イベントも表示</label>
-          </div>
-        )}
+          {/* 表示オプション */}
+          {selectedTimelineForFilter && (
+            <div style={styles.checkboxGroup}>
+              <div style={styles.checkboxContainer}>
+                <input
+                  type="checkbox"
+                  id="showPending"
+                  style={styles.checkbox}
+                  checked={showPendingEvents}
+                  onChange={(e) => setShowPendingEvents(e.target.checked)}
+                />
+                <label htmlFor="showPending" style={styles.checkboxLabel}>
+                  仮登録 ({selectedTimelineForFilter.pendingEventIds?.length || 0})
+                </label>
+              </div>
+              
+              <div style={styles.checkboxContainer}>
+                <input
+                  type="checkbox"
+                  id="showRemoved"
+                  style={styles.checkbox}
+                  checked={showRemovedEvents}
+                  onChange={(e) => setShowRemovedEvents(e.target.checked)}
+                />
+                <label htmlFor="showRemoved" style={styles.checkboxLabel}>
+                  仮削除 ({selectedTimelineForFilter.removedEventIds?.length || 0})
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* 統計情報 */}
         <div style={styles.stats}>
@@ -498,7 +616,7 @@ const TableTab = ({
               <th style={styles.headerCell}>タグ</th>
               <th style={styles.headerCell}>所属年表</th>
               {selectedTimelineForFilter && (
-                <th style={{ ...styles.headerCell, ...styles.actionCell }}>操作</th>
+                <th style={styles.headerCell}>状態 / 操作</th>
               )}
             </tr>
           </thead>
@@ -583,9 +701,9 @@ const TableTab = ({
                     {renderTimelineChips(event)}
                   </td>
 
-                  {/* 操作 */}
+                  {/* 状態 / 操作 */}
                   {selectedTimelineForFilter && (
-                    <td style={{ ...styles.cell, ...styles.actionCell }}>
+                    <td style={styles.cell}>
                       {renderActionButtons(event)}
                     </td>
                   )}
@@ -623,8 +741,16 @@ const TableTab = ({
       {selectedTimeline && (
         <TimelineModal
           timeline={selectedTimeline}
+          events={events}
           onClose={onCloseTimelineModal}
           onUpdate={onTimelineUpdate}
+          onEventStatusChange={(timelineId, eventId, newStatus) => {
+            const timeline = timelines.find(t => t.id === timelineId);
+            if (timeline) {
+              const updatedTimeline = updateTimelineEventStatus(timeline, eventId, newStatus);
+              onTimelineUpdate(timelineId, updatedTimeline);
+            }
+          }}
           isWikiMode={isWikiMode}
         />
       )}

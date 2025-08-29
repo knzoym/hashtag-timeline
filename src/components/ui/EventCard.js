@@ -1,4 +1,4 @@
-// components/ui/EventCard.js - ドラッグ動作修正版
+// components/ui/EventCard.js - 仮状態表示改善版
 import React, { useState, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
@@ -46,7 +46,7 @@ export const EventCard = ({
   event,
   isHighlighted = false,
   onDoubleClick,
-  onDragStart, // ドロップゾーン対応ドラッグハンドラー
+  onDragStart,
   isDragging = false,
   style = {},
   className = "",
@@ -57,153 +57,129 @@ export const EventCard = ({
 
   const displayInfo = getEventDisplayInfo(event, calculateTextWidth);
 
-  // 仮登録・仮削除状態の判定
-  const getTemporaryStatus = () => {
-    if (!event.timelineInfos || event.timelineInfos.length === 0) {
-      return null; // メインタイムライン
+  // 仮状態表示の判定（年表ベース改善版）
+  const getDisplayStatus = () => {
+    // VisualTabから渡される displayStatus を使用（優先）
+    if (event.displayStatus) {
+      return event.displayStatus;
     }
 
-    const allTemporary = event.timelineInfos.every(info => info.isTemporary);
-    const hasTemporary = event.timelineInfos.some(info => info.isTemporary);
-    
-    if (allTemporary && event.timelineInfos.length > 0) {
-      return 'temporary';
-    } else if (hasTemporary) {
-      return 'partial';
-    } else {
-      return 'registered';
-    }
-  };
-
-  const temporaryStatus = getTemporaryStatus();
-
-  // ドラッグ開始処理（修正版）
-  const handleMouseDown = useCallback((e) => {
-    console.log(`EventCard ドラッグ開始処理: "${event.title}"`);
-    
-    // ドロップゾーン対応のドラッグ開始
-    if (onDragStart) {
-      console.log('onDragStart呼び出し');
-      onDragStart(e, event);
-    } else {
-      console.warn('onDragStartが設定されていません');
-    }
-    
-    // イベントの伝播を停止してパン操作との競合を回避
-    e.stopPropagation();
-  }, [onDragStart, event]);
-
-  // 色設定
-  const getEventColors = () => {
-    let baseBackgroundColor = "#6b7280";
-    
-    if (event.timelineInfo) {
-      baseBackgroundColor = event.timelineInfo.timelineColor;
-    } else if (event.timelineColor) {
-      baseBackgroundColor = event.timelineColor;
-    } else if (isHighlighted) {
-      baseBackgroundColor = "#3b82f6";
-    }
-
-    // ホバー時の色調整
-    if (isHovered && !isDragging) {
-      if (baseBackgroundColor.startsWith("hsl")) {
-        const match = baseBackgroundColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-        if (match) {
-          const h = match[1];
-          const s = match[2];
-          const l = Math.min(100, parseInt(match[3]) + 10);
-          baseBackgroundColor = `hsl(${h}, ${s}%, ${l}%)`;
+    // フォールバック：timelineInfos から判定
+    if (event.timelineInfos && Array.isArray(event.timelineInfos)) {
+      // 最初の年表情報から状態を判定
+      for (const info of event.timelineInfos) {
+        if (info.isTemporary === true) {
+          return 'removed'; // 仮削除
+        }
+        if (info.isPending === true) {
+          return 'pending'; // 仮登録
+        }
+        if (info.isRegistered === true || !info.isTemporary) {
+          return 'registered'; // 正式登録
         }
       }
     }
 
-    let backgroundColor = baseBackgroundColor;
-    let opacity = 1;
+    return 'main'; // メインタイムライン
+  };
+
+  // 表示状態に基づく色とスタイル設定（改善版）
+  const getStatusStyles = () => {
+    const status = getDisplayStatus();
+    const baseColor = event.timelineColor || event.timelineInfo?.timelineColor || '#6b7280';
     
-    // 仮削除状態の視覚表現
-    if (temporaryStatus === 'temporary') {
-      opacity = 0.5;
-      backgroundColor = darkenColor(baseBackgroundColor, 30);
-    } else if (temporaryStatus === 'partial') {
-      opacity = 0.8;
-      backgroundColor = darkenColor(baseBackgroundColor, 15);
+    switch (status) {
+      case 'registered':
+        // 正式登録：通常スタイル（年表色）
+        return {
+          backgroundColor: baseColor,
+          border: `2px solid ${darkenColor(baseColor, 20)}`,
+          opacity: 1,
+          borderStyle: 'solid'
+        };
+        
+      case 'pending':
+        // 仮登録：点線ボーダー（年表色）
+        return {
+          backgroundColor: baseColor,
+          border: `2px dashed ${darkenColor(baseColor, 20)}`,
+          opacity: 0.85,
+          borderStyle: 'dashed'
+        };
+        
+      case 'removed':
+        // 仮削除：点線ボーダー（グレー系）
+        return {
+          backgroundColor: '#9ca3af',
+          border: '2px dashed #6b7280',
+          opacity: 0.7,
+          borderStyle: 'dashed'
+        };
+        
+      case 'main':
+      default:
+        // メインタイムライン：一般イベント色
+        return {
+          backgroundColor: '#6b7280',
+          border: '2px solid #9ca3af',
+          opacity: 1,
+          borderStyle: 'solid'
+        };
     }
-
-    return {
-      backgroundColor,
-      color: getContrastColor(backgroundColor),
-      borderColor: darkenColor(backgroundColor, 20),
-      opacity,
-    };
   };
 
-  const colors = getEventColors();
+  const statusStyles = getStatusStyles();
+  const textColor = getContrastColor(statusStyles.backgroundColor);
 
-  // スタイル計算
-  const getCardStyles = () => {
-    const baseStyles = {
-      position: "relative",
-      minWidth: `${TIMELINE_CONFIG.EVENT_MIN_WIDTH}px`,
-      maxWidth: `${TIMELINE_CONFIG.EVENT_MAX_WIDTH}px`,
-      width: `${displayInfo.width}px`,
-      height: `${displayInfo.height}px`,
-      backgroundColor: colors.backgroundColor,
-      color: colors.color,
-      border: temporaryStatus === 'temporary' 
-        ? `2px dashed ${colors.borderColor}` // 仮削除状態は破線
-        : `1px solid ${colors.borderColor}`,
-      borderRadius: "6px",
-      padding: "3px 6px",
-      fontSize: "10px",
-      fontWeight: "500",
-      cursor: isDragging ? "grabbing" : "pointer",
-      userSelect: "none",
-      boxShadow: isHighlighted
-        ? "0 3px 8px rgba(59, 130, 246, 0.4)"
-        : isDragging
-        ? "0 4px 12px rgba(0, 0, 0, 0.3)"
-        : "0 1px 3px rgba(0, 0, 0, 0.1)",
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      alignItems: "center",
-      textAlign: "center",
-      lineHeight: "1.2",
-      overflow: "hidden",
-      zIndex: isDragging ? 999 : (isHighlighted ? 20 : 10),
-      opacity: colors.opacity,
-      transform: isDragging ? "scale(1.05)" : "scale(1)",
-      transition: isDragging ? "none" : "all 0.2s ease",
-      ...style,
-    };
-
-    return baseStyles;
+  // ホバー時の色調整
+  const colors = {
+    backgroundColor: isHovered ? darkenColor(statusStyles.backgroundColor, 10) : statusStyles.backgroundColor,
+    borderColor: statusStyles.border,
+    textColor: textColor,
   };
 
-  // ホバー効果
-  const handleMouseEnter = useCallback(() => {
-    if (!isDragging) {
-      setIsHovered(true);
-    }
-  }, [isDragging]);
-
-  const handleMouseLeave = useCallback(() => {
-    setIsHovered(false);
-  }, []);
+  // 基本スタイル
+  const cardStyles = {
+    position: "relative",
+    width: `${displayInfo.width}px`,
+    height: `${displayInfo.height}px`,
+    backgroundColor: colors.backgroundColor,
+    border: statusStyles.border,
+    borderRadius: "8px",
+    color: colors.textColor,
+    cursor: isDragging ? "grabbing" : isHovered ? "grab" : "pointer",
+    userSelect: "none",
+    overflow: "hidden",
+    opacity: statusStyles.opacity,
+    transition: "all 0.2s ease",
+    transform: isHovered && !isDragging ? "scale(1.02)" : "scale(1)",
+    boxShadow: isHovered || isHighlighted
+      ? `0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 2px ${isHighlighted ? '#fbbf24' : colors.backgroundColor}`
+      : "0 2px 4px rgba(0, 0, 0, 0.1)",
+    zIndex: isHovered || isDragging ? 20 : 10,
+    ...style
+  };
 
   return (
     <div
-      style={getCardStyles()}
-      className={`${className} no-pan`} // no-panクラス追加でパン操作を回避
-      onDoubleClick={onDoubleClick}
-      onMouseDown={handleMouseDown} // 修正されたハンドラーを使用
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
       data-event-id={event.id}
-      title={`${displayInfo.title} (${displayInfo.year})${
-        temporaryStatus === "temporary" ? " - 仮削除" : ""
-      }`}
+      style={cardStyles}
+      className={className}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onDoubleClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onDoubleClick) {
+          onDoubleClick(event);
+        }
+      }}
+      onMouseDown={(e) => {
+        if (onDragStart) {
+          onDragStart(e, event);
+        }
+      }}
+      title={`${event.title} (${displayInfo.year})${getStatusDescription()}`}
       {...props}
     >
       {/* イベントタイトル */}
@@ -231,51 +207,21 @@ export const EventCard = ({
         {displayInfo.year}
       </div>
 
-      {/* 仮削除インジケーター */}
-      {temporaryStatus === "temporary" && (
-        <div
-          style={{
-            position: "absolute",
-            top: "-2px",
-            right: "-2px",
-            width: "8px",
-            height: "8px",
-            backgroundColor: "#f59e0b",
-            borderRadius: "50%",
-            border: "1px solid white",
-          }}
-          title="仮削除状態"
-        />
-      )}
-      
-      {temporaryStatus === "partial" && (
-        <div
-          style={{
-            position: "absolute",
-            top: "-2px",
-            right: "-2px",
-            width: "8px",
-            height: "8px",
-            backgroundColor: "#f97316",
-            borderRadius: "50%",
-            border: "1px solid white",
-          }}
-          title="一部仮削除状態"
-        />
-      )}
 
-      {/* 年表所属インジケーター */}
-      {displayInfo.hasTimelineInfo && temporaryStatus !== "temporary" && (
+
+      {/* 年表所属インジケーター（正式登録のみ） */}
+      {getDisplayStatus() === 'registered' && displayInfo.hasTimelineInfo && (
         <div
           style={{
             position: "absolute",
             top: "-1px",
             right: "-1px",
-            width: "6px",
-            height: "6px",
-            backgroundColor: colors.borderColor,
+            width: "8px",
+            height: "8px",
+            backgroundColor: colors.backgroundColor,
             borderRadius: "50%",
-            border: "1px solid white",
+            border: "2px solid white",
+            zIndex: 1
           }}
         />
       )}
@@ -289,12 +235,27 @@ export const EventCard = ({
             border: "2px solid #3b82f6",
             borderRadius: "8px",
             pointerEvents: "none",
+            zIndex: 2
+          }}
+        />
+      )}
+      
+      {/* 仮状態の追加視覚表現 */}
+      {(getDisplayStatus() === 'pending' || getDisplayStatus() === 'removed') && (
+        <div
+          style={{
+            position: "absolute",
+            inset: "2px",
+            border: "1px dashed rgba(255, 255, 255, 0.5)",
+            borderRadius: "6px",
+            pointerEvents: "none",
+            zIndex: 1
           }}
         />
       )}
       
       {/* デバッグ情報（開発時のみ表示） */}
-      {process.env.NODE_ENV === 'development' && temporaryStatus && (
+      {process.env.NODE_ENV === 'development' && getDisplayStatus() !== 'main' && (
         <div
           style={{
             position: "absolute",
@@ -306,11 +267,23 @@ export const EventCard = ({
             padding: "1px 3px",
             borderRadius: "2px",
             whiteSpace: "nowrap",
+            zIndex: 1
           }}
         >
-          {temporaryStatus}
+          {getDisplayStatus()}
         </div>
       )}
     </div>
   );
+
+  // ステータス説明を取得
+  function getStatusDescription() {
+    const status = getDisplayStatus();
+    switch (status) {
+      case 'registered': return ' - 正式登録';
+      case 'pending': return ' - 仮登録（点線表示）';
+      case 'removed': return ' - 仮削除（点線表示）';
+      default: return '';
+    }
+  }
 };

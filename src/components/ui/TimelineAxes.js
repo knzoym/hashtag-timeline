@@ -10,7 +10,7 @@ export const TimelineAxes = ({
   onDeleteTempTimeline,
   onDeleteTimeline,
 }) => {
-  // 年表カードの重なり回避計算（設定値統一）
+  // 年表カードの重なり回避計算（修正版）
   const adjustedCardPositions = useMemo(() => {
     if (!axes || axes.length === 0) return [];
 
@@ -18,19 +18,15 @@ export const TimelineAxes = ({
     const CARD_HEIGHT = 80;
     const MIN_SPACING = 10;
 
-    // axesのyPositionをそのまま使用（VisualTab.jsと統一）
     axes.forEach((axis) => {
       const timeline = displayTimelines?.find((t) => t.id === axis.id);
       if (!timeline) return;
 
-      // VisualTab.jsで計算されたyPositionをそのまま使用（軸線と同じ高さ）
-      const initialCardY = axis.yPosition;
-
       cardPositions.push({
         ...axis,
         timeline,
-        originalY: initialCardY,
-        adjustedY: initialCardY,
+        originalY: axis.yPosition,
+        adjustedY: axis.yPosition,
         cardHeight: CARD_HEIGHT,
       });
     });
@@ -51,23 +47,23 @@ export const TimelineAxes = ({
       }
     }
 
-    console.log(`年表カード位置調整完了: ${cardPositions.length}枚（座標統一）`);
+    console.log(`年表カード位置調整完了: ${cardPositions.length}枚`);
     return cardPositions;
   }, [axes, displayTimelines]);
 
   return (
     <>
-      {/* 年表軸（VisualTab.jsで計算されたyPositionを使用） */}
+      {/* 年表軸（修正版：正しい範囲で表示） */}
       {axes.map((axis) => {
-        // VisualTab.jsで計算されたyPositionを直接使用
         const axisY = axis.yPosition;
 
-        // 軸線をイベント範囲に限定（startX から endX まで）
-        const axisStartX = Math.max(0, axis.startX - (TIMELINE_CONFIG.AXIS_PADDING || 50));
-        const axisEndX = axis.endX + (TIMELINE_CONFIG.AXIS_PADDING || 50);
+        // 軸線の範囲：startX から endX まで（VisualTabで計算済み）
+        const axisStartX = axis.startX;
+        const axisEndX = axis.endX;
         const axisWidth = axisEndX - axisStartX;
 
-        console.log(`年表軸 "${axis.name}": VisualTab座標Y=${axisY}, 範囲 ${axisStartX.toFixed(0)} - ${axisEndX.toFixed(0)}`);
+        // デバッグ情報
+        console.log(`年表軸 "${axis.name}": Y=${axisY}, 範囲=${axisStartX.toFixed(0)}-${axisEndX.toFixed(0)} (幅=${axisWidth.toFixed(0)}px), 関連イベント=${axis.allEventCount || 0}件`);
 
         return (
           <div
@@ -92,12 +88,15 @@ export const TimelineAxes = ({
       {adjustedCardPositions.map((cardData) => {
         const isTemporary = cardData.timeline.type === 'temporary';
 
+        // カード位置のデバッグ情報
+        console.log(`年表カード "${cardData.timeline.name}": X=${cardData.cardX}, Y=${cardData.adjustedY}, 軸線開始=${cardData.startX.toFixed(0)}`);
+
         return (
           <TimelineCard
             key={`timeline-card-${cardData.id}`}
             timeline={cardData.timeline}
             position={{ 
-              x: cardData.cardX, 
+              x: cardData.cardX, // VisualTabで計算された適切な位置
               y: cardData.adjustedY
             }}
             isTemporary={isTemporary}

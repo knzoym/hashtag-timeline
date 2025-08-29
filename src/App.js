@@ -1,4 +1,4 @@
-// src/App.js - 根本的問題修正版
+// src/App.js - 年表ベース仮状態管理対応版
 import React, {
   useRef,
   useCallback,
@@ -18,6 +18,7 @@ import { useWikiData } from "./hooks/useWikiData";
 import { useSampleSync } from "./hooks/useSampleSync";
 import { useTimelineSearch } from "./hooks/useTimelineSearch";
 import { sampleEvents } from "./lib/SampleEvents";
+import { generateUniqueId } from "./utils/timelineUtils";
 
 // AppContentコンポーネント（PageModeProvider内で動作）
 const AppContent = () => {
@@ -45,9 +46,9 @@ const AppContent = () => {
   const timelineRef = useRef(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // データ管理
+  // データ管理（年表ベース構造）
   const [events, setEvents] = useState(sampleEvents || []);
-  const [timelines, setTimelines] = useState([]);
+  const [timelines, setTimelines] = useState([]); // pendingEventIds, removedEventIds含む
   const [tempTimelines, setTempTimelines] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedTimeline, setSelectedTimeline] = useState(null);
@@ -85,13 +86,13 @@ const AppContent = () => {
     (eventData) => {
       try {
         const newEvent = {
-          id: Date.now(),
+          id: generateUniqueId(),
           title: eventData?.title || "新規イベント",
           startDate: eventData?.startDate || new Date(),
           endDate: eventData?.endDate || new Date(),
           description: eventData?.description || "",
           tags: eventData?.tags || [],
-          timelineInfos: [],
+          timelineInfos: [], // 簡素化（isTemporaryなし）
           ...eventData,
         };
 
@@ -108,13 +109,29 @@ const AppContent = () => {
     [isWikiMode]
   );
 
-  const updateEvent = useCallback((eventId, updateData) => {
+  // イベント更新（従来通り）
+  const updateEvent = useCallback((updatedEvent) => {
+    console.log('📝 App.js updateEvent 開始');
+    console.log('  更新対象:', updatedEvent.title);
+
     try {
-      setEvents((prev) =>
-        prev.map((event) =>
-          event.id === eventId ? { ...event, ...updateData } : event
-        )
-      );
+      setEvents((prev) => {
+        const updatedEvents = prev.map((event) => {
+          if (event.id === updatedEvent.id) {
+            console.log('  マッチするイベント発見:', event.title);
+            
+            // 完全に新しいオブジェクトを作成
+            return {
+              ...event,
+              ...updatedEvent,
+            };
+          }
+          return event;
+        });
+
+        console.log('✅ App.js updateEvent 完了');
+        return updatedEvents;
+      });
     } catch (error) {
       console.error("イベント更新エラー:", error);
     }
@@ -123,11 +140,24 @@ const AppContent = () => {
   const deleteEvent = useCallback((eventId) => {
     try {
       setEvents((prev) => prev.filter((event) => event.id !== eventId));
+      
+      // 関連する年表からも削除
+      setTimelines((prev) => prev.map(timeline => ({
+        ...timeline,
+        eventIds: (timeline.eventIds || []).filter(id => id !== eventId),
+        pendingEventIds: (timeline.pendingEventIds || []).filter(id => id !== eventId),
+        removedEventIds: (timeline.removedEventIds || []).filter(id => id !== eventId),
+        eventCount: (timeline.eventIds || []).filter(id => id !== eventId).length,
+        pendingCount: (timeline.pendingEventIds || []).filter(id => id !== eventId).length,
+        removedCount: (timeline.removedEventIds || []).filter(id => id !== eventId).length,
+        updatedAt: new Date().toISOString()
+      })));
     } catch (error) {
       console.error("イベント削除エラー:", error);
     }
   }, []);
 
+  // === 年表操作（年表ベース） ===
   const handleCreateTimeline = useCallback(
     (timelineName) => {
       try {
@@ -136,24 +166,36 @@ const AppContent = () => {
           return;
         }
 
-        const selectedEventIds = Array.from(highlightedEvents); // この行を追加
-        const newTimelineId = Date.now(); // この行を追加
+        const selectedEventIds = Array.from(highlightedEvents);
+        const newTimelineId = generateUniqueId();
 
-        // 新しい年表を作成
+        // 年表ベース構造で作成
         const newTimeline = {
-          id: newTimelineId, // Date.now()からnewTimelineIdに変更
+          id: newTimelineId,
           name: timelineName,
           color: `hsl(${Math.floor(Math.random() * 360)}, 70%, 50%)`,
           isVisible: true,
           createdAt: new Date(),
           type: "personal",
-          eventIds: selectedEventIds,
+          
+          // 年表ベース仮状態管理
+          eventIds: selectedEventIds, // 正式登録
+          pendingEventIds: [], // 仮登録
+          removedEventIds: [], // 仮削除
+          
+          // 統計情報
           eventCount: selectedEventIds.length,
+          pendingCount: 0,
+          removedCount: 0,
+          
+          // タグ管理
+          tags: [],
+          tagMode: 'AND'
         };
 
         setTimelines((prev) => [...prev, newTimeline]);
 
-        // 選択されたイベントにtimelineInfosを追加
+        // イベントのtimelineInfosを更新（簡素化版）
         setEvents((prevEvents) =>
           prevEvents.map((event) =>
             selectedEventIds.includes(event.id)
@@ -161,7 +203,7 @@ const AppContent = () => {
                   ...event,
                   timelineInfos: [
                     ...(event.timelineInfos || []),
-                    { timelineId: newTimelineId, isTemporary: false },
+                    { timelineId: newTimelineId }, // isTemporaryフラグなし
                   ],
                 }
               : event
@@ -175,7 +217,8 @@ const AppContent = () => {
       }
     },
     [highlightedEvents, handleSearchChange]
-  ); // dependenciesからsearchTermを削除
+  );
+
   // 一時年表作成（Wiki専用）
   const handleCreateTempTimeline = useCallback(() => {
     try {
@@ -184,14 +227,14 @@ const AppContent = () => {
         return;
       }
 
-      // 検索テキストをデフォルト年表名として使用
       const defaultName = searchTerm.trim() || "一時年表";
       const timelineName = prompt("一時年表名を入力してください:", defaultName);
       if (!timelineName) return;
 
-      const newTempTimelineId = `temp_timeline_${Date.now()}`;
+      const newTempTimelineId = generateUniqueId();
       const selectedEventIds = Array.from(highlightedEvents);
 
+      // 年表ベース構造で一時年表作成
       const newTempTimeline = {
         id: newTempTimelineId,
         name: timelineName,
@@ -199,28 +242,61 @@ const AppContent = () => {
         isVisible: true,
         createdAt: new Date(),
         type: "temporary",
-        eventIds: selectedEventIds,
-        eventCount: selectedEventIds.length,
+        
+        // 一時年表は仮登録として扱う
+        eventIds: [],
+        pendingEventIds: selectedEventIds,
+        removedEventIds: [],
+        
+        eventCount: 0,
+        pendingCount: selectedEventIds.length,
+        removedCount: 0,
+        
+        tags: [],
+        tagMode: 'AND',
         createdFrom: "search_result",
       };
 
       setTempTimelines((prev) => [...prev, newTempTimeline]);
       console.log("一時年表作成完了:", newTempTimeline);
 
-      // 検索をクリア
       handleSearchChange({ target: { value: "" } });
     } catch (error) {
       console.error("一時年表作成エラー:", error);
     }
   }, [highlightedEvents, searchTerm, handleSearchChange]);
 
+  // 年表更新（年表ベース対応）
   const updateTimeline = useCallback((timelineId, updateData) => {
+    console.log('📊 年表更新開始:', timelineId);
+    console.log('  更新データ:', updateData);
+    
     try {
-      setTimelines((prev) =>
-        prev.map((timeline) =>
-          timeline.id === timelineId ? { ...timeline, ...updateData } : timeline
-        )
-      );
+      setTimelines((prev) => {
+        const updated = prev.map((timeline) => {
+          if (timeline.id === timelineId) {
+            const updatedTimeline = {
+              ...timeline,
+              ...updateData,
+              updatedAt: new Date().toISOString()
+            };
+            
+            console.log('  年表更新:', timeline.name);
+            console.log('    更新前 eventIds:', timeline.eventIds?.length || 0);
+            console.log('    更新前 pendingEventIds:', timeline.pendingEventIds?.length || 0);
+            console.log('    更新前 removedEventIds:', timeline.removedEventIds?.length || 0);
+            console.log('    更新後 eventIds:', updatedTimeline.eventIds?.length || 0);
+            console.log('    更新後 pendingEventIds:', updatedTimeline.pendingEventIds?.length || 0);
+            console.log('    更新後 removedEventIds:', updatedTimeline.removedEventIds?.length || 0);
+            
+            return updatedTimeline;
+          }
+          return timeline;
+        });
+        
+        console.log('✅ 年表更新完了');
+        return updated;
+      });
     } catch (error) {
       console.error("年表更新エラー:", error);
     }
@@ -228,11 +304,29 @@ const AppContent = () => {
 
   const deleteTimeline = useCallback((timelineId) => {
     try {
+      // イベントのtimelineInfosからも削除
+      setEvents((prev) => prev.map((event) => ({
+        ...event,
+        timelineInfos: (event.timelineInfos || []).filter(
+          (info) => info.timelineId !== timelineId
+        )
+      })));
+      
       setTimelines((prev) =>
         prev.filter((timeline) => timeline.id !== timelineId)
       );
     } catch (error) {
       console.error("年表削除エラー:", error);
+    }
+  }, []);
+
+  const deleteTempTimeline = useCallback((timelineId) => {
+    try {
+      setTempTimelines((prev) =>
+        prev.filter((timeline) => timeline.id !== timelineId)
+      );
+    } catch (error) {
+      console.error("一時年表削除エラー:", error);
     }
   }, []);
 
@@ -269,7 +363,7 @@ const AppContent = () => {
     try {
       const timelineData = {
         events,
-        timelines,
+        timelines, // 年表ベース構造を含む
         metadata: {
           savedAt: new Date(),
           fileName: currentFileName || "unnamed",
@@ -320,9 +414,9 @@ const AppContent = () => {
         />
         <MyPage
           user={user}
-          onBackToTimeline={() => window.location.reload()} // 暫定実装
+          onBackToTimeline={() => window.location.reload()}
           timelines={timelines}
-          onLoadTimeline={() => {}} // 暫定実装
+          onLoadTimeline={() => {}}
         />
       </div>
     );
@@ -359,7 +453,7 @@ const AppContent = () => {
           onEventUpdate={updateEvent}
           onEventDelete={deleteEvent}
           onEventAdd={handleAddEvent}
-          // 年表操作
+          // 年表操作（年表ベース対応）
           onTimelineUpdate={updateTimeline}
           onTimelineCreate={handleCreateTimeline}
           onTimelineDelete={deleteTimeline}
@@ -389,7 +483,7 @@ const AppContent = () => {
   );
 };
 
-// ErrorBoundary コンポーネント - null チェック修正版
+// ErrorBoundary コンポーネント
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -404,7 +498,7 @@ class ErrorBoundary extends React.Component {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({
       error: error,
-      errorInfo: errorInfo || null, // null の可能性を明示的に処理
+      errorInfo: errorInfo || null,
     });
   }
 
@@ -456,7 +550,6 @@ class ErrorBoundary extends React.Component {
             >
               {this.state.error && this.state.error.toString()}
               <br />
-              {/* null チェックを追加してcomponentStackエラーを修正 */}
               {this.state.errorInfo && this.state.errorInfo.componentStack
                 ? this.state.errorInfo.componentStack
                 : "詳細なスタック情報は利用できません"}

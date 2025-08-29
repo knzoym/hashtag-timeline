@@ -1,6 +1,6 @@
 import React from 'react';
 
-// 年マーカーの描画に特化したコンポーネント
+// 年マーカーの描画に特化したコンポーネント - フォントサイズ固定版
 export const YearMarkers = ({ markers }) => {
   if (!markers || markers.length === 0) {
     return null;
@@ -26,7 +26,7 @@ export const YearMarkers = ({ markers }) => {
               position: "absolute",
               top: "10px",
               left: "5px",
-              fontSize: `${marker.fontSize}px`,
+              fontSize: "12px", // 固定サイズ（marker.fontSizeを使用しない）
               color: "#666",
               fontWeight: "500",
               userSelect: "none",

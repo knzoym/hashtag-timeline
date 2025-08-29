@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - ドラッグ処理修正版
+// src/components/tabs/VisualTab.js - 仮状態配置完全修正版
 import React, { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -8,11 +8,33 @@ import TimelineModal from "../modals/TimelineModal";
 import { YearMarkers } from "../ui/YearMarkers";
 import { TimelineAxes } from "../ui/TimelineAxes";
 import { DropZoneManager } from "../ui/DropZone";
+import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
 
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
+import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem";
+import { calculateEventWidth, calculateEventHeight } from "../../utils/eventSizeUtils";
 
 import { FloatingUI } from "../ui/FloatingUI";
+
+// 年表ベースの状態判定ヘルパー関数
+const getEventTimelineStatus = (event, timeline) => {
+  if (!timeline || !event) return 'none';
+  
+  if (timeline.eventIds?.includes(event.id)) {
+    return 'registered';
+  }
+  
+  if (timeline.pendingEventIds?.includes(event.id)) {
+    return 'pending';
+  }
+  
+  if (timeline.removedEventIds?.includes(event.id)) {
+    return 'removed';
+  }
+  
+  return 'none';
+};
 
 const VisualTab = ({
   // データ
@@ -64,6 +86,10 @@ const VisualTab = ({
     highlightedZone: null,
   });
 
+  // グループ展開状態
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
+  const [hoveredGroupData, setHoveredGroupData] = useState(null);
+
   // 座標システム
   const coordinates = useCoordinate(timelineRef);
   const {
@@ -76,20 +102,6 @@ const VisualTab = ({
     handleMouseDown,
     resetToInitialPosition,
   } = coordinates;
-
-  // 関数存在確認
-  useEffect(() => {
-    console.log('VisualTab 関数確認:');
-    console.log('  onEventUpdate:', !!onEventUpdate, typeof onEventUpdate);
-  }, [onEventUpdate]);
-
-  // データ監視
-  useEffect(() => {
-    const temporaryEvents = events.filter(e => 
-      e.timelineInfos && e.timelineInfos.some(info => info.isTemporary)
-    );
-    console.log('データ状態: events=' + events.length + ', 仮状態=' + temporaryEvents.length);
-  }, [events, timelines]);
 
   // テキスト幅計算
   const calculateTextWidth = useCallback((text) => {
@@ -110,7 +122,7 @@ const VisualTab = ({
     return timelines;
   }, [isWikiMode, timelines, tempTimelines]);
 
-  // 年マーカー生成
+  // 年マーカー生成（固定フォントサイズ）
   const yearMarkers = useMemo(() => {
     if (!getXFromYear) return [];
 
@@ -133,7 +145,7 @@ const VisualTab = ({
           key: year,
           x: Math.round(x),
           year,
-          fontSize: Math.round(10 + scale),
+          fontSize: 12, // 固定値
         });
       }
       
@@ -150,27 +162,33 @@ const VisualTab = ({
     const axes = [];
 
     visibleTimelines.forEach((timeline, index) => {
+      // 年表に関連するすべてのイベント
+      const allRelatedEventIds = [
+        ...(timeline.eventIds || []),
+        ...(timeline.pendingEventIds || []),
+        ...(timeline.removedEventIds || [])
+      ];
+      
+      const allRelatedEvents = events.filter(event => allRelatedEventIds.includes(event.id));
+
       let minYear = 2020, maxYear = 2025;
       
-      const timelineEvents = events.filter((event) => {
-        return event.timelineInfos?.some(
-          (info) => info.timelineId === timeline.id && !info.isTemporary
-        ) || timeline.eventIds?.includes(event.id);
-      });
-
-      if (timelineEvents.length > 0) {
-        const years = timelineEvents
+      if (allRelatedEvents.length > 0) {
+        const years = allRelatedEvents
           .map((e) => e.startDate?.getFullYear?.())
           .filter((y) => y && !isNaN(y));
         if (years.length > 0) {
           minYear = Math.min(...years);
           maxYear = Math.max(...years);
+          minYear -= 2;
+          maxYear += 1;
         }
       }
 
       const startX = getXFromYear(minYear);
       const endX = getXFromYear(maxYear);
       const yPosition = TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
+      const cardX = Math.max(20, startX - 50);
 
       axes.push({
         id: timeline.id,
@@ -179,84 +197,148 @@ const VisualTab = ({
         yPosition,
         startX,
         endX,
-        cardX: Math.max(20, startX - 150),
-        eventCount: timelineEvents.length,
+        cardX,
+        eventCount: timeline.eventIds?.length || 0,
+        pendingCount: timeline.pendingEventIds?.length || 0,
+        removedCount: timeline.removedEventIds?.length || 0,
         timeline,
+        allEventCount: allRelatedEvents.length
       });
+
+      console.log(`年表「${timeline.name}」: 関連イベント${allRelatedEvents.length}件`);
     });
 
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
-  // イベントレイアウト
-  const layoutEvents = useMemo(() => {
-    if (!events || events.length === 0) return [];
+  // 仮状態イベント配置の根本修正
+  const { layoutEvents, eventGroups } = useMemo(() => {
+    if (!events || events.length === 0) {
+      return { layoutEvents: [], eventGroups: [] };
+    }
 
-    const results = [];
+    console.log('仮状態配置システム開始');
     
-    // メインタイムライン処理
-    const mainEvents = events.filter(event => 
-      !event.timelineInfos || 
-      event.timelineInfos.length === 0 ||
-      event.timelineInfos.every(info => info.isTemporary)
-    );
+    const allLayoutEvents = [];
+    const allEventGroups = [];
 
-    const occupiedY = new Set();
-    
-    mainEvents.forEach((event) => {
-      const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-      const eventWidth = Math.min(150, event.title?.length * 8 + 20);
-      
-      let finalY = window.innerHeight * 0.25;
-      let level = 0;
-      
-      while (level < 5 && occupiedY.has(finalY)) {
-        level++;
-        finalY = window.innerHeight * 0.25 - (level * 50);
+    // 各イベントの配置場所を正確に判定
+    events.forEach(event => {
+      let isPlaced = false;
+
+      // 年表ごとに状態をチェック
+      for (const timeline of displayTimelines) {
+        const status = getEventTimelineStatus(event, timeline);
+        
+        if (status === 'pending') {
+          // 仮登録：年表エリア内に配置
+          const axis = timelineAxes.find(a => a.id === timeline.id);
+          if (axis) {
+            const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+            const eventY = axis.yPosition; // 年表軸上に配置
+            
+            allLayoutEvents.push({
+              ...event,
+              adjustedPosition: { x: eventX, y: eventY },
+              calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+              calculatedHeight: calculateEventHeight(event),
+              displayStatus: 'pending',
+              timelineColor: timeline.color || '#6b7280',
+              timelineInfo: {
+                timelineId: timeline.id,
+                timelineName: timeline.name,
+                timelineColor: timeline.color || '#6b7280'
+              },
+              hiddenByGroup: false
+            });
+            
+            console.log(`仮登録配置: 「${event.title}」→年表「${timeline.name}」(${eventX.toFixed(0)}, ${eventY})`);
+            isPlaced = true;
+            break;
+          }
+        } 
+        
+        else if (status === 'registered') {
+          // 正式登録：年表エリア内に配置
+          const axis = timelineAxes.find(a => a.id === timeline.id);
+          if (axis) {
+            const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+            const eventY = axis.yPosition; // 年表軸上に配置
+            
+            allLayoutEvents.push({
+              ...event,
+              adjustedPosition: { x: eventX, y: eventY },
+              calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+              calculatedHeight: calculateEventHeight(event),
+              displayStatus: 'registered',
+              timelineColor: timeline.color || '#6b7280',
+              timelineInfo: {
+                timelineId: timeline.id,
+                timelineName: timeline.name,
+                timelineColor: timeline.color || '#6b7280'
+              },
+              hiddenByGroup: false
+            });
+            
+            console.log(`正式登録配置: 「${event.title}」→年表「${timeline.name}」(${eventX.toFixed(0)}, ${eventY})`);
+            isPlaced = true;
+            break;
+          }
+        } 
+        
+        else if (status === 'removed') {
+          // 仮削除：メインタイムラインに配置
+          const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+          const eventY = window.innerHeight * 0.25; // メインタイムライン位置
+          
+          allLayoutEvents.push({
+            ...event,
+            adjustedPosition: { x: eventX, y: eventY },
+            calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+            calculatedHeight: calculateEventHeight(event),
+            displayStatus: 'removed',
+            timelineColor: '#6b7280', // グレー系
+            timelineInfo: {
+              timelineId: timeline.id,
+              timelineName: timeline.name,
+              timelineColor: timeline.color || '#6b7280'
+            },
+            hiddenByGroup: false
+          });
+          
+          console.log(`仮削除配置: 「${event.title}」→メインタイムライン(${eventX.toFixed(0)}, ${eventY})`);
+          isPlaced = true;
+          break;
+        }
       }
-      occupiedY.add(finalY);
 
-      results.push({
-        ...event,
-        adjustedPosition: { x: eventX, y: finalY },
-        calculatedWidth: eventWidth,
-        calculatedHeight: 40,
-        timelineColor: '#6b7280',
-        hiddenByGroup: false,
-      });
-    });
-
-    // 年表イベント処理
-    timelineAxes.forEach((axis) => {
-      const timelineEvents = events.filter(event => 
-        event.timelineInfos?.some(info => 
-          info.timelineId === axis.id && !info.isTemporary
-        )
-      );
-
-      timelineEvents.forEach((event) => {
+      // どの年表にも属していない場合：メインタイムライン
+      if (!isPlaced) {
         const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-        const eventWidth = Math.min(150, event.title?.length * 8 + 20);
-        const eventY = axis.yPosition + 20;
-
-        results.push({
+        const eventY = window.innerHeight * 0.25; // メインタイムライン位置
+        
+        allLayoutEvents.push({
           ...event,
           adjustedPosition: { x: eventX, y: eventY },
-          calculatedWidth: eventWidth,
-          calculatedHeight: 40,
-          timelineColor: axis.color,
-          hiddenByGroup: false,
-          timelineInfo: {
-            timelineId: axis.id,
-            timelineName: axis.name,
-            timelineColor: axis.color,
-          }
+          calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+          calculatedHeight: calculateEventHeight(event),
+          displayStatus: 'main',
+          timelineColor: '#6b7280',
+          timelineInfo: null,
+          hiddenByGroup: false
         });
-      });
+        
+        console.log(`メイン配置: 「${event.title}」→メインタイムライン(${eventX.toFixed(0)}, ${eventY})`);
+      }
     });
 
-    return results;
-  }, [events, timelineAxes, getXFromYear]);
+    console.log(`仮状態配置完了: 合計 ${allLayoutEvents.length}イベント配置`);
+    
+    return {
+      layoutEvents: allLayoutEvents,
+      eventGroups: allEventGroups
+    };
+  }, [events, displayTimelines, timelineAxes, getXFromYear, calculateTextWidth]);
 
   // ドロップゾーン検出
   const detectDropZone = useCallback((clientX, clientY) => {
@@ -269,31 +351,18 @@ const VisualTab = ({
     for (const axis of timelineAxes) {
       const axisScreenY = axis.yPosition + panY;
       if (Math.abs(relativeY - axisScreenY) < 40) {
-        return { type: 'timeline', id: axis.id, timeline: axis };
+        return { type: 'timeline', id: axis.id, timeline: axis.timeline };
       }
     }
     
-    // メインタイムライン判定
-    const mainTimelineY = window.innerHeight * 0.25 + panY;
-    if (Math.abs(relativeY - mainTimelineY) < 30) {
-      return { type: 'main' };
-    }
-    
-    // 削除ゾーン判定
-    if (clientX > window.innerWidth - 220 && clientY < 120) {
-      return { type: 'remove' };
-    }
-    
-    return null;
+    // その他は一般エリア
+    return { type: 'general' };
   }, [timelineAxes, panY]);
 
-  // 簡潔なドラッグ処理
+  // 年表ベース仮登録・仮削除処理
   const handleEventDragStart = useCallback((e, event) => {
-    console.log('=== ドラッグ開始 ===');
-    console.log('イベント:', event.title);
-    console.log('現在のtimelineInfos:', event.timelineInfos);
+    console.log('ドラッグ開始:', event.title);
     
-    // ドラッグ状態設定
     const startPos = { x: e.clientX, y: e.clientY };
     setDragState({
       isDragging: true,
@@ -304,9 +373,7 @@ const VisualTab = ({
     });
 
     document.body.style.cursor = "grabbing";
-    console.log('ドラッグ状態設定完了');
 
-    // マウス移動ハンドラー
     const handleMove = (moveEvent) => {
       const zone = detectDropZone(moveEvent.clientX, moveEvent.clientY);
       const zoneKey = zone ? 
@@ -319,65 +386,54 @@ const VisualTab = ({
       }));
     };
 
-    // マウスアップハンドラー
     const handleUp = (upEvent) => {
-      console.log('=== マウスアップ ===');
       const zone = detectDropZone(upEvent.clientX, upEvent.clientY);
       console.log('検出ゾーン:', zone);
 
-      // データ更新処理
-      if (zone && onEventUpdate) {
-        console.log('=== データ更新開始 ===');
-        let newTimelineInfos = [...(event.timelineInfos || [])];
-
+      if (zone && onTimelineUpdate) {
         if (zone.type === 'timeline') {
-          console.log('年表に追加:', zone.timeline.name);
-          const existingIndex = newTimelineInfos.findIndex(info => info.timelineId === zone.id);
-          if (existingIndex >= 0) {
-            newTimelineInfos[existingIndex] = { ...newTimelineInfos[existingIndex], isTemporary: false };
-          } else {
-            newTimelineInfos.push({ timelineId: zone.id, isTemporary: false });
-          }
-        } else if (zone.type === 'remove') {
-          console.log('仮削除処理');
-          newTimelineInfos = newTimelineInfos.map(info => ({ ...info, isTemporary: true }));
-        } else if (zone.type === 'main') {
-          console.log('メインタイムライン復帰');
-          newTimelineInfos = [];
-        }
-
-        console.log('更新前:', event.timelineInfos);
-        console.log('更新後:', newTimelineInfos);
-
-        // 更新実行
-        const updatedEvent = { ...event, timelineInfos: newTimelineInfos };
-        console.log('onEventUpdate実行...');
-        
-        try {
-          const result = onEventUpdate(updatedEvent);
-          console.log('onEventUpdate結果:', result);
+          // 年表ゾーンにドロップ：仮登録処理
+          const updatedTimeline = {
+            ...zone.timeline,
+            pendingEventIds: [...(zone.timeline.pendingEventIds || [])],
+            removedEventIds: [...(zone.timeline.removedEventIds || [])],
+            eventIds: [...(zone.timeline.eventIds || [])]
+          };
           
-          // 緊急措置：onEventUpdateが機能しない場合の直接更新
-          if (result === undefined) {
-            console.log('🚨 onEventUpdateが機能していません - 緊急措置実行');
+          // 既存の関係をクリア
+          updatedTimeline.eventIds = updatedTimeline.eventIds.filter(id => id !== event.id);
+          updatedTimeline.pendingEventIds = updatedTimeline.pendingEventIds.filter(id => id !== event.id);
+          updatedTimeline.removedEventIds = updatedTimeline.removedEventIds.filter(id => id !== event.id);
+          
+          // 仮登録に追加
+          updatedTimeline.pendingEventIds.push(event.id);
+          
+          onTimelineUpdate(updatedTimeline.id, updatedTimeline);
+          
+        } else if (zone.type === 'general') {
+          // 一般エリアにドロップ：仮削除処理
+          const currentTimeline = displayTimelines.find(timeline => 
+            (timeline.eventIds?.includes(event.id)) ||
+            (timeline.pendingEventIds?.includes(event.id))
+          );
+          
+          if (currentTimeline) {
+            const updatedTimeline = {
+              ...currentTimeline,
+              eventIds: [...(currentTimeline.eventIds || [])],
+              pendingEventIds: [...(currentTimeline.pendingEventIds || [])],
+              removedEventIds: [...(currentTimeline.removedEventIds || [])]
+            };
             
-            // 現在のevents配列から直接更新を試行
-            const currentEvents = [...events];
-            const eventIndex = currentEvents.findIndex(e => e.id === event.id);
+            updatedTimeline.eventIds = updatedTimeline.eventIds.filter(id => id !== event.id);
+            updatedTimeline.pendingEventIds = updatedTimeline.pendingEventIds.filter(id => id !== event.id);
             
-            if (eventIndex >= 0) {
-              currentEvents[eventIndex] = updatedEvent;
-              console.log('直接更新試行:', currentEvents[eventIndex].timelineInfos);
-              
-              // 強制的に画面更新を促すためにalertを表示
-              const timelineInfosStr = JSON.stringify(updatedEvent.timelineInfos);
-              alert(`緊急措置: ${event.title}のtimelineInfosを${timelineInfosStr}に更新しました。\n\n実際の状態更新はApp.jsのonEventUpdate関数の修正が必要です。`);
-            } else {
-              console.error('イベントが見つかりません:', event.id);
+            if (!updatedTimeline.removedEventIds.includes(event.id)) {
+              updatedTimeline.removedEventIds.push(event.id);
             }
+            
+            onTimelineUpdate(currentTimeline.id, updatedTimeline);
           }
-        } catch (error) {
-          console.error('onEventUpdateエラー:', error);
         }
       }
 
@@ -393,18 +449,55 @@ const VisualTab = ({
       document.body.style.cursor = "default";
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
-      console.log('=== ドラッグ終了 ===');
     };
 
-    // グローバルリスナー登録
     document.addEventListener("mousemove", handleMove);
     document.addEventListener("mouseup", handleUp);
-    console.log('リスナー登録完了');
 
-    // デフォルト動作を防止
     e.preventDefault();
     e.stopPropagation();
-  }, [detectDropZone, onEventUpdate]);
+  }, [detectDropZone, onTimelineUpdate, displayTimelines]);
+
+  // グループ関連ハンドラー
+  const handleGroupHover = useCallback((groupId, groupData) => {
+    setHoveredGroupData(groupData);
+    if (setHoveredGroup) {
+      setHoveredGroup(groupId);
+    }
+  }, [setHoveredGroup]);
+
+  const handleGroupClick = useCallback((groupId, groupData) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupId)) {
+        newSet.delete(groupId);
+      } else {
+        newSet.add(groupId);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // ツールチップクリック機能
+  const handleTooltipClick = useCallback((groupData) => {
+    if (groupData && groupData.id) {
+      setExpandedGroups(prev => {
+        const newSet = new Set(prev);
+        newSet.add(groupData.id);
+        return newSet;
+      });
+      setHoveredGroupData(null);
+      if (setHoveredGroup) {
+        setHoveredGroup(null);
+      }
+    }
+  }, [setHoveredGroup]);
+
+  const handleGroupEventDoubleClick = useCallback((event) => {
+    if (onEventClick) {
+      onEventClick(event);
+    }
+  }, [onEventClick]);
 
   // その他のハンドラー
   const handleEventDoubleClick = useCallback((event) => {
@@ -451,7 +544,7 @@ const VisualTab = ({
   }, [onAddEvent, getYearFromX, isWikiMode]);
 
   const handleTimelineDoubleClick = useCallback((e) => {
-    if (!e.target.closest("[data-event-id]")) {
+    if (!e.target.closest("[data-event-id]") && !e.target.closest("[data-group-id]")) {
       handleAddEventAtPosition(e.clientX, e.clientY);
     }
   }, [handleAddEventAtPosition]);
@@ -485,8 +578,7 @@ const VisualTab = ({
         }}
         onWheel={handleWheel}
         onMouseDown={(e) => {
-          // EventCardからのドラッグの場合はパン操作をスキップ
-          if (e.target.closest('[data-event-id]')) {
+          if (e.target.closest('[data-event-id]') || e.target.closest('[data-group-id]')) {
             return;
           }
           handleMouseDown(e);
@@ -519,7 +611,7 @@ const VisualTab = ({
           onDeleteTimeline={onDeleteTimeline}
         />
 
-        {/* イベントカード（修正版） */}
+        {/* イベントカード */}
         {layoutEvents.map((event) => {
           const isHighlighted = highlightedEvents.has ? 
             highlightedEvents.has(event.id) : 
@@ -554,6 +646,70 @@ const VisualTab = ({
             </div>
           );
         })}
+
+        {/* イベントグループ */}
+        {eventGroups.map((group) => {
+          const isExpanded = expandedGroups.has(group.id);
+          const isHovered = hoveredGroup === group.id;
+          
+          return (
+            <React.Fragment key={group.id}>
+              {/* グループアイコン */}
+              {!isExpanded && (
+                <EventGroupIcon
+                  groupData={group}
+                  position={group.position}
+                  panY={panY}
+                  timelineColor={group.timelineColor}
+                  onHover={handleGroupHover}
+                  onClick={handleGroupClick}
+                  onDoubleClick={handleGroupClick}
+                  isHighlighted={isHovered}
+                  scale={1} // 固定値
+                />
+              )}
+
+              {/* 展開されたグループカード */}
+              {isExpanded && (
+                <GroupCard
+                  groupData={group}
+                  position={group.position}
+                  panY={panY}
+                  timelineColor={group.timelineColor}
+                  onEventDoubleClick={handleGroupEventDoubleClick}
+                  onClose={() => setExpandedGroups(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(group.id);
+                    return newSet;
+                  })}
+                  calculateTextWidth={calculateTextWidth}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* クリック可能なホバーツールチップ */}
+        {hoveredGroupData && !expandedGroups.has(hoveredGroupData.id) && (
+          <div
+            style={{
+              position: "absolute",
+              left: `${hoveredGroupData.position.x + 30}px`,
+              top: `${hoveredGroupData.position.y + panY - 12}px`,
+              zIndex: 2000,
+              pointerEvents: "auto",
+              cursor: "pointer"
+            }}
+            onClick={() => handleTooltipClick(hoveredGroupData)}
+          >
+            <GroupTooltip
+              groupData={hoveredGroupData}
+              position={{ x: 0, y: 0 }}
+              panY={0}
+              onClick={() => handleTooltipClick(hoveredGroupData)}
+            />
+          </div>
+        )}
 
         {/* 現在線 */}
         <div
@@ -594,7 +750,7 @@ const VisualTab = ({
         panY={panY}
         draggedEvent={dragState.draggedEvent}
         highlightedZone={dragState.highlightedZone}
-        mainTimelineY={window.innerHeight * 0.25}
+        mainTimelineY={null}
       />
 
       {/* その他のUI */}
