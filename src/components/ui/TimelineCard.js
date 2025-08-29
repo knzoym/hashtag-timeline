@@ -50,7 +50,7 @@ export const TimelineCard = ({
     fontSize: '12px',
     userSelect: 'none',
     // パフォーマンス改善：transformを使用してGPU加速
-    transform: `translate(${position.x + panX}px, ${position.y + panY - 50}px)`,
+    transform: `translate(${position.x + panX - 200}px, ${position.y + panY - 40}px)`,
     willChange: 'transform',
     ...tempStyles
   };
@@ -79,7 +79,7 @@ export const TimelineCard = ({
           whiteSpace: 'nowrap',
           paddingRight: '4px'
         }}>
-          {isTemporary ? '📋' : '📊'} {timeline.name}
+          {isTemporary ? 'sample' : ''} {timeline.name}
         </div>
         
         {/* 操作ボタン群 */}

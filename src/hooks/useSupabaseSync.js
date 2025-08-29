@@ -7,7 +7,7 @@ export const useSupabaseSync = (user) => {
   const [error, setError] = useState(null);
 
   // Wiki関連の関数を追加
-  const getWikiEvents = useCallback(async (searchTerm = '', limit = 50) => {
+  const getWikiEvents = useCallback(async (searchTerm = '', limit = 300) => {
     try {
       let query = supabase
         .from('shared_events')

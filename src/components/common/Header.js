@@ -1,4 +1,4 @@
-// src/components/common/Header.js - getPageModeInfo修正版
+// src/components/common/Header.js - メニューシステム実装版
 import React, { useState, useMemo } from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { APP_CONFIG } from '../../constants/appConfig';
@@ -27,9 +27,12 @@ const Header = ({
   } = usePageMode();
   
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [editMenuOpen, setEditMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   
   // 修正: 関数として呼び出してからオブジェクト分割代入
-  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo;
+  const { isPersonalMode, isWikiMode, isMyPageMode } = getPageModeInfo();
   
   // レンダリング毎にランダムロゴを選択
   const randomLogo = useMemo(() => {
@@ -41,10 +44,47 @@ const Header = ({
     
     const randomIndex = Math.floor(Math.random() * logos.length);
     return logos[randomIndex];
-  }, []); // 空の依存配列でコンポーネントマウント時のみ実行
+  }, []);
+  
+  // メニュー項目の定義
+  const fileMenuItems = [
+    { id: 'new', label: '新規作成', icon: '📄', availableInModes: ['personal'], disabled: false },
+    { id: 'open', label: '開く', icon: '📂', availableInModes: ['personal'], disabled: !isAuthenticated },
+    { id: 'save', label: '保存', icon: '💾', availableInModes: ['personal'], disabled: !isAuthenticated || isMyPageMode },
+    { id: 'save-as', label: '名前を付けて保存', icon: '💾', availableInModes: ['personal'], disabled: !isAuthenticated || isMyPageMode },
+    { id: 'separator1', type: 'separator' },
+    { id: 'export', label: 'エクスポート', icon: '📤', availableInModes: ['personal', 'wiki'], disabled: false },
+    { id: 'import', label: 'インポート', icon: '📥', availableInModes: ['personal'], disabled: false },
+  ];
+
+  const editMenuItems = [
+    { id: 'undo', label: '取り消し', icon: '↶', shortcut: 'Ctrl+Z', availableInModes: ['personal', 'wiki'], disabled: false },
+    { id: 'redo', label: 'やり直し', icon: '↷', shortcut: 'Ctrl+Y', availableInModes: ['personal', 'wiki'], disabled: false },
+    { id: 'separator1', type: 'separator' },
+    { id: 'add-event', label: 'イベントを追加', icon: '➕', availableInModes: ['personal', 'wiki'], disabled: false },
+    { id: 'separator2', type: 'separator' },
+    { id: 'reset-view', label: '初期位置', icon: '🎯', availableInModes: ['personal', 'wiki'], availableInTabs: ['timeline', 'network'], disabled: false },
+  ];
+
+  const helpMenuItems = [
+    { id: 'getting-started', label: 'はじめかた', icon: '🚀', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+    { id: 'how-to-use', label: '操作方法', icon: '❓', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+    { id: 'tips', label: 'ヒント', icon: '💡', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+    { id: 'separator1', type: 'separator' },
+    { id: 'feedback', label: 'フィードバック', icon: '📝', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+    { id: 'separator2', type: 'separator' },
+    { id: 'version', label: 'バージョン情報', icon: 'ℹ️', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+    { id: 'about', label: 'このアプリについて', icon: '📖', availableInModes: ['personal', 'wiki', 'mypage'], disabled: false },
+  ];
   
   // ページモード切り替え
   const handlePageModeChange = (mode) => {
+    // メニューを閉じる
+    setFileMenuOpen(false);
+    setEditMenuOpen(false);
+    setHelpMenuOpen(false);
+    setUserMenuOpen(false);
+    
     changePageMode(mode);
   };
   
@@ -55,9 +95,38 @@ const Header = ({
   
   // メニューアクション
   const handleMenuAction = (actionId) => {
+    // メニューを閉じる
+    setFileMenuOpen(false);
+    setEditMenuOpen(false);
+    setHelpMenuOpen(false);
+    
     if (onMenuAction) {
       onMenuAction(actionId);
     }
+  };
+
+  // ログアウト処理の修正
+  const handleSignOut = () => {
+    setUserMenuOpen(false);
+    
+    // 安全にログアウト処理を実行
+    try {
+      if (onSignOut) {
+        onSignOut();
+      }
+    } catch (error) {
+      console.error('ログアウト処理エラー:', error);
+    }
+  };
+  
+  // メニュー項目がモードで利用可能かチェック
+  const isMenuItemAvailable = (item) => {
+    if (item.type === 'separator') return true;
+    
+    const modeAvailable = !item.availableInModes || item.availableInModes.includes(currentPageMode);
+    const tabAvailable = !item.availableInTabs || item.availableInTabs.includes(currentTab);
+    
+    return modeAvailable && tabAvailable;
   };
   
   const styles = {
@@ -75,7 +144,7 @@ const Header = ({
       boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
     },
     
-    // 左側: ロゴとファイル情報
+    // 左側: ロゴとメニュー
     leftSection: {
       display: 'flex',
       alignItems: 'center',
@@ -89,17 +158,44 @@ const Header = ({
       transition: 'opacity 0.2s'
     },
     logoImage: {
-      height: '36px', // ヘッダー内で適切なサイズ
+      height: '36px',
       width: 'auto',
       objectFit: 'contain',
       transition: 'opacity 0.2s'
     },
+    
+    // メニューバー
+    menuBar: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '4px'
+    },
+    menuButton: {
+      padding: '6px 12px',
+      borderRadius: '4px',
+      border: 'none',
+      backgroundColor: 'transparent',
+      color: '#374151',
+      fontSize: '14px',
+      cursor: 'pointer',
+      transition: 'all 0.2s',
+      position: 'relative'
+    },
+    menuButtonHover: {
+      backgroundColor: '#f3f4f6'
+    },
+    menuButtonActive: {
+      backgroundColor: '#e5e7eb'
+    },
+    
+    // ファイル情報
     fileInfo: {
       display: 'flex',
       alignItems: 'center',
       gap: '8px',
       fontSize: '14px',
-      color: '#6b7280'
+      color: '#6b7280',
+      marginLeft: '16px'
     },
     fileName: {
       fontWeight: '500',
@@ -117,7 +213,8 @@ const Header = ({
       gap: '4px',
       backgroundColor: '#f9fafb',
       borderRadius: '8px',
-      padding: '4px'
+      padding: '4px',
+      marginLeft: 'auto'
     },
     tab: {
       display: 'flex',
@@ -148,8 +245,7 @@ const Header = ({
     rightSection: {
       display: 'flex',
       alignItems: 'center',
-      gap: '16px',
-      marginLeft: 'auto'
+      gap: '16px'
     },
     pageModeSwitch: {
       display: 'flex',
@@ -198,18 +294,24 @@ const Header = ({
       color: 'white',
       border: '1px solid #3b82f6'
     },
+    
+    // ドロップダウン共通スタイル
     dropdown: {
       position: 'absolute',
       top: '100%',
-      right: 0,
+      left: 0,
       marginTop: '4px',
-      minWidth: '200px',
+      minWidth: '180px',
       backgroundColor: 'white',
       border: '1px solid #e5e7eb',
       borderRadius: '8px',
       boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
       zIndex: 1001,
-      padding: '8px 0'
+      padding: '4px 0'
+    },
+    userDropdown: {
+      right: 0,
+      left: 'auto'
     },
     dropdownItem: {
       width: '100%',
@@ -220,16 +322,73 @@ const Header = ({
       fontSize: '14px',
       cursor: 'pointer',
       textAlign: 'left',
-      transition: 'background-color 0.2s'
+      transition: 'background-color 0.2s',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px'
+    },
+    dropdownItemDisabled: {
+      opacity: 0.5,
+      cursor: 'not-allowed'
+    },
+    dropdownSeparator: {
+      height: '1px',
+      backgroundColor: '#e5e7eb',
+      margin: '4px 0'
+    },
+    shortcut: {
+      marginLeft: 'auto',
+      fontSize: '12px',
+      color: '#6b7280'
     }
   };
   
   // 利用可能なタブを取得
   const availableTabs = getAvailableTabs();
   
+  // メニュードロップダウンコンポーネント
+  const MenuDropdown = ({ items, isOpen, style = {} }) => {
+    if (!isOpen) return null;
+    
+    return (
+      <div style={{ ...styles.dropdown, ...style }}>
+        {items.map((item, index) => {
+          if (item.type === 'separator') {
+            return <div key={item.id || index} style={styles.dropdownSeparator} />;
+          }
+          
+          const isAvailable = isMenuItemAvailable(item);
+          const isDisabled = item.disabled || !isAvailable;
+          
+          if (!isAvailable) return null;
+          
+          return (
+            <button
+              key={item.id}
+              style={{
+                ...styles.dropdownItem,
+                ...(isDisabled ? styles.dropdownItemDisabled : {})
+              }}
+              onClick={() => !isDisabled && handleMenuAction(item.id)}
+              onMouseEnter={(e) => !isDisabled && (e.target.style.backgroundColor = '#f3f4f6')}
+              onMouseLeave={(e) => !isDisabled && (e.target.style.backgroundColor = 'transparent')}
+              disabled={isDisabled}
+            >
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+              {item.shortcut && (
+                <span style={styles.shortcut}>{item.shortcut}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+  
   return (
     <header style={styles.header}>
-      {/* 左側：ロゴとファイル情報 */}
+      {/* 左側：ロゴとメニューバー */}
       <div style={styles.leftSection}>
         {/* ランダムロゴ表示 */}
         <a 
@@ -237,7 +396,6 @@ const Header = ({
           style={styles.logoLink}
           onClick={(e) => {
             e.preventDefault();
-            // ロゴクリック時の処理（必要に応じて）
             console.log(`現在のロゴ: ${randomLogo.name}`);
           }}
           onMouseEnter={(e) => {
@@ -253,10 +411,8 @@ const Header = ({
             alt={randomLogo.alt}
             style={styles.logoImage}
             onError={(e) => {
-              // 画像読み込みエラー時のフォールバック
               console.error('ロゴ画像の読み込みに失敗:', randomLogo.name);
               e.target.style.display = 'none';
-              // フォールバックテキストを表示
               e.target.parentNode.innerHTML = `
                 <span style="
                   font-size: 24px; 
@@ -270,6 +426,69 @@ const Header = ({
             }}
           />
         </a>
+        
+        {/* メニューバー */}
+        <div style={styles.menuBar}>
+          {/* ファイルメニュー */}
+          <div style={{ position: 'relative' }}>
+            <button
+              style={{
+                ...styles.menuButton,
+                ...(fileMenuOpen ? styles.menuButtonActive : {})
+              }}
+              onClick={() => {
+                setFileMenuOpen(!fileMenuOpen);
+                setEditMenuOpen(false);
+                setHelpMenuOpen(false);
+              }}
+              onMouseEnter={(e) => !fileMenuOpen && (e.target.style.backgroundColor = styles.menuButtonHover.backgroundColor)}
+              onMouseLeave={(e) => !fileMenuOpen && (e.target.style.backgroundColor = 'transparent')}
+            >
+              ファイル
+            </button>
+            <MenuDropdown items={fileMenuItems} isOpen={fileMenuOpen} />
+          </div>
+
+          {/* 編集メニュー */}
+          <div style={{ position: 'relative' }}>
+            <button
+              style={{
+                ...styles.menuButton,
+                ...(editMenuOpen ? styles.menuButtonActive : {})
+              }}
+              onClick={() => {
+                setEditMenuOpen(!editMenuOpen);
+                setFileMenuOpen(false);
+                setHelpMenuOpen(false);
+              }}
+              onMouseEnter={(e) => !editMenuOpen && (e.target.style.backgroundColor = styles.menuButtonHover.backgroundColor)}
+              onMouseLeave={(e) => !editMenuOpen && (e.target.style.backgroundColor = 'transparent')}
+            >
+              編集
+            </button>
+            <MenuDropdown items={editMenuItems} isOpen={editMenuOpen} />
+          </div>
+
+          {/* ヘルプメニュー */}
+          <div style={{ position: 'relative' }}>
+            <button
+              style={{
+                ...styles.menuButton,
+                ...(helpMenuOpen ? styles.menuButtonActive : {})
+              }}
+              onClick={() => {
+                setHelpMenuOpen(!helpMenuOpen);
+                setFileMenuOpen(false);
+                setEditMenuOpen(false);
+              }}
+              onMouseEnter={(e) => !helpMenuOpen && (e.target.style.backgroundColor = styles.menuButtonHover.backgroundColor)}
+              onMouseLeave={(e) => !helpMenuOpen && (e.target.style.backgroundColor = 'transparent')}
+            >
+              ヘルプ
+            </button>
+            <MenuDropdown items={helpMenuItems} isOpen={helpMenuOpen} />
+          </div>
+        </div>
         
         {/* ファイル情報 */}
         {!isMyPageMode && (
@@ -359,7 +578,7 @@ const Header = ({
               </button>
               
               {userMenuOpen && (
-                <div style={styles.dropdown}>
+                <div style={{ ...styles.dropdown, ...styles.userDropdown }}>
                   <button
                     style={styles.dropdownItem}
                     onClick={() => {
@@ -369,18 +588,17 @@ const Header = ({
                     onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                     onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                   >
-                    📂 マイページ
+                    <span>📂</span>
+                    <span>マイページ</span>
                   </button>
                   <button
                     style={styles.dropdownItem}
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      if (onSignOut) onSignOut();
-                    }}
+                    onClick={handleSignOut}
                     onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
                     onMouseLeave={(e) => e.target.style.backgroundColor = 'transparent'}
                   >
-                    🚪 ログアウト
+                    <span>🚪</span>
+                    <span>ログアウト</span>
                   </button>
                 </div>
               )}
@@ -418,8 +636,8 @@ const Header = ({
         </div>
       )}
       
-      {/* ドロップダウン外側クリック時の処理 */}
-      {userMenuOpen && (
+      {/* メニュー外側クリック時の処理 */}
+      {(userMenuOpen || fileMenuOpen || editMenuOpen || helpMenuOpen) && (
         <div
           style={{
             position: 'fixed',
@@ -429,7 +647,12 @@ const Header = ({
             bottom: 0,
             zIndex: 1000
           }}
-          onClick={() => setUserMenuOpen(false)}
+          onClick={() => {
+            setUserMenuOpen(false);
+            setFileMenuOpen(false);
+            setEditMenuOpen(false);
+            setHelpMenuOpen(false);
+          }}
         />
       )}
     </header>

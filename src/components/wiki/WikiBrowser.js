@@ -10,7 +10,7 @@ import WikiEventForm from "../WikiEventForm";
 import { VersionToggle } from "../VotingComponents";
 
 const DEBOUNCE_MS = 500;
-const PAGE_LIMIT = 100;
+const PAGE_LIMIT = 1000;
 
 const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
   // タブ: 一覧 or 履歴（必要なら拡張）

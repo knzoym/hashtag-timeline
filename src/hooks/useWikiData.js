@@ -7,7 +7,7 @@ export const useWikiData = (user) => {
   const [error, setError] = useState(null);
 
   // 共用イベント取得（public.eventsテーブルから）
-  const getSharedEvents = useCallback(async (searchTerm = "", limit = 50) => {
+  const getSharedEvents = useCallback(async (searchTerm = "", limit = 300) => {
     try {
       setLoading(true);
       setError(null);
@@ -419,7 +419,7 @@ export const useWikiData = (user) => {
 
   // スコア付きのイベント一覧取得（安定版）
   const getEventsWithScores = useCallback(
-    async (searchTerm = "", limit = 50) => {
+    async (searchTerm = "", limit = 300) => {
       try {
         setLoading(true);
         setError(null);
@@ -491,10 +491,10 @@ export const useWikiData = (user) => {
         const opt = args[0];
         mode = opt.mode ?? "latest";
         searchTerm = opt.searchTerm ?? "";
-        limit = opt.limit ?? 50;
+        limit = opt.limit ?? 300;
       } else {
         searchTerm = args[0] ?? "";
-        limit = args[1] ?? 50;
+        limit = args[1] ?? 300;
       }
 
       if (mode === "stable") {
@@ -913,7 +913,7 @@ export const useWikiData = (user) => {
   }, [user]);
 
   // 追加：TLwikiの年表プリセット一覧（公開のみ）
-  const getWikiTimelines = useCallback(async (limit = 50) => {
+  const getWikiTimelines = useCallback(async (limit = 300) => {
     try {
       setLoading(true);
       setError(null);
