@@ -16,6 +16,7 @@ export const NetworkView = ({
   // イベント処理
   onEventClick,
   onTimelineClick,
+  onTimelineDoubleClick, // 年表ダブルクリック専用
   handleEventDoubleClick,
   handleEventDragStart,
   
@@ -30,31 +31,41 @@ export const NetworkView = ({
   const [selectedTimelineId, setSelectedTimelineId] = useState(null);
   const [priorityTimelineIds, setPriorityTimelineIds] = useState([]); // クリックした年表の優先順位
 
-  // イベントのY位置調整（同じ年表は近い位置に）
+  // イベントのY位置調整（高さ制限付き配置システム）
   const adjustEventPositions = useCallback((events, timelines) => {
-    const baseY = window.innerHeight * 0.25; // メインタイムライン位置
-    const eventSpacing = 45; // イベント間隔
-    const timelineGroupSpacing = 20; // 年表グループ間の追加間隔
+    const baseY = window.innerHeight * 0.25;
+    const maxGroupHeight = 200; // 年表グループの最大高さ
+    const eventSpacing = 50; // イベント間隔を縮小
+    const timelineGroupSpacing = 10; // 年表グループ間隔
     
-    // 年表の処理順序を決定（新しく作成された年表、クリックされた年表を優先）
+    // 年表の処理順序を決定
     const sortedTimelines = [...timelines].sort((a, b) => {
       const aPriority = priorityTimelineIds.indexOf(a.id);
       const bPriority = priorityTimelineIds.indexOf(b.id);
       
-      // 優先度が設定されている場合は優先度順
       if (aPriority !== -1 && bPriority !== -1) {
         return aPriority - bPriority;
       }
       if (aPriority !== -1) return -1;
       if (bPriority !== -1) return 1;
       
-      // 作成日時順（新しい年表を優先）
       return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     });
     
     const positionedEvents = [];
-    let currentY = baseY;
-    const usedPositions = new Map(); // eventId -> position
+    let currentGroupStartY = baseY;
+    const usedPositions = new Map();
+    
+    // 各イベントがどの年表に属するかを事前に計算
+    const eventToTimelines = new Map();
+    events.forEach(event => {
+      const belongingTimelines = timelines.filter(timeline =>
+        timeline.eventIds?.includes(event.id) ||
+        timeline.pendingEventIds?.includes(event.id) ||
+        timeline.removedEventIds?.includes(event.id)
+      );
+      eventToTimelines.set(event.id, belongingTimelines);
+    });
     
     // 年表ごとにイベントを配置
     sortedTimelines.forEach((timeline, timelineIndex) => {
@@ -66,69 +77,90 @@ export const NetworkView = ({
       
       if (timelineEvents.length === 0) return;
       
-      // 年表内のイベントを年月日順にソート
+      // 年月日順にソート
       const sortedTimelineEvents = [...timelineEvents].sort((a, b) => {
         const aTime = a.startDate ? a.startDate.getTime() : 0;
         const bTime = b.startDate ? b.startDate.getTime() : 0;
         return aTime - bTime;
       });
       
-      // 年表グループ開始位置
+      // 年表グループの開始位置設定
       if (timelineIndex > 0) {
-        currentY += timelineGroupSpacing;
+        currentGroupStartY += timelineGroupSpacing;
       }
       
-      sortedTimelineEvents.forEach((event, eventIndex) => {
+      // 高さ制限内でのイベント配置計算
+      const maxEventsInHeight = Math.floor(maxGroupHeight / eventSpacing);
+      const totalEvents = sortedTimelineEvents.filter(event => !usedPositions.has(event.id)).length;
+      
+      let groupCenterY = currentGroupStartY + maxGroupHeight / 2;
+      let eventIndex = 0;
+      
+      sortedTimelineEvents.forEach((event) => {
         if (usedPositions.has(event.id)) {
-          // 既に配置済みのイベントの場合、優先度が高い年表なら位置を更新
+          // 既に配置済み - 位置は変更しない
           const existingPos = usedPositions.get(event.id);
-          const existingTimelineIndex = sortedTimelines.findIndex(t => 
-            positionedEvents.find(pe => pe.id === event.id)?.timelineId === t.id
-          );
-          
-          if (timelineIndex < existingTimelineIndex) {
-            // より優先度の高い年表なので位置を更新
-            existingPos.y = currentY;
-            existingPos.timelineId = timeline.id;
-            existingPos.timelineColor = timeline.color;
-          }
-        } else {
-          // 新規配置
-          const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-          const position = {
-            ...event,
-            position: { x: eventX, y: currentY },
-            timelineId: timeline.id,
-            timelineColor: timeline.color || '#6b7280',
-            calculatedWidth: calculateTextWidth ? calculateTextWidth(event.title || '') : 80,
-            calculatedHeight: 32
-          };
-          
-          positionedEvents.push(position);
-          usedPositions.set(event.id, position);
+          existingPos.belongingTimelines = eventToTimelines.get(event.id) || [];
+          return;
         }
         
-        currentY += eventSpacing;
-      });
-    });
-    
-    // どの年表にも属さないイベントを最後に配置
-    events.forEach(event => {
-      if (!usedPositions.has(event.id)) {
+        // 新規配置：4件おきに往復する上下交互配置
+        let eventY;
+        
+        if (totalEvents <= maxEventsInHeight) {
+          // 通常の下方向配置（高さ制限内）
+          eventY = currentGroupStartY + eventIndex * eventSpacing;
+        } else {
+          // 4件おきに往復する配置システム
+          const cycleLength = 8; // 8件で1往復（下4件→上4件）
+          const cycleIndex = eventIndex % cycleLength;
+          const cycleNumber = Math.floor(eventIndex / cycleLength);
+          
+          if (cycleIndex < 4) {
+            // 下方向（0, 1, 2, 3）
+            eventY = groupCenterY + (cycleIndex * eventSpacing / 2) + (cycleNumber * eventSpacing * 2);
+          } else {
+            // 上方向（4, 5, 6, 7 → -1, -2, -3, -4）
+            const upwardIndex = cycleIndex - 4;
+            eventY = groupCenterY - ((upwardIndex + 1) * eventSpacing / 2) - (cycleNumber * eventSpacing * 2);
+          }
+        }
+        
         const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
         const position = {
           ...event,
-          position: { x: eventX, y: currentY },
-          timelineId: null,
-          timelineColor: '#6b7280',
+          position: { x: eventX, y: eventY },
+          belongingTimelines: eventToTimelines.get(event.id) || [],
           calculatedWidth: calculateTextWidth ? calculateTextWidth(event.title || '') : 80,
           calculatedHeight: 32
         };
         
         positionedEvents.push(position);
         usedPositions.set(event.id, position);
-        currentY += eventSpacing;
-      }
+        eventIndex++;
+      });
+      
+      // 次の年表グループの開始位置を更新
+      const actualGroupHeight = Math.min(maxGroupHeight, totalEvents * eventSpacing);
+      currentGroupStartY += actualGroupHeight;
+    });
+    
+    // どの年表にも属さないイベントを最後に配置
+    const orphanEvents = events.filter(event => !usedPositions.has(event.id));
+    orphanEvents.forEach((event, index) => {
+      const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+      const eventY = currentGroupStartY + timelineGroupSpacing + index * eventSpacing;
+      
+      const position = {
+        ...event,
+        position: { x: eventX, y: eventY },
+        belongingTimelines: [],
+        calculatedWidth: calculateTextWidth ? calculateTextWidth(event.title || '') : 80,
+        calculatedHeight: 32
+      };
+      
+      positionedEvents.push(position);
+      usedPositions.set(event.id, position);
     });
     
     return positionedEvents;
@@ -154,18 +186,17 @@ export const NetworkView = ({
     return 'default';
   }, [hoveredTimelineId, selectedTimelineId]);
 
-  // 年表線データ生成（同じ年表のイベント同士を接続）
+  // 年表線データ生成（複数年表対応）
   const timelineConnections = useMemo(() => {
     const connections = [];
     
     timelines.forEach(timeline => {
       const timelineEvents = networkEvents.filter(event => 
-        event.timelineId === timeline.id
+        event.belongingTimelines?.some(t => t.id === timeline.id)
       );
       
-      if (timelineEvents.length < 2) return; // 2つ以上のイベントがある年表のみ
+      if (timelineEvents.length < 2) return;
       
-      // イベントを年月日順にソート
       const sortedEvents = [...timelineEvents].sort((a, b) => {
         const aTime = a.startDate ? a.startDate.getTime() : 0;
         const bTime = b.startDate ? b.startDate.getTime() : 0;
@@ -269,8 +300,8 @@ export const NetworkView = ({
         connections={timelineConnections}
         panY={panY}
         onTimelineHover={handleTimelineHover}
-        onTimelineClick={handleTimelineConnectionClick}
-        onTimelineDoubleClick={handleTimelineConnectionDoubleClick}
+        onTimelineClick={handleTimelineConnectionClick} // 位置調整のみ
+        onTimelineDoubleClick={handleTimelineConnectionDoubleClick} // モーダル表示
       />
 
       {/* イベントカード */}
