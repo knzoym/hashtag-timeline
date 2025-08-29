@@ -1,5 +1,5 @@
-// components/ui/EventCard.js - パフォーマンス改善・小型化版
-import React from "react";
+// components/ui/EventCard.js - 長押しドラッグ・仮登録対応版
+import React, { useState, useRef, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
   calculateEventWidth,
@@ -15,7 +15,6 @@ function getContrastColor(hexColor) {
 
   // HSL色からRGBに変換（簡易版）
   if (hexColor.startsWith("hsl")) {
-    // hsl(240, 70%, 50%) のような形式をパース
     const match = hexColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
     if (match) {
       const l = parseInt(match[3]);
@@ -32,7 +31,7 @@ function getContrastColor(hexColor) {
     return brightness > 128 ? "#000000" : "#ffffff";
   }
 
-  return "#000000"; // デフォルトは黒
+  return "#000000";
 }
 
 /**
@@ -56,120 +55,206 @@ export const EventCard = ({
   isHighlighted = false,
   onDoubleClick,
   onMouseDown,
+  onDragStart, // 新規：ドラッグ開始ハンドラー
+  isDragging = false, // 新規：ドラッグ状態
   style = {},
   className = "",
   calculateTextWidth = null,
   ...props
 }) => {
+  const [isPressed, setIsPressed] = useState(false);
+  const longPressTimer = useRef(null);
+  const pressStartPos = useRef({ x: 0, y: 0 });
+
   // 統一されたイベント表示情報を取得
   const displayInfo = getEventDisplayInfo(event, calculateTextWidth);
 
-  // 年表情報に基づく色設定
-  const getEventColors = () => {
-    if (event.timelineInfo) {
-      // 年表に属するイベント：年表色の背景＋適切なテキスト色
-      const backgroundColor = event.timelineInfo.timelineColor;
-      const textColor = getContrastColor(backgroundColor);
-      const borderColor = darkenColor(backgroundColor, 20);
-
-      return {
-        backgroundColor,
-        color: textColor,
-        borderColor,
-      };
-    } else if (isHighlighted) {
-      // ハイライト時
-      return {
-        backgroundColor: "#3b82f6",
-        color: "#ffffff",
-        borderColor: "#1d4ed8",
-      };
-    } else {
-      // デフォルト（メインタイムライン）
-      return {
-        backgroundColor: "#6b7280",
-        color: "#ffffff",
-        borderColor: "#4b5563",
-      };
+  // 仮登録・仮削除状態の判定
+  const getTemporaryStatus = () => {
+    if (!event.timelineInfos || event.timelineInfos.length === 0) {
+      return null; // メインタイムライン
     }
+
+    const tempInfo = event.timelineInfos.find(info => info.isTemporary);
+    return tempInfo ? 'temporary' : 'registered';
+  };
+
+  const temporaryStatus = getTemporaryStatus();
+
+  // 年表情報に基づく色設定（仮登録対応）
+  const getEventColors = () => {
+    let baseBackgroundColor = "#6b7280"; // デフォルト色
+    
+    if (event.timelineInfo) {
+      baseBackgroundColor = event.timelineInfo.timelineColor;
+    } else if (isHighlighted) {
+      baseBackgroundColor = "#3b82f6";
+    }
+
+    // 仮登録・仮削除状態での色調整
+    let backgroundColor = baseBackgroundColor;
+    let opacity = 1;
+    
+    if (temporaryStatus === 'temporary') {
+      // 仮削除状態：半透明にして視覚的に区別
+      opacity = 0.6;
+      backgroundColor = darkenColor(baseBackgroundColor, 20);
+    }
+
+    const textColor = getContrastColor(backgroundColor);
+    const borderColor = darkenColor(backgroundColor, 20);
+
+    return {
+      backgroundColor,
+      color: textColor,
+      borderColor,
+      opacity,
+    };
   };
 
   const colors = getEventColors();
 
-  // パフォーマンス改善：positionプロップを使わず、styleでleftとtopを受け取る
-  const cardStyles = {
-    position: "absolute",
-    // 小型化されたサイズ設定
-    minWidth: `${TIMELINE_CONFIG.EVENT_MIN_WIDTH}px`,
-    maxWidth: `${TIMELINE_CONFIG.EVENT_MAX_WIDTH}px`,
-    width: `${displayInfo.width}px`,
-    height: `${displayInfo.height}px`,
-    backgroundColor: colors.backgroundColor,
-    color: colors.color,
-    border: `1px solid ${colors.borderColor}`, // 2px → 1px（小型化）
-    borderRadius: "6px", // 8px → 6px（小型化）
-    padding: "3px 6px", // 4px 8px → 3px 6px（小型化）
-    fontSize: "10px", // 11px → 10px（小型化）
-    fontWeight: "500",
-    cursor: "pointer",
-    userSelect: "none",
-    boxShadow: isHighlighted
-      ? "0 3px 8px rgba(59, 130, 246, 0.4)"
-      : "0 1px 3px rgba(0, 0, 0, 0.1)",
-    // パフォーマンス重要：transitionを削除（パン・ズーム遅延の原因）
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    textAlign: "center",
-    lineHeight: "1.2",
-    overflow: "hidden",
-    zIndex: isHighlighted ? 20 : 10,
-    // GPU加速を有効にしてパフォーマンス向上
-    willChange: "transform",
-    backfaceVisibility: "hidden",
-    ...style,
+  // 長押し開始
+  const handleMouseDownInternal = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startPos = {
+      x: e.clientX,
+      y: e.clientY,
+    };
+
+    pressStartPos.current = startPos;
+    setIsPressed(true);
+
+    // 通常のonMouseDownも呼び出し
+    if (onMouseDown) {
+      onMouseDown(e);
+    }
+
+    // 長押しタイマー開始
+    longPressTimer.current = setTimeout(() => {
+      // ドラッグ開始
+      if (onDragStart) {
+        const dragData = {
+          ...event,
+          startPosition: startPos,
+          type: 'event'
+        };
+        onDragStart(e, dragData);
+      }
+      setIsPressed(false);
+    }, 500); // 500msで長押し判定
+
+    // 早期移動検出
+    const handleEarlyMove = (moveEvent) => {
+      const deltaX = Math.abs(moveEvent.clientX - startPos.x);
+      const deltaY = Math.abs(moveEvent.clientY - startPos.y);
+
+      if (deltaX > 5 || deltaY > 5) {
+        // 移動が検出されたら長押しをキャンセル
+        clearTimeout(longPressTimer.current);
+        setIsPressed(false);
+        document.removeEventListener("mousemove", handleEarlyMove);
+      }
+    };
+
+    // 早期リリース検出
+    const handleEarlyUp = () => {
+      clearTimeout(longPressTimer.current);
+      setIsPressed(false);
+      document.removeEventListener("mousemove", handleEarlyMove);
+      document.removeEventListener("mouseup", handleEarlyUp);
+    };
+
+    document.addEventListener("mousemove", handleEarlyMove);
+    document.addEventListener("mouseup", handleEarlyUp);
+  }, [onMouseDown, onDragStart, event]);
+
+  // 仮登録状態のスタイル調整
+  const getCardStyles = () => {
+    const baseStyles = {
+      position: "absolute",
+      minWidth: `${TIMELINE_CONFIG.EVENT_MIN_WIDTH}px`,
+      maxWidth: `${TIMELINE_CONFIG.EVENT_MAX_WIDTH}px`,
+      width: `${displayInfo.width}px`,
+      height: `${displayInfo.height}px`,
+      backgroundColor: colors.backgroundColor,
+      color: colors.color,
+      border: temporaryStatus === 'temporary' 
+        ? `2px dashed ${colors.borderColor}` // 仮削除は破線
+        : `1px solid ${colors.borderColor}`,
+      borderRadius: "6px",
+      padding: "3px 6px",
+      fontSize: "10px",
+      fontWeight: "500",
+      cursor: isDragging ? "grabbing" : "pointer",
+      userSelect: "none",
+      boxShadow: isHighlighted
+        ? "0 3px 8px rgba(59, 130, 246, 0.4)"
+        : isPressed
+        ? "0 2px 6px rgba(0, 0, 0, 0.3)"
+        : "0 1px 3px rgba(0, 0, 0, 0.1)",
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "center",
+      alignItems: "center",
+      textAlign: "center",
+      lineHeight: "1.2",
+      overflow: "hidden",
+      zIndex: isDragging ? 30 : (isHighlighted ? 20 : 10),
+      opacity: colors.opacity,
+      willChange: "transform",
+      backfaceVisibility: "hidden",
+      ...style,
+    };
+
+    return baseStyles;
   };
 
-  // ホバー効果（軽量化）
+  // ホバー効果
   const handleMouseEnter = (e) => {
-    // 軽量なホバー効果（transformのみ）
-    e.target.style.transform = "scale(1.05)";
-    e.target.style.zIndex = "25";
+    if (!isDragging) {
+      e.target.style.transform = "scale(1.05)";
+      e.target.style.zIndex = "25";
+    }
   };
 
   const handleMouseLeave = (e) => {
-    e.target.style.transform = "scale(1)";
-    e.target.style.zIndex = isHighlighted ? "20" : "10";
+    if (!isDragging) {
+      e.target.style.transform = "scale(1)";
+      e.target.style.zIndex = isHighlighted ? "20" : "10";
+    }
   };
 
   return (
     <div>
-      {/* 年号（小型化） */}
+      {/* 年号表示 */}
       <div
         style={{
-          fontSize: "8px", // 9px → 8px（小型化）
+          fontSize: "8px",
           opacity: 0.9,
           marginTop: "1px",
         }}
       >
         {displayInfo.year}
       </div>
+
       <div
-        style={cardStyles}
+        style={getCardStyles()}
         className={className}
         onDoubleClick={onDoubleClick}
-        onMouseDown={onMouseDown}
+        onMouseDown={handleMouseDownInternal}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         data-event-id={event.id}
-        title={`${displayInfo.title} (${displayInfo.year})`}
+        title={`${displayInfo.title} (${displayInfo.year})${temporaryStatus === 'temporary' ? ' - 仮削除' : ''}`}
         {...props}
       >
-        {/* イベントタイトル（小型化） */}
+        {/* イベントタイトル */}
         <div
           style={{
-            fontSize: "9px", // 10px → 9px（小型化）
+            fontSize: "9px",
             fontWeight: "600",
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -180,14 +265,31 @@ export const EventCard = ({
           {displayInfo.title}
         </div>
 
-        {/* 年表所属インジケーター（小型化） */}
-        {displayInfo.hasTimelineInfo && (
+        {/* 仮登録・仮削除インジケーター */}
+        {temporaryStatus === 'temporary' && (
+          <div
+            style={{
+              position: "absolute",
+              top: "-2px",
+              right: "-2px",
+              width: "8px",
+              height: "8px",
+              backgroundColor: "#f59e0b",
+              borderRadius: "50%",
+              border: "1px solid white",
+            }}
+            title="仮削除状態"
+          />
+        )}
+
+        {/* 年表所属インジケーター */}
+        {displayInfo.hasTimelineInfo && temporaryStatus !== 'temporary' && (
           <div
             style={{
               position: "absolute",
               top: "-1px",
               right: "-1px",
-              width: "6px", // 8px → 6px（小型化）
+              width: "6px",
               height: "6px",
               backgroundColor: colors.borderColor,
               borderRadius: "50%",
@@ -196,18 +298,28 @@ export const EventCard = ({
           />
         )}
 
-        {/* 延長線が必要な場合のインジケーター（小型化） */}
-        {displayInfo.needsExtensionLine && (
+        {/* 長押し中インジケーター */}
+        {isPressed && (
           <div
             style={{
               position: "absolute",
-              bottom: "-1px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "10px", // 12px → 10px（小型化）
-              height: "1px", // 2px → 1px（小型化）
-              backgroundColor: colors.borderColor,
-              opacity: 0.7,
+              inset: 0,
+              backgroundColor: "rgba(255, 255, 255, 0.2)",
+              borderRadius: "6px",
+              pointerEvents: "none",
+            }}
+          />
+        )}
+
+        {/* ドラッグ中インジケーター */}
+        {isDragging && (
+          <div
+            style={{
+              position: "absolute",
+              inset: "-2px",
+              border: "2px solid #3b82f6",
+              borderRadius: "8px",
+              pointerEvents: "none",
             }}
           />
         )}

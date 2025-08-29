@@ -1,4 +1,4 @@
-// constants/timelineConfig.js - 位置修正版（40%・重なり回避強化）
+// constants/timelineConfig.js - 位置修正版（40%・重なり回避強化・無制限積み重ね対応）
 export const TIMELINE_CONFIG = {
   // 基本スケール設定
   BASE_PIXELS_PER_YEAR: 2,
@@ -6,10 +6,10 @@ export const TIMELINE_CONFIG = {
   MIN_SCALE: 0.1,
   MAX_SCALE: 50,
 
-  // タイムライン位置設定（40%に変更）
+  // タイムライン位置設定（40%に変更・行ベース統一）
   MAIN_TIMELINE_Y: () => window.innerHeight * 0.25,  // 30% → 40%に変更
   FIRST_ROW_Y: () => window.innerHeight * 0.4 + 120, // メインラインから120px下に年表開始
-  ROW_HEIGHT: 140, // 年表間隔を少し広げて重なりを回避
+  ROW_HEIGHT: 140, // 年表間隔を少し広げて重なりを回避（軸線・カード位置統一）
   
   // イベントサイズ設定（小型化）
   EVENT_HEIGHT: 28,     // 36 → 28に減少（小さくする）
@@ -18,10 +18,10 @@ export const TIMELINE_CONFIG = {
   EVENT_PADDING: 5,    // 16 → 12に減少（左右合計）
   EVENT_BORDER: 2,      // 4 → 2に減少（左右合計）
   
-  // 干渉回避設定（強化・無制限積み重ね対応）
+  // 干渉回避設定（イベントサイズベース調整）
   EVENT_MARGIN: 5,     // 15 → 20に増加（重なり回避強化）
-  TIER_HEIGHT: 20,      // 45 → 40に減少（イベントを小さくするため）
-  MAX_TIERS: 50,        // 8 → 50に大幅増加（積み重ね制限なし）
+  TIER_HEIGHT: 35,     // 20 → 35に増加（イベント高さ28px + マージン）
+  // MAX_TIERS: 削除 - 最大積み重ね回数制限なし
   
   // グループ設定（調整版）
   MIN_GROUP_SIZE: 2,    // グループ化に必要な最小イベント数
@@ -66,4 +66,4 @@ export const TIMELINE_CONFIG = {
   // パフォーマンス設定
   RENDER_OPTIMIZATION: true,
   LAZY_RENDERING_THRESHOLD: 100, // イベント数がこれを超えると遅延レンダリング
-}
+};

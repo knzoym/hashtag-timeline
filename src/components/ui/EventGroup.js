@@ -1,4 +1,4 @@
-// src/components/ui/EventGroup.js - パフォーマンス改善版
+// src/components/ui/EventGroup.js - 大型化・色統一・25%位置対応版
 import React, { useState } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 
@@ -34,9 +34,13 @@ export const EventGroupIcon = ({
   const maxYear = years[years.length - 1];
   const yearDisplay = minYear === maxYear ? `${minYear}` : `${minYear}-${maxYear}`;
   
-  const iconSize = Math.max(20, 30 * scale);
-  const fontSize = Math.max(8, 11 * scale);
-  const yearFontSize = Math.max(7, 10 * scale);
+  // 大型化されたサイズ設定
+  const iconSize = Math.max(TIMELINE_CONFIG.GROUP_ICON_SIZE, TIMELINE_CONFIG.GROUP_ICON_SIZE * scale);
+  const fontSize = Math.max(TIMELINE_CONFIG.GROUP_FONT_SIZE, TIMELINE_CONFIG.GROUP_FONT_SIZE * scale);
+  const yearFontSize = Math.max(12, 14 * scale);
+  
+  // 年表色を使用（グループデータから取得、なければデフォルト）
+  const groupColor = groupData.timelineColor || timelineColor;
   
   const baseStyles = {
     position: "absolute",
@@ -46,7 +50,7 @@ export const EventGroupIcon = ({
     userSelect: "none",
     transition: "all 0.2s ease",
     // パフォーマンス改善：transformを使用してGPU加速
-    transform: `translate(${position.x - 16}px, ${position.y + panY - 7}px)`,
+    transform: `translate(${position.x - 21}px, ${position.y + panY - 10}px)`,
     willChange: 'transform',
     ...style
   };
@@ -87,31 +91,31 @@ export const EventGroupIcon = ({
       <div style={{ 
         fontSize: `${yearFontSize}px`, 
         color: "#666", 
-        marginBottom: "2px",
+        marginBottom: "4px",
         fontWeight: "500"
       }}>
         {yearDisplay}
       </div>
       
-      {/* グループアイコン */}
+      {/* グループアイコン（大型化・年表色統一） */}
       <div
         style={{
           width: `${iconSize}px`,
-          height: `${Math.max(12, 14 * scale)}px`,
-          borderRadius: "4px",
-          backgroundColor: timelineColor,
+          height: `${Math.max(18, 20 * scale)}px`,
+          borderRadius: "6px", // 4px → 6px（大型化）
+          backgroundColor: groupColor, // 年表色を使用
           color: "white",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: `${fontSize}px`,
-          fontWeight: "600",
-          border: "2px solid rgba(255,255,255,0.9)",
+          fontWeight: "700", // 600 → 700（強調）
+          border: "3px solid rgba(255,255,255,0.9)", // 2px → 3px（大型化）
           boxShadow: isHovered ? 
-            "0 4px 12px rgba(0, 0, 0, 0.2)" : 
-            "0 2px 6px rgba(0, 0, 0, 0.1)",
-          padding: "2px 4px",
-          transform: isHovered ? "scale(1.1)" : "scale(1)",
+            "0 6px 16px rgba(0, 0, 0, 0.25)" : // 強化されたシャドウ
+            "0 3px 8px rgba(0, 0, 0, 0.15)",
+          padding: "3px 6px", // 2px 4px → 3px 6px（大型化）
+          transform: isHovered ? "scale(1.15)" : "scale(1)", // 1.1 → 1.15（より大きく）
           transition: "all 0.2s ease"
         }}
       >
@@ -125,12 +129,12 @@ export const EventGroupIcon = ({
           top: "100%",
           left: "50%",
           transform: "translateX(-50%)",
-          marginTop: "4px",
-          padding: "2px 6px",
-          backgroundColor: "rgba(0, 0, 0, 0.8)",
+          marginTop: "6px", // 4px → 6px（大型化）
+          padding: "3px 8px", // 2px 6px → 3px 8px（大型化）
+          backgroundColor: "rgba(0, 0, 0, 0.85)",
           color: "white",
-          borderRadius: "4px",
-          fontSize: "9px",
+          borderRadius: "5px",
+          fontSize: "10px",
           whiteSpace: "nowrap",
           pointerEvents: "none",
           zIndex: 1000
@@ -164,46 +168,46 @@ export const GroupTooltip = ({
         position: "absolute",
         backgroundColor: "rgba(0, 0, 0, 0.95)",
         color: "white",
-        padding: "12px 16px",
-        borderRadius: "8px",
-        fontSize: "12px",
-        maxWidth: "280px",
-        minWidth: "200px",
+        padding: "14px 18px", // 12px 16px → 14px 18px（大型化）
+        borderRadius: "10px", // 8px → 10px（大型化）
+        fontSize: "13px", // 12px → 13px（大型化）
+        maxWidth: "320px", // 280px → 320px（大型化）
+        minWidth: "220px", // 200px → 220px（大型化）
         zIndex: 1000,
         pointerEvents: "none",
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
-        border: "1px solid rgba(255, 255, 255, 0.1)",
+        boxShadow: "0 10px 40px rgba(0, 0, 0, 0.5)", // 強化されたシャドウ
+        border: "1px solid rgba(255, 255, 255, 0.15)",
         // パフォーマンス改善：transformを使用
-        transform: `translate(${position.x + panX + 25}px, ${position.y + panY - 10}px)`,
+        transform: `translate(${position.x + panX + 30}px, ${position.y + panY - 12}px)`,
         willChange: 'transform'
       }}
     >
       {/* ヘッダー */}
       <div style={{ 
         fontWeight: "bold", 
-        marginBottom: "8px",
-        fontSize: "13px",
+        marginBottom: "10px", // 8px → 10px（大型化）
+        fontSize: "14px", // 13px → 14px（大型化）
         borderBottom: "1px solid rgba(255, 255, 255, 0.2)",
-        paddingBottom: "6px"
+        paddingBottom: "8px" // 6px → 8px（大型化）
       }}>
         📋 {events.length}個のイベント
       </div>
       
       {/* イベントリスト */}
-      <div style={{ marginBottom: "8px" }}>
+      <div style={{ marginBottom: "10px" }}>
         {displayEvents.map((event, index) => (
           <div key={event.id || index} style={{ 
-            fontSize: "11px", 
+            fontSize: "12px", 
             opacity: 0.9, 
-            marginBottom: "4px",
+            marginBottom: "5px", // 4px → 5px（大型化）
             display: "flex",
             alignItems: "center",
-            gap: "6px"
+            gap: "8px" // 6px → 8px（大型化）
           }}>
             <div style={{
-              width: "4px",
-              height: "4px",
-              backgroundColor: "rgba(255, 255, 255, 0.6)",
+              width: "5px", // 4px → 5px（大型化）
+              height: "5px",
+              backgroundColor: groupData.timelineColor || "rgba(255, 255, 255, 0.6)",
               borderRadius: "50%",
               flexShrink: 0
             }} />
@@ -212,7 +216,7 @@ export const GroupTooltip = ({
                 {event.title || '（無題）'}
               </span>
               {showYears && event.startDate && (
-                <span style={{ opacity: 0.7, marginLeft: "6px" }}>
+                <span style={{ opacity: 0.7, marginLeft: "8px" }}>
                   ({event.startDate.getFullYear()})
                 </span>
               )}
@@ -222,12 +226,12 @@ export const GroupTooltip = ({
         
         {remainingCount > 0 && (
           <div style={{ 
-            fontSize: "10px", 
+            fontSize: "11px", 
             opacity: 0.7,
             fontStyle: "italic",
             textAlign: "center",
-            marginTop: "6px",
-            padding: "4px 0",
+            marginTop: "8px", // 6px → 8px（大型化）
+            padding: "5px 0", // 4px 0 → 5px 0（大型化）
             borderTop: "1px solid rgba(255, 255, 255, 0.1)"
           }}>
             他 {remainingCount} 件...
@@ -237,7 +241,7 @@ export const GroupTooltip = ({
       
       {/* フッター */}
       <div style={{ 
-        fontSize: "10px", 
+        fontSize: "11px", 
         opacity: 0.7,
         textAlign: "center",
         fontStyle: "italic"
@@ -257,7 +261,7 @@ export const GroupCard = ({
   onEventDoubleClick,
   onClose,
   onEventClick,
-  maxHeight = "400px",
+  maxHeight = "450px", // 400px → 450px（大型化）
   style = {}
 }) => {
   const [hoveredEventId, setHoveredEventId] = useState(null);
@@ -267,14 +271,17 @@ export const GroupCard = ({
   const events = groupData.events || [];
   if (events.length === 0) return null;
   
+  // 年表色を使用
+  const groupColor = groupData.timelineColor || timelineColor;
+  
   const baseStyles = {
     position: "absolute",
-    width: "320px",
+    width: "360px", // 320px → 360px（大型化）
     maxHeight,
     backgroundColor: "white",
-    border: `2px solid ${timelineColor}`,
-    borderRadius: "12px",
-    boxShadow: "0 12px 40px rgba(0, 0, 0, 0.25)",
+    border: `3px solid ${groupColor}`, // 2px → 3px、年表色使用
+    borderRadius: "14px", // 12px → 14px（大型化）
+    boxShadow: "0 16px 48px rgba(0, 0, 0, 0.3)", // 強化されたシャドウ
     zIndex: 1000,
     overflow: "hidden",
     // パフォーマンス改善：transformを使用
@@ -284,28 +291,28 @@ export const GroupCard = ({
   };
   
   const headerStyles = {
-    backgroundColor: timelineColor,
+    backgroundColor: groupColor, // 年表色を使用
     color: "white",
-    padding: "16px 20px",
+    padding: "18px 22px", // 16px 20px → 18px 22px（大型化）
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
   };
   
   const contentStyles = {
-    maxHeight: "calc(400px - 60px)",
+    maxHeight: "calc(450px - 70px)", // 調整
     overflowY: "auto",
     overflowX: "hidden"
   };
   
   const eventItemStyles = {
-    padding: "12px 16px",
+    padding: "14px 18px", // 12px 16px → 14px 18px（大型化）
     borderBottom: "1px solid #f3f4f6",
     cursor: "pointer",
     transition: "all 0.2s ease",
     display: "flex",
     alignItems: "flex-start",
-    gap: "12px"
+    gap: "14px" // 12px → 14px（大型化）
   };
   
   // イベントクリックハンドラー
@@ -326,10 +333,10 @@ export const GroupCard = ({
       {/* ヘッダー */}
       <div style={headerStyles}>
         <div>
-          <div style={{ fontWeight: "bold", fontSize: "16px", marginBottom: "2px" }}>
+          <div style={{ fontWeight: "bold", fontSize: "17px", marginBottom: "3px" }}>
             📋 イベントグループ
           </div>
-          <div style={{ fontSize: "12px", opacity: 0.9 }}>
+          <div style={{ fontSize: "13px", opacity: 0.9 }}>
             {events.length} 件のイベント
           </div>
         </div>
@@ -341,10 +348,10 @@ export const GroupCard = ({
             border: "none",
             color: "white",
             cursor: "pointer",
-            fontSize: "20px",
-            padding: "4px",
-            width: "32px",
-            height: "32px",
+            fontSize: "22px", // 20px → 22px（大型化）
+            padding: "5px", // 4px → 5px（大型化）
+            width: "36px", // 32px → 36px（大型化）
+            height: "36px",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -383,11 +390,11 @@ export const GroupCard = ({
             {/* 日付インジケーター */}
             <div style={{
               flexShrink: 0,
-              width: "8px",
-              height: "8px",
-              backgroundColor: timelineColor,
+              width: "10px", // 8px → 10px（大型化）
+              height: "10px",
+              backgroundColor: groupColor, // 年表色を使用
               borderRadius: "50%",
-              marginTop: "6px"
+              marginTop: "7px" // 6px → 7px（大型化）
             }} />
             
             {/* イベント情報 */}
@@ -395,9 +402,9 @@ export const GroupCard = ({
               {/* タイトル */}
               <div style={{
                 fontWeight: "600",
-                fontSize: "14px",
+                fontSize: "15px", // 14px → 15px（大型化）
                 color: "#1f2937",
-                marginBottom: "4px",
+                marginBottom: "5px", // 4px → 5px（大型化）
                 lineHeight: "1.3"
               }}>
                 {event.title || '（無題）'}
@@ -406,9 +413,9 @@ export const GroupCard = ({
               {/* 日付 */}
               {event.startDate && (
                 <div style={{
-                  fontSize: "12px",
+                  fontSize: "13px", // 12px → 13px（大型化）
                   color: "#6b7280",
-                  marginBottom: "4px"
+                  marginBottom: "5px"
                 }}>
                   📅 {event.startDate.toLocaleDateString('ja-JP')}
                   {event.endDate && event.endDate !== event.startDate && 
@@ -420,9 +427,9 @@ export const GroupCard = ({
               {/* 説明（短縮版） */}
               {event.description && (
                 <div style={{
-                  fontSize: "12px",
+                  fontSize: "13px",
                   color: "#6b7280",
-                  marginBottom: "6px",
+                  marginBottom: "7px", // 6px → 7px（大型化）
                   lineHeight: "1.4",
                   overflow: "hidden",
                   display: "-webkit-box",
@@ -438,17 +445,17 @@ export const GroupCard = ({
                 <div style={{
                   display: "flex",
                   flexWrap: "wrap",
-                  gap: "4px"
+                  gap: "5px" // 4px → 5px（大型化）
                 }}>
                   {event.tags.slice(0, 3).map((tag, tagIndex) => (
                     <span
                       key={tagIndex}
                       style={{
-                        fontSize: "10px",
-                        padding: "2px 6px",
+                        fontSize: "11px",
+                        padding: "3px 7px", // 2px 6px → 3px 7px（大型化）
                         backgroundColor: "#e0f2fe",
                         color: "#0891b2",
-                        borderRadius: "8px",
+                        borderRadius: "9px", // 8px → 9px（大型化）
                         fontWeight: "500"
                       }}
                     >
@@ -457,7 +464,7 @@ export const GroupCard = ({
                   ))}
                   {event.tags.length > 3 && (
                     <span style={{
-                      fontSize: "10px",
+                      fontSize: "11px",
                       color: "#9ca3af",
                       fontStyle: "italic"
                     }}>
@@ -475,7 +482,7 @@ export const GroupCard = ({
               transition: "opacity 0.2s ease"
             }}>
               <div style={{
-                fontSize: "10px",
+                fontSize: "11px",
                 color: "#9ca3af",
                 textAlign: "center"
               }}>
@@ -487,9 +494,9 @@ export const GroupCard = ({
         
         {/* フッター情報 */}
         <div style={{
-          padding: "12px 16px",
+          padding: "14px 18px", // 12px 16px → 14px 18px（大型化）
           backgroundColor: "#f9fafb",
-          fontSize: "11px",
+          fontSize: "12px",
           color: "#6b7280",
           textAlign: "center",
           borderTop: "1px solid #e5e7eb"

@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - グループ化修正完全版
+// src/components/tabs/VisualTab.js - 25%位置・軸線範囲限定・グループ大型化対応版
 import React, { useRef, useCallback, useState, useMemo } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -57,6 +57,138 @@ const VisualTab = ({
   setHoveredGroup,
   showPendingEvents = false,
 }) => {
+  const [dragState, setDragState] = useState({
+    isDragging: false,
+    draggedEvent: null,
+    startPosition: { x: 0, y: 0 },
+    currentPosition: { x: 0, y: 0 },
+  });
+
+  // ドラッグ開始ハンドラー
+  const handleDragStart = useCallback((e, dragData) => {
+    console.log("ドラッグ開始:", dragData.title);
+
+    setDragState({
+      isDragging: true,
+      draggedEvent: dragData,
+      startPosition: dragData.startPosition,
+      currentPosition: dragData.startPosition,
+    });
+
+    // ドラッグ中のマウス移動を監視
+    const handleMouseMove = (moveEvent) => {
+      setDragState((prev) => ({
+        ...prev,
+        currentPosition: { x: moveEvent.clientX, y: moveEvent.clientY },
+      }));
+    };
+
+    // ドラッグ終了
+    const handleMouseUp = (upEvent) => {
+      handleDragEnd(upEvent);
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    document.body.style.cursor = "grabbing";
+  }, []);
+
+  // ドラッグ終了処理
+  const handleDragEnd = useCallback(
+    (e) => {
+      if (!dragState.isDragging || !dragState.draggedEvent) return;
+
+      const dropY = e.clientY;
+      console.log("ドロップ位置 Y:", dropY);
+
+      // 年表軸との重なりをチェック
+      let targetTimeline = null;
+
+      if (timelineAxes && timelineAxes.length > 0) {
+        targetTimeline = timelineAxes.find((axis) => {
+          const axisTop = axis.yPosition + panY - 40;
+          const axisBottom = axis.yPosition + panY + 40;
+          return dropY >= axisTop && dropY <= axisBottom;
+        });
+      }
+
+      const draggedEvent = dragState.draggedEvent;
+
+      if (targetTimeline) {
+        // 年表エリアにドロップ：仮登録
+        console.log(
+          `イベント「${draggedEvent.title}」を年表「${targetTimeline.name}」に仮登録`
+        );
+
+        const updatedTimelineInfos = [...(draggedEvent.timelineInfos || [])];
+        const existingIndex = updatedTimelineInfos.findIndex(
+          (info) => info.timelineId === targetTimeline.id
+        );
+
+        if (existingIndex >= 0) {
+          // 既存の関連を正式登録に変更
+          updatedTimelineInfos[existingIndex] = {
+            ...updatedTimelineInfos[existingIndex],
+            isTemporary: false,
+          };
+        } else {
+          // 新規仮登録
+          updatedTimelineInfos.push({
+            timelineId: targetTimeline.id,
+            isTemporary: false,
+          });
+        }
+
+        const updatedEvent = {
+          ...draggedEvent,
+          timelineInfos: updatedTimelineInfos,
+        };
+
+        if (onEventUpdate) {
+          onEventUpdate(updatedEvent);
+        }
+      } else {
+        // 年表エリア外にドロップ：仮削除処理
+        if (
+          draggedEvent.timelineInfos &&
+          draggedEvent.timelineInfos.length > 0
+        ) {
+          console.log(`イベント「${draggedEvent.title}」を仮削除状態に変更`);
+
+          const updatedTimelineInfos = draggedEvent.timelineInfos.map(
+            (info) => ({
+              ...info,
+              isTemporary: true,
+            })
+          );
+
+          const updatedEvent = {
+            ...draggedEvent,
+            timelineInfos: updatedTimelineInfos,
+          };
+
+          if (onEventUpdate) {
+            onEventUpdate(updatedEvent);
+          }
+        }
+      }
+
+      // ドラッグ状態リセット
+      setDragState({
+        isDragging: false,
+        draggedEvent: null,
+        startPosition: { x: 0, y: 0 },
+        currentPosition: { x: 0, y: 0 },
+      });
+
+      document.body.style.cursor = "default";
+    },
+    [dragState, timelineAxes, panY, onEventUpdate]
+  );
+
   const timelineRef = useRef(null);
   const isNetworkMode = viewMode === "network";
 
@@ -82,21 +214,7 @@ const VisualTab = ({
     return Math.min(Math.max(60, text.length * 8), 200);
   }, []);
 
-  // 色を暗くするヘルパー関数（落ち着いたトーン用）
-  const getDarkerColor = useCallback((hslColor, darkenAmount = 30) => {
-    if (!hslColor || !hslColor.startsWith("hsl")) return hslColor;
-
-    const match = hslColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-    if (match) {
-      const h = match[1];
-      const s = Math.max(20, Math.min(50, parseInt(match[2]) - 15));
-      const l = Math.max(20, parseInt(match[3]) - darkenAmount);
-      return `hsl(${h}, ${s}%, ${l}%)`;
-    }
-    return hslColor;
-  }, []);
-
-  // 統合レイアウトマネージャーのインスタンス化
+  // 統合レイアウトシステムのインスタンス化
   const layoutManager = useMemo(() => {
     if (!coordinates || !calculateTextWidth) return null;
     return new UnifiedLayoutSystem(coordinates, calculateTextWidth);
@@ -150,7 +268,7 @@ const VisualTab = ({
     return markers;
   }, [scale, getXFromYear]);
 
-  // 年表軸計算
+  // 年表軸計算（範囲限定対応）
   const timelineAxes = useMemo(() => {
     if (!getXFromYear) return [];
 
@@ -177,7 +295,7 @@ const VisualTab = ({
         return false;
       });
 
-      // 年範囲計算
+      // 年範囲計算（イベントの実際の範囲を使用）
       let minYear = 2020,
         maxYear = 2025;
       if (timelineEvents.length > 0) {
@@ -190,7 +308,7 @@ const VisualTab = ({
         }
       }
 
-      // 座標計算
+      // 座標計算（25%位置基準）
       const startX = getXFromYear(minYear);
       const endX = getXFromYear(maxYear);
       const yPosition =
@@ -201,14 +319,15 @@ const VisualTab = ({
         name: timeline.name,
         color: timeline.color || "#6b7280",
         yPosition,
-        startX,
-        endX,
+        startX, // 軸線の開始点（イベント範囲）
+        endX, // 軸線の終了点（イベント範囲）
         cardX: Math.max(20, startX - 150),
         eventCount: timelineEvents.length,
         timeline,
       });
     });
 
+    console.log(`年表軸計算完了（25%位置・範囲限定）: ${axes.length}軸`);
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
@@ -222,13 +341,13 @@ const VisualTab = ({
       const layoutResult = layoutManager.executeLayout(events, timelineAxes);
 
       console.log(
-        `統合レイアウト結果: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`
+        `統合レイアウト結果（25%位置）: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`
       );
       layoutResult.eventGroups.forEach((group) => {
         console.log(
           `グループ ${group.id}: 位置(${group.position.x.toFixed(0)}, ${
             group.position.y
-          }) ${group.events.length}イベント`
+          }) 色=${group.timelineColor} ${group.events.length}イベント`
         );
       });
 
@@ -243,17 +362,17 @@ const VisualTab = ({
   const networkLayout = useMemo(() => {
     if (!isNetworkMode) return { events: [], connections: [] };
 
-    console.log("🌐 ネットワークレイアウト計算開始");
+    console.log("ネットワークレイアウト計算開始（25%位置対応）");
     const networkEvents = [];
     const viewportHeight = window.innerHeight;
     const viewportWidth = window.innerWidth;
 
-    // 各年表の中心Y座標を計算
+    // 各年表の中心Y座標を計算（25%基準）
     const timelinePositions = displayTimelines
       .filter((t) => t.isVisible !== false)
       .map((timeline, index) => {
         const centerY =
-          viewportHeight * 0.2 + (index + 1) * (viewportHeight * 0.15);
+          viewportHeight * 0.15 + (index + 1) * (viewportHeight * 0.15);
         return {
           id: timeline.id,
           name: timeline.name,
@@ -348,7 +467,7 @@ const VisualTab = ({
     if (!isNetworkMode) return [];
 
     const connections = [];
-    console.log("🌐 ネットワークモード: 接続線生成開始");
+    console.log("ネットワークモード: 接続線生成開始");
 
     // ネットワークレイアウトのイベントから接続線を生成
     if (networkLayout.timelinePositions) {
@@ -387,9 +506,7 @@ const VisualTab = ({
       });
     }
 
-    console.log(
-      `🌐 ネットワーク接続線生成完了: ${connections.length}本の接続線`
-    );
+    console.log(`ネットワーク接続線生成完了: ${connections.length}本の接続線`);
     return connections;
   }, [isNetworkMode, networkLayout]);
 
@@ -409,6 +526,7 @@ const VisualTab = ({
   // イベントハンドラー
   const handleEventDoubleClick = useCallback(
     (event) => {
+      if (dragState.isDragging) return;
       console.log("VisualTab: Event double click:", event.title);
 
       // イベントの正規化
@@ -507,6 +625,7 @@ const VisualTab = ({
     expandedGroups: expandedGroups.size,
     connections: networkConnections?.length || 0,
     scale: scale?.toFixed(2),
+    position: "25%基準",
   });
 
   return (
@@ -528,18 +647,20 @@ const VisualTab = ({
       >
         {/* 年マーカー */}
         <YearMarkers markers={yearMarkers} />
-        {/* メインタイムライン線 */}
+
+        {/* メインタイムライン線（25%位置） */}
         <div
           style={{
             position: "absolute",
             left: 0,
             right: 0,
-            top: `${window.innerHeight * 0.3 + panY}px`,
+            top: `${window.innerHeight * 0.25 + panY}px`,
             height: "3px",
             backgroundColor: "#374151",
             zIndex: 1,
           }}
         />
+
         {/* viewModeに応じて描画コンポーネントを切り替え */}
         {isNetworkMode ? (
           <NetworkView
@@ -574,6 +695,7 @@ const VisualTab = ({
             />
           </>
         )}
+
         {/* 現在線 */}
         <div
           style={{
@@ -605,7 +727,7 @@ const VisualTab = ({
         </div>
       </div>
 
-      {/* ★ フローティングUIをコンポーネントに置き換え */}
+      {/* フローティングUI */}
       <FloatingUI
         searchTerm={searchTerm}
         highlightedEvents={highlightedEvents}

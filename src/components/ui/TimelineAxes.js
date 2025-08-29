@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { TimelineCard } from './TimelineCard';
+import { TIMELINE_CONFIG } from '../../constants/timelineConfig';
 
 export const TimelineAxes = ({
   axes,
@@ -9,22 +10,21 @@ export const TimelineAxes = ({
   onDeleteTempTimeline,
   onDeleteTimeline,
 }) => {
-  // 年表カードの重なり回避計算
+  // 年表カードの重なり回避計算（設定値統一）
   const adjustedCardPositions = useMemo(() => {
     if (!axes || axes.length === 0) return [];
 
     const cardPositions = [];
-    const CARD_HEIGHT = 80; // カードの高さ
-    const MIN_SPACING = 10; // 最小間隔
+    const CARD_HEIGHT = 80;
+    const MIN_SPACING = 10;
 
-    // 各軸の初期カード位置を計算
-    axes.forEach((axis, index) => {
+    // axesのyPositionをそのまま使用（VisualTab.jsと統一）
+    axes.forEach((axis) => {
       const timeline = displayTimelines?.find((t) => t.id === axis.id);
       if (!timeline) return;
 
-      const baselineY = window.innerHeight * 0.3;
-      const axisY = baselineY + 100 + index * 120;
-      const initialCardY = axisY + 70;
+      // VisualTab.jsで計算されたyPositionをそのまま使用（軸線と同じ高さ）
+      const initialCardY = axis.yPosition;
 
       cardPositions.push({
         ...axis,
@@ -43,7 +43,6 @@ export const TimelineAxes = ({
       const current = cardPositions[i];
       const previous = cardPositions[i - 1];
 
-      // 前のカードとの重なりをチェック
       const previousBottom = previous.adjustedY + previous.cardHeight + MIN_SPACING;
       if (current.adjustedY < previousBottom) {
         const overlap = previousBottom - current.adjustedY;
@@ -52,30 +51,38 @@ export const TimelineAxes = ({
       }
     }
 
-    console.log(`年表カード位置調整完了: ${cardPositions.length}枚`);
+    console.log(`年表カード位置調整完了: ${cardPositions.length}枚（座標統一）`);
     return cardPositions;
   }, [axes, displayTimelines]);
 
   return (
     <>
-      {/* 年表軸 */}
-      {axes.map((axis, index) => {
-        const baselineY = window.innerHeight * 0.3;
-        const axisY = baselineY + 100 + index * 120;
+      {/* 年表軸（VisualTab.jsで計算されたyPositionを使用） */}
+      {axes.map((axis) => {
+        // VisualTab.jsで計算されたyPositionを直接使用
+        const axisY = axis.yPosition;
+
+        // 軸線をイベント範囲に限定（startX から endX まで）
+        const axisStartX = Math.max(0, axis.startX - (TIMELINE_CONFIG.AXIS_PADDING || 50));
+        const axisEndX = axis.endX + (TIMELINE_CONFIG.AXIS_PADDING || 50);
+        const axisWidth = axisEndX - axisStartX;
+
+        console.log(`年表軸 "${axis.name}": VisualTab座標Y=${axisY}, 範囲 ${axisStartX.toFixed(0)} - ${axisEndX.toFixed(0)}`);
 
         return (
           <div
             key={`timeline-axis-${axis.id}`}
             style={{
               position: 'absolute',
-              left: '0px',
-              right: '0px',
+              left: `${axisStartX}px`,
               top: `${axisY + panY}px`,
-              width: '100%',
+              width: `${Math.max(100, axisWidth)}px`,
               height: '3px',
-              backgroundColor: axis.color,
+              backgroundColor: axis.color || '#6b7280',
               zIndex: 2,
               opacity: 0.8,
+              display: 'block',
+              pointerEvents: 'none',
             }}
           />
         );
@@ -91,7 +98,7 @@ export const TimelineAxes = ({
             timeline={cardData.timeline}
             position={{ 
               x: cardData.cardX, 
-              y: cardData.adjustedY // 調整済みY座標を使用
+              y: cardData.adjustedY
             }}
             isTemporary={isTemporary}
             panY={panY}
