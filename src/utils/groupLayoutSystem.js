@@ -1,13 +1,17 @@
-// src/utils/groupLayoutSystem.js - 仮登録・仮削除対応版
+// src/utils/groupLayoutSystem.js - 仮状態対応修正版
 import { TIMELINE_CONFIG } from "../constants/timelineConfig";
 import { calculateEventWidth, calculateEventHeight } from './eventSizeUtils';
 
-// 年表ベースの状態判定ヘルパー関数
+// 年表ベースの状態判定ヘルパー関数（修正版）
 const getEventTimelineStatus = (event, timeline) => {
   if (!timeline || !event) return "none";
-  if (timeline.eventIds?.includes(event.id)) return "registered";
-  if (timeline.pendingEventIds?.includes(event.id)) return "pending";
-  if (timeline.removedEventIds?.includes(event.id)) return "removed";
+  
+  // originalIdがある場合は元のIDを使用
+  const eventId = event.originalId || event.id;
+  
+  if (timeline.eventIds?.includes(eventId)) return "registered";
+  if (timeline.pendingEventIds?.includes(eventId)) return "pending";
+  if (timeline.removedEventIds?.includes(eventId)) return "removed";
   return "none";
 };
 
@@ -38,7 +42,7 @@ export class EventGroup {
 }
 
 /**
- * 3段レイアウトシステム（仮状態対応）
+ * 3段レイアウトシステム（仮状態対応修正版）
  */
 export class ThreeTierLayoutSystem {
   constructor(coordinates, calculateTextWidth) {
@@ -55,29 +59,43 @@ export class ThreeTierLayoutSystem {
   }
 
   /**
-   * 年表のイベントレイアウト計算（仮状態対応版）
+   * 年表のイベントレイアウト計算（仮状態対応修正版）
    */
   layoutTimelineEvents(timeline, timelineIndex, allEvents, baseY) {
     const results = [];
     const groups = new Map();
     
-    // 仮状態を含むイベント抽出
+    console.log(`年表「${timeline.name}」のレイアウト開始:`, {
+      eventIds: timeline.eventIds?.length || 0,
+      pendingEventIds: timeline.pendingEventIds?.length || 0,
+      removedEventIds: timeline.removedEventIds?.length || 0
+    });
+    
+    // 仮状態を含むイベント抽出（修正版）
     const timelineEvents = [];
     allEvents.forEach(event => {
       const status = getEventTimelineStatus(event, timeline);
+      
+      // 正式登録と仮登録のイベントのみ表示（仮削除は除外）
       if (status === "registered" || status === "pending") {
-        timelineEvents.push({
+        const processedEvent = {
           ...event,
           displayStatus: status,
           timelineId: timeline.id,
           id: `${event.id}-${timeline.id}`, // 複数表示用ID
           originalId: event.id,
           originalEvent: event
-        });
+        };
+        
+        timelineEvents.push(processedEvent);
+        console.log(`  イベント追加: ${event.title} (${status})`);
+      } else if (status === "removed") {
+        console.log(`  仮削除イベント除外: ${event.title}`);
       }
     });
 
     if (timelineEvents.length === 0) {
+      console.log(`  年表「${timeline.name}」: 表示対象イベントなし`);
       return { events: results, groups: [] };
     }
 
@@ -176,9 +194,13 @@ export class ThreeTierLayoutSystem {
             axisY: timelineY
           }
         });
+        
+        console.log(`  強制配置: ${event.title}`);
       }
     });
 
+    console.log(`年表「${timeline.name}」レイアウト完了: ${results.length}イベント配置`);
+    
     return {
       events: results,
       groups: Array.from(groups.values())
@@ -187,7 +209,7 @@ export class ThreeTierLayoutSystem {
 }
 
 /**
- * 統合レイアウトシステム（仮状態対応版）
+ * 統合レイアウトシステム（仮状態対応修正版）
  */
 export class UnifiedLayoutSystem {
   constructor(coordinates, calculateTextWidth) {
@@ -197,11 +219,16 @@ export class UnifiedLayoutSystem {
   }
 
   /**
-   * メインタイムラインのレイアウト（仮削除対応）
+   * メインタイムラインのレイアウト（仮削除対応修正版）
    */
   layoutMainTimelineEvents(allEvents, timelineAxes, displayTimelines) {
     const results = [];
     const baselineY = window.innerHeight * 0.25;
+    
+    console.log("メインタイムラインレイアウト開始:", {
+      allEventsCount: allEvents.length,
+      displayTimelinesCount: displayTimelines.length
+    });
     
     // メインタイムライン用イベントを抽出
     const mainTimelineEvents = [];
@@ -210,7 +237,7 @@ export class UnifiedLayoutSystem {
       let shouldShowInMain = true;
       let isRemoved = false;
       
-      // 年表での状態をチェック
+      // 年表での状態をチェック（修正版）
       for (const timeline of displayTimelines) {
         const status = getEventTimelineStatus(event, timeline);
         if (status === "registered" || status === "pending") {
@@ -230,6 +257,8 @@ export class UnifiedLayoutSystem {
           originalId: event.id,
           originalEvent: event
         });
+        
+        console.log(`  メイン追加: ${event.title} (${isRemoved ? "removed" : "main"})`);
       }
     });
 
@@ -308,17 +337,22 @@ export class UnifiedLayoutSystem {
       });
     });
 
+    console.log(`メインタイムラインレイアウト完了: ${results.length}イベント`);
     return results;
   }
 
   /**
-   * 全体のレイアウト実行（仮状態対応）
+   * 全体のレイアウト実行（仮状態対応修正版）
    */
   executeLayout(events, timelineAxes, displayTimelines) {
     const allEvents = [];
     const eventGroups = [];
 
-    console.log(`レイアウト実行開始: ${events.length}イベント, ${timelineAxes.length}年表`);
+    console.log(`🎨 レイアウト実行開始:`, {
+      eventsCount: events.length, 
+      timelineAxesCount: timelineAxes.length,
+      displayTimelinesCount: displayTimelines.length
+    });
 
     // メインタイムラインのレイアウト
     const mainTimelineResults = this.layoutMainTimelineEvents(events, timelineAxes, displayTimelines);
@@ -338,7 +372,13 @@ export class UnifiedLayoutSystem {
       eventGroups.push(...result.groups);
     });
 
-    console.log(`レイアウト実行完了: 合計 ${allEvents.length}イベント, ${eventGroups.length}グループ`);
+    console.log(`🎯 レイアウト実行完了:`, {
+      totalEvents: allEvents.length, 
+      groups: eventGroups.length,
+      mainTimelineEvents: mainTimelineResults.length,
+      timelineEvents: allEvents.length - mainTimelineResults.length
+    });
+    
     return { allEvents, eventGroups };
   }
 }

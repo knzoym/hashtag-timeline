@@ -1,4 +1,4 @@
-// components/ui/EventCard.js - 仮状態表示改善版
+// components/ui/EventCard.js - 仮状態表示修正版
 import React, { useState, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
@@ -42,6 +42,15 @@ function darkenColor(hslColor, amount = 10) {
   return hslColor;
 }
 
+// 年表ベースの状態判定ヘルパー関数
+const getEventTimelineStatus = (event, timeline) => {
+  if (!timeline || !event) return "none";
+  if (timeline.eventIds?.includes(event.id)) return "registered";
+  if (timeline.pendingEventIds?.includes(event.id)) return "pending";
+  if (timeline.removedEventIds?.includes(event.id)) return "removed";
+  return "none";
+};
+
 export const EventCard = ({
   event,
   isHighlighted = false,
@@ -51,6 +60,7 @@ export const EventCard = ({
   style = {},
   className = "",
   calculateTextWidth = null,
+  displayTimelines = [], // 年表データ（重要）
   ...props
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -59,27 +69,45 @@ export const EventCard = ({
 
   // 仮状態表示の判定（年表ベース改善版）
   const getDisplayStatus = () => {
+    // originalEventがある場合は元のイベントIDを使用
+    const eventId = event.originalId || event.id;
+    
     // VisualTabから渡される displayStatus を使用（優先）
     if (event.displayStatus) {
+      console.log(`EventCard状態判定: ${event.title} - displayStatus: ${event.displayStatus}`);
       return event.displayStatus;
     }
 
-    // フォールバック：timelineInfos から判定
-    if (event.timelineInfos && Array.isArray(event.timelineInfos)) {
-      // 最初の年表情報から状態を判定
-      for (const info of event.timelineInfos) {
-        if (info.isTemporary === true) {
-          return 'removed'; // 仮削除
-        }
-        if (info.isPending === true) {
-          return 'pending'; // 仮登録
-        }
-        if (info.isRegistered === true || !info.isTemporary) {
-          return 'registered'; // 正式登録
+    // 年表データから現在の状態を判定
+    if (displayTimelines && displayTimelines.length > 0) {
+      for (const timeline of displayTimelines) {
+        const status = getEventTimelineStatus({ ...event, id: eventId }, timeline);
+        if (status !== "none") {
+          console.log(`EventCard状態判定: ${event.title} - 年表「${timeline.name}」で${status}`);
+          return status;
         }
       }
     }
 
+    // フォールバック：timelineInfos から判定（従来の方式）
+    if (event.timelineInfos && Array.isArray(event.timelineInfos)) {
+      for (const info of event.timelineInfos) {
+        if (info.isTemporary === true) {
+          console.log(`EventCard状態判定: ${event.title} - timelineInfos: removed`);
+          return 'removed';
+        }
+        if (info.isPending === true) {
+          console.log(`EventCard状態判定: ${event.title} - timelineInfos: pending`);
+          return 'pending';
+        }
+        if (info.isRegistered === true || !info.isTemporary) {
+          console.log(`EventCard状態判定: ${event.title} - timelineInfos: registered`);
+          return 'registered';
+        }
+      }
+    }
+
+    console.log(`EventCard状態判定: ${event.title} - デフォルト: main`);
     return 'main'; // メインタイムライン
   };
 
@@ -160,6 +188,17 @@ export const EventCard = ({
     ...style
   };
 
+  // ステータス説明を取得
+  const getStatusDescription = () => {
+    const status = getDisplayStatus();
+    switch (status) {
+      case 'registered': return ' - 正式登録';
+      case 'pending': return ' - 仮登録（点線表示）';
+      case 'removed': return ' - 仮削除（点線表示）';
+      default: return '';
+    }
+  };
+
   return (
     <div
       data-event-id={event.id}
@@ -206,8 +245,6 @@ export const EventCard = ({
       >
         {displayInfo.year}
       </div>
-
-
 
       {/* 年表所属インジケーター（正式登録のみ） */}
       {getDisplayStatus() === 'registered' && displayInfo.hasTimelineInfo && (
@@ -275,15 +312,4 @@ export const EventCard = ({
       )}
     </div>
   );
-
-  // ステータス説明を取得
-  function getStatusDescription() {
-    const status = getDisplayStatus();
-    switch (status) {
-      case 'registered': return ' - 正式登録';
-      case 'pending': return ' - 仮登録（点線表示）';
-      case 'removed': return ' - 仮削除（点線表示）';
-      default: return '';
-    }
-  }
 };
