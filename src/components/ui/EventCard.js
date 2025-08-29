@@ -1,4 +1,4 @@
-// components/ui/EventCard.js - 単純ドラッグ版
+// components/ui/EventCard.js - ドラッグ動作修正版
 import React, { useState, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
@@ -46,7 +46,7 @@ export const EventCard = ({
   event,
   isHighlighted = false,
   onDoubleClick,
-  onDragStart, // 単純ドラッグシステム用
+  onDragStart, // ドロップゾーン対応ドラッグハンドラー
   isDragging = false,
   style = {},
   className = "",
@@ -77,14 +77,20 @@ export const EventCard = ({
 
   const temporaryStatus = getTemporaryStatus();
 
-  // 既存useDragDrop統合ハンドラー（300ms長押し対応）
+  // ドラッグ開始処理（修正版）
   const handleMouseDown = useCallback((e) => {
-    console.log(`EventCard 既存useDragDrop統合: "${event.title}"`);
+    console.log(`EventCard ドラッグ開始処理: "${event.title}"`);
     
-    // 既存のuseDragDropシステムを活用（300ms長押し）
+    // ドロップゾーン対応のドラッグ開始
     if (onDragStart) {
+      console.log('onDragStart呼び出し');
       onDragStart(e, event);
+    } else {
+      console.warn('onDragStartが設定されていません');
     }
+    
+    // イベントの伝播を停止してパン操作との競合を回避
+    e.stopPropagation();
   }, [onDragStart, event]);
 
   // 色設定
@@ -93,6 +99,8 @@ export const EventCard = ({
     
     if (event.timelineInfo) {
       baseBackgroundColor = event.timelineInfo.timelineColor;
+    } else if (event.timelineColor) {
+      baseBackgroundColor = event.timelineColor;
     } else if (isHighlighted) {
       baseBackgroundColor = "#3b82f6";
     }
@@ -113,6 +121,7 @@ export const EventCard = ({
     let backgroundColor = baseBackgroundColor;
     let opacity = 1;
     
+    // 仮削除状態の視覚表現
     if (temporaryStatus === 'temporary') {
       opacity = 0.5;
       backgroundColor = darkenColor(baseBackgroundColor, 30);
@@ -142,7 +151,7 @@ export const EventCard = ({
       backgroundColor: colors.backgroundColor,
       color: colors.color,
       border: temporaryStatus === 'temporary' 
-        ? `2px dashed ${colors.borderColor}`
+        ? `2px dashed ${colors.borderColor}` // 仮削除状態は破線
         : `1px solid ${colors.borderColor}`,
       borderRadius: "6px",
       padding: "3px 6px",
@@ -186,9 +195,9 @@ export const EventCard = ({
   return (
     <div
       style={getCardStyles()}
-      className={className}
+      className={`${className} no-pan`} // no-panクラス追加でパン操作を回避
       onDoubleClick={onDoubleClick}
-      onMouseDown={handleMouseDown}
+      onMouseDown={handleMouseDown} // 修正されたハンドラーを使用
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       data-event-id={event.id}
@@ -282,6 +291,25 @@ export const EventCard = ({
             pointerEvents: "none",
           }}
         />
+      )}
+      
+      {/* デバッグ情報（開発時のみ表示） */}
+      {process.env.NODE_ENV === 'development' && temporaryStatus && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "-15px",
+            left: "0",
+            fontSize: "8px",
+            color: "#666",
+            backgroundColor: "rgba(255, 255, 255, 0.8)",
+            padding: "1px 3px",
+            borderRadius: "2px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {temporaryStatus}
+        </div>
       )}
     </div>
   );

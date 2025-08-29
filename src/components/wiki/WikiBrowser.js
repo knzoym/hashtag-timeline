@@ -1,469 +1,408 @@
-// src/components/WikiBrowser.js の投票システム統合版
-import React, { useState, useEffect, useCallback } from "react";
-import WikiEventCard from "./WikiEventCard";
-import WikiEventForm from "../WikiEventForm";
-import { VersionToggle } from "../VotingComponents";
+// src/components/WikiBrowser.js
+// TLwiki 一覧ビュー（latest / stable 切替、検索、年表プリセット対応）
+// - VersionToggle の props は currentMode / onModeChange に統一
+// - slug は使わず eventId 基準
+// - useWikiData 側に getWikiEvents / getWikiTimelines が無い場合はフォールバック
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import WikiEventCard from './WikiEventCard';
+import WikiEventForm from '../WikiEventForm';
+import { VersionToggle } from '../VotingComponents';
+
+const DEBOUNCE_MS = 500;
+const PAGE_LIMIT = 100;
 
 const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
-  const [currentTab, setCurrentTab] = useState("browse");
-  const [viewMode, setViewMode] = useState("stable"); // 'stable' | 'latest'
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sharedEvents, setSharedEvents] = useState([]);
-  const [stableEvents, setStableEvents] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
+  // タブ: 一覧 or 履歴（必要なら拡張）
+  const [currentTab, setCurrentTab] = useState('browse');
+
+  // 初期表示は latest 推奨（stable は承認済みが無いと空になりがち）
+  const [viewMode, setViewMode] = useState('latest'); // 'latest' | 'stable'
+
+  // 検索
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debounced, setDebounced] = useState('');
+
+  // データ
+  const [latestEvents, setLatestEvents] = useState([]); // 最新（共有）一覧
+  const [stableEvents, setStableEvents] = useState([]); // 安定版（承認済み）一覧
+
+  // 年表プリセット
+  const [timelines, setTimelines] = useState([]);
+  const [selectedTimelineId, setSelectedTimelineId] = useState(null);
+
+  // UI
   const [showEventForm, setShowEventForm] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const [loading, setLoading] = useState(true);
 
+  // 進捗・エラー（useWikiData のものをそのまま併用）
+  const [busy, setBusy] = useState(false);
+  const [recentActivity, setRecentActivity] = useState([]);
+
+  // useWikiData から使う関数を安全に参照（存在しないときは undefined）
   const {
+    getWikiEvents,
     getSharedEvents,
+    getEventsWithScores,
+    getWikiTimelines,
+    getRecentActivity,
     createSharedEvent,
     updateSharedEvent,
     importEventToPersonal,
-    getRecentActivity,
-    // 新しい投票関連の関数
-    getEventsWithScores,
-    createRevision,
     loading: apiLoading,
-  } = wikiData;
+    error: apiError,
+  } = wikiData || {};
 
-  // データ読み込み
-  const loadData = useCallback(async () => {
-    setLoading(true);
-
-    if (viewMode === "stable") {
-      // 安定版イベント読み込み
-      const stableData = await getEventsWithScores(searchTerm);
-      setStableEvents(stableData);
-    } else {
-      // 最新版イベント読み込み（従来の方法）
-      const latestData = await getSharedEvents(searchTerm);
-      setSharedEvents(latestData);
-    }
-
-    setLoading(false);
-  }, [viewMode, searchTerm, getSharedEvents, getEventsWithScores]);
-
-  // 初回読み込み
+  // 検索語のデバウンス
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    const t = setTimeout(() => setDebounced(searchTerm.trim()), DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
 
-  // 編集履歴読み込み
-  const loadRecentActivity = useCallback(async () => {
-    const activity = await getRecentActivity(15);
-    setRecentActivity(activity);
+  // 年表プリセットの取得（関数が無ければ何もしない）
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!getWikiTimelines) return;
+      try {
+        const rows = await getWikiTimelines(100);
+        if (alive) setTimelines(rows || []);
+      } catch (_) {
+        // 失敗しても一覧機能自体は継続
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [getWikiTimelines]);
+
+  // プリセットでのフィルタ（latest にだけ適用）
+  const filterByPreset = useCallback((events, preset) => {
+    if (!preset || !preset.tags?.length) return events;
+    const tags = preset.tags;
+    const mode = preset.tag_mode || 'AND';
+    return (events || []).filter(ev => {
+      const evTags = Array.isArray(ev?.tags) ? ev.tags : [];
+      return mode === 'AND'
+        ? tags.every(t => evTags.includes(t))
+        : tags.some(t => evTags.includes(t));
+    });
+  }, []);
+
+  // 取得ヘルパ：latest
+  const loadLatest = useCallback(async (q) => {
+    if (!wikiData) return;
+    setBusy(true);
+    try {
+      // 優先：getWikiEvents({mode:'latest'})、なければ getSharedEvents(q)
+      const rows = getWikiEvents
+        ? await getWikiEvents({ mode: 'latest', searchTerm: q, limit: PAGE_LIMIT })
+        : await (getSharedEvents ? getSharedEvents(q, PAGE_LIMIT) : Promise.resolve([]));
+      setLatestEvents(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      console.error('loadLatest error:', e);
+      setLatestEvents([]);
+    } finally {
+      setBusy(false);
+    }
+  }, [wikiData, getWikiEvents, getSharedEvents]);
+
+  // 取得ヘルパ：stable（events 風に整形）
+  const loadStable = useCallback(async (q) => {
+    if (!wikiData) return;
+    setBusy(true);
+    try {
+      if (getWikiEvents) {
+        const rows = await getWikiEvents({ mode: 'stable', searchTerm: q, limit: PAGE_LIMIT });
+        setStableEvents(Array.isArray(rows) ? rows : []);
+      } else if (getEventsWithScores) {
+        const rows = await getEventsWithScores(q, PAGE_LIMIT);
+        const mapped = (rows || []).map(r => {
+          // event_stable + events の結合結果を events 風に整形
+          const ev = r.events || r.event || {};
+          return {
+            ...ev,
+            startDate: new Date(ev.date_start || ev.start_date),
+            endDate: ev.date_end ? new Date(ev.date_end) : new Date(ev.date_start || ev.start_date),
+            tags: Array.isArray(ev.tags) ? ev.tags : [],
+            sources: Array.isArray(ev.sources) ? ev.sources : [],
+            // 参考情報（必要ならカードで使用）
+            stableScore: r.stable_score ?? 0,
+            stableRevisionId: r.stable_revision_id ?? null,
+          };
+        });
+        setStableEvents(mapped);
+      } else {
+        setStableEvents([]);
+      }
+    } catch (e) {
+      console.error('loadStable error:', e);
+      setStableEvents([]);
+    } finally {
+      setBusy(false);
+    }
+  }, [wikiData, getWikiEvents, getEventsWithScores]);
+
+  // 一覧読み込み（タブ= browse のときだけ）
+  useEffect(() => {
+    if (currentTab !== 'browse') return;
+    if (viewMode === 'latest') {
+      loadLatest(debounced);
+    } else {
+      loadStable(debounced);
+    }
+  }, [currentTab, viewMode, debounced, loadLatest, loadStable]);
+
+  // 履歴タブ
+  const loadHistory = useCallback(async () => {
+    if (!getRecentActivity) return setRecentActivity([]);
+    try {
+      setBusy(true);
+      const rows = await getRecentActivity(20);
+      setRecentActivity(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      console.error('getRecentActivity error:', e);
+      setRecentActivity([]);
+    } finally {
+      setBusy(false);
+    }
   }, [getRecentActivity]);
 
   useEffect(() => {
-    if (currentTab === "history") {
-      loadRecentActivity();
-    }
-  }, [currentTab, loadRecentActivity]);
+    if (currentTab === 'history') loadHistory();
+  }, [currentTab, loadHistory]);
 
-  // 検索実行（500ms のデバウンス）
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadData();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
+  // 編集保存（新規/更新を一括で扱う）
+  const handleSaveEvent = useCallback(
+    async (payload) => {
+      if (!wikiData) return;
+      try {
+        setBusy(true);
+        if (editingEvent?.id) {
+          await updateSharedEvent?.(editingEvent.id, payload);
+        } else {
+          await createSharedEvent?.(payload);
+        }
+        setShowEventForm(false);
+        setEditingEvent(null);
+        // 再読込
+        if (viewMode === 'latest') {
+          await loadLatest(debounced);
+        } else {
+          await loadStable(debounced);
+        }
+      } catch (e) {
+        console.error('save event error:', e);
+        alert('保存に失敗しました。コンソールのエラーをご確認ください。');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [wikiData, editingEvent, viewMode, debounced, loadLatest, loadStable, createSharedEvent, updateSharedEvent]
+  );
 
-  // ビューモード変更
-  const handleViewModeChange = (newMode) => {
-    setViewMode(newMode);
-  };
+  // インポート（親から渡されていれば優先し、無ければ useWikiData の関数を利用）
+  const makeImportHandler = useCallback(
+    (ev) => async () => {
+      try {
+        if (onImportEvent) return await onImportEvent(ev);
+        if (importEventToPersonal) {
+          await importEventToPersonal(ev);
+          alert('タイムラインにインポートしました。');
+        }
+      } catch (e) {
+        console.error('import error:', e);
+        alert('インポートに失敗しました。');
+      }
+    },
+    [onImportEvent, importEventToPersonal]
+  );
 
-  // イベント保存（リビジョンシステム対応）
-  const handleSaveEvent = async (eventData) => {
-    let result;
+  // 表示対象（latest に限って年表プリセットを適用）
+  const activePreset = useMemo(
+    () => timelines.find((t) => t.id === selectedTimelineId),
+    [timelines, selectedTimelineId]
+  );
 
-    if (editingEvent) {
-      // 既存イベントの新しいリビジョンを作成
-      result = await createRevision(eventData, editingEvent.id);
-    } else {
-      // 新しいイベントを作成
-      result = await createRevision(eventData);
-    }
+  const eventsToRender = useMemo(() => {
+    const base = viewMode === 'latest' ? latestEvents : stableEvents;
+    return viewMode === 'latest' ? filterByPreset(base, activePreset) : base;
+  }, [viewMode, latestEvents, stableEvents, filterByPreset, activePreset]);
 
-    if (result) {
-      setShowEventForm(false);
-      setEditingEvent(null);
-      await loadData(); // データを再読み込み
-    }
-  };
+  const stableCount = stableEvents.length;
+  const latestCount = latestEvents.length;
 
-  // インポート処理
-  const handleImportEvent = async (eventData) => {
-    // 安定版データを使用してインポート
-    const importData =
-      viewMode === "stable" && eventData.stable_data
-        ? {
-            ...eventData.events,
-            ...eventData.stable_data,
-            source: {
-              type: "tlwiki",
-              originalId: eventData.event_id,
-              revisionId: eventData.stable_revision_id,
-              importedAt: new Date(),
-            },
-          }
-        : importEventToPersonal(eventData.events || eventData);
-
-    onImportEvent(importData);
-    alert(`「${importData.title}」を個人年表にインポートしました`);
-  };
-
-  // 現在表示中のイベントデータを取得
-  const getCurrentEvents = () => {
-    return viewMode === "stable" ? stableEvents : sharedEvents;
-  };
-
-  const currentEvents = getCurrentEvents();
-
+  // UI: 基本スタイル（素朴に）
   const styles = {
-    container: {
-      padding: "20px",
-      backgroundColor: "white",
-      height: "calc(100vh - 64px)",
-      overflow: "auto",
+    container: { padding: 12 },
+    header: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' },
+    grow: { flex: 1, minWidth: 240 },
+    search: {
+      width: '100%',
+      padding: '8px 10px',
+      border: '1px solid #e5e7eb',
+      borderRadius: 8,
+      outline: 'none',
     },
-    header: {
-      backgroundColor: "#f8fafc",
-      padding: "20px",
-      borderRadius: "12px",
-      marginBottom: "24px",
-      textAlign: "center",
+    toolbar: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' },
+    list: { display: 'grid', gridTemplateColumns: '1fr', gap: 12, marginTop: 8 },
+    tabs: { display: 'flex', gap: 8, marginBottom: 8 },
+    tabBtn: (active) => ({
+      padding: '6px 10px',
+      borderRadius: 8,
+      border: '1px solid ' + (active ? '#3b82f6' : '#e5e7eb'),
+      background: active ? '#3b82f6' : '#fff',
+      color: active ? '#fff' : '#374151',
+      cursor: 'pointer',
+    }),
+    smallBtn: {
+      padding: '6px 10px',
+      borderRadius: 8,
+      border: '1px solid #e5e7eb',
+      background: '#fff',
+      cursor: 'pointer',
     },
-    title: {
-      margin: "0 0 8px 0",
-      fontSize: "28px",
-      color: "#1f2937",
-    },
-    subtitle: {
-      margin: "0 0 16px 0",
-      fontSize: "16px",
-      color: "#6b7280",
-    },
-    tabContainer: {
-      display: "flex",
-      borderBottom: "2px solid #e5e7eb",
-      marginBottom: "20px",
-    },
-    tab: {
-      padding: "12px 16px",
-      border: "none",
-      backgroundColor: "transparent",
-      color: "#6b7280",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "4px",
-      borderBottom: "2px solid transparent",
-    },
-    tabActive: {
-      borderBottom: "2px solid #3b82f6",
-      color: "#3b82f6",
-    },
-    searchBar: {
-      backgroundColor: "#f9fafb",
-      padding: "16px",
-      borderRadius: "8px",
-      marginBottom: "20px",
-    },
-    searchInput: {
-      width: "100%",
-      padding: "10px 14px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      fontSize: "14px",
-      marginBottom: "12px",
-    },
-    filterContainer: {
-      display: "flex",
-      gap: "12px",
-      fontSize: "12px",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    createButton: {
-      padding: "8px 16px",
-      backgroundColor: "#10b981",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      fontSize: "14px",
-      cursor: "pointer",
-      fontWeight: "500",
-    },
-    backButton: {
-      padding: "8px 16px",
-      backgroundColor: "#6b7280",
-      color: "white",
-      border: "none",
-      borderRadius: "6px",
-      fontSize: "14px",
-      cursor: "pointer",
-      marginRight: "12px",
-    },
-    loadingMessage: {
-      textAlign: "center",
-      padding: "40px",
-      color: "#6b7280",
-    },
-    contributeSection: {
-      textAlign: "center",
-      padding: "60px 20px",
-      backgroundColor: "#f9fafb",
-      borderRadius: "12px",
-    },
-    historyContainer: {
-      border: "1px solid #e5e7eb",
-      borderRadius: "8px",
-      backgroundColor: "white",
-    },
-    historyItem: {
-      padding: "12px 16px",
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-    statsContainer: {
-      display: "flex",
-      alignItems: "center",
-      gap: "16px",
-      fontSize: "12px",
-      color: "#6b7280",
-    },
+    hint: { color: '#6b7280', fontSize: 12 },
   };
 
   return (
     <div style={styles.container}>
-      {/* ヘッダー */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>TLwiki (Timeline Wiki)</h1>
-        <p style={styles.subtitle}>
-          みんなでイベント情報を蓄積・共有し、個人の年表作成を支援
-        </p>
-        <div style={{ marginTop: "16px" }}>
-          <button style={styles.backButton} onClick={onBackToTimeline}>
-            年表に戻る
+      {/* タブ切替 */}
+      <div style={styles.tabs}>
+        <button
+          style={styles.tabBtn(currentTab === 'browse')}
+          onClick={() => setCurrentTab('browse')}
+        >
+          一覧
+        </button>
+        <button
+          style={styles.tabBtn(currentTab === 'history')}
+          onClick={() => setCurrentTab('history')}
+        >
+          履歴
+        </button>
+        {onBackToTimeline && (
+          <button style={styles.smallBtn} onClick={onBackToTimeline}>
+            ← タイムラインへ
           </button>
-        </div>
+        )}
       </div>
 
-      {/* タブナビゲーション */}
-      <div style={styles.tabContainer}>
-        {[
-          {
-            id: "browse",
-            label: "イベントを探す",
-            desc: "Wikiから個人ファイルに追加",
-          },
-          {
-            id: "contribute",
-            label: "編集に参加",
-            desc: "共用データベースを充実させる",
-          },
-          {
-            id: "history",
-            label: "編集履歴",
-            desc: "コミュニティの貢献を確認",
-          },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setCurrentTab(tab.id)}
-            style={{
-              ...styles.tab,
-              ...(currentTab === tab.id ? styles.tabActive : {}),
-            }}
-          >
-            <span>{tab.label}</span>
-            <span style={{ fontSize: "10px", opacity: 0.8 }}>{tab.desc}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* メインコンテンツ */}
-      {currentTab === "browse" && (
-        <div>
-          {/* 検索・フィルター */}
-          <div style={styles.searchBar}>
-            <input
-              type="text"
-              placeholder="イベント名、タグで検索..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={styles.searchInput}
+      {currentTab === 'browse' && (
+        <>
+          {/* ツールバー */}
+          <div style={styles.header}>
+            <VersionToggle
+              currentMode={viewMode}
+              onModeChange={setViewMode}
+              stableCount={stableCount}
+              latestCount={latestCount}
             />
-
-            <div style={styles.filterContainer}>
-              <div style={styles.statsContainer}>
-                <span>検索結果: {currentEvents.length}件</span>
-                {user && (
-                  <button
-                    style={styles.createButton}
-                    onClick={() => setShowEventForm(true)}
-                  >
-                    新しいイベントを提案
-                  </button>
-                )}
-              </div>
-
-              {/* バージョン切り替え */}
-              <VersionToggle
-                currentMode={viewMode}
-                onModeChange={handleViewModeChange}
-                stableCount={viewMode === "stable" ? stableEvents.length : 0}
-                latestCount={viewMode === "latest" ? sharedEvents.length : 0}
+            <div style={{ ...styles.grow }}>
+              <input
+                placeholder="タイトル / 説明 / タグ（部分一致）で検索"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={styles.search}
               />
-            </div>
-          </div>
-
-          {/* イベント一覧 */}
-          <div>
-            {loading || apiLoading ? (
-              <div style={styles.loadingMessage}>読み込み中...</div>
-            ) : currentEvents.length === 0 ? (
-              <div style={styles.loadingMessage}>
-                {searchTerm
-                  ? "検索結果が見つかりませんでした"
-                  : "イベントがまだありません"}
+              <div style={styles.hint}>
+                {busy || apiLoading ? '読み込み中…' : apiError ? `エラー: ${apiError}` : '\u00A0'}
               </div>
-            ) : (
-              currentEvents.map((eventData, index) => {
-                const event =
-                  viewMode === "stable" ? eventData.events : eventData;
-
-                return (
-                  <WikiEventCard
-                    key={`${event.id}-${viewMode}-${index}`}
-                    event={{
-                      ...event,
-                      // 安定版データを追加
-                      stable_score: eventData.stable_score || 0,
-                      upvotes: eventData.upvotes || 0,
-                      reports: eventData.reports || 0,
-                      stable_revision_id: eventData.stable_revision_id,
-                    }}
-                    onImport={() => handleImportEvent(eventData)}
-                    onEdit={
-                      user
-                        ? () => {
-                            setEditingEvent(event);
-                            setShowEventForm(true);
-                          }
-                        : null
-                    }
-                    canEdit={user && user.id === event.created_by}
-                    wikiData={wikiData}
-                    user={user}
-                    showRevisions={true}
-                  />
-                );
-              })
-            )}
+            </div>
+            <button
+              style={styles.smallBtn}
+              onClick={() => {
+                setEditingEvent(null);
+                setShowEventForm(true);
+              }}
+            >
+              ＋ 新規
+            </button>
           </div>
-        </div>
+
+          {/* 年表プリセット（getWikiTimelines がある時だけ表示） */}
+          {getWikiTimelines && (
+            <div style={{ ...styles.header, marginTop: 0 }}>
+              <label style={{ fontSize: 14 }}>TLwiki 年表:</label>
+              <select
+                value={selectedTimelineId || ''}
+                onChange={(e) => setSelectedTimelineId(e.target.value || null)}
+                style={{ ...styles.smallBtn, padding: '6px 8px' }}
+              >
+                <option value="">（すべて）</option>
+                {timelines.map((tl) => (
+                  <option key={tl.id} value={tl.id}>
+                    {tl.name}
+                  </option>
+                ))}
+              </select>
+              {activePreset && (
+                <span style={styles.hint}>
+                  条件: {activePreset.tag_mode} / {activePreset.tags?.join(', ')}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* 一覧 */}
+          <div style={styles.list}>
+            {eventsToRender.length === 0 && (
+              <div style={{ color: '#6b7280', padding: 24, textAlign: 'center' }}>
+                {busy || apiLoading ? '読み込み中…' : 'イベントが見つかりません'}
+              </div>
+            )}
+
+            {eventsToRender.map((ev) => {
+              const canEdit = !!user && (ev.created_by === user.id);
+              return (
+                <WikiEventCard
+                  key={ev.id}
+                  event={ev}
+                  user={user}
+                  wikiData={wikiData}
+                  canEdit={canEdit}
+                  onEdit={() => {
+                    setEditingEvent(ev);
+                    setShowEventForm(true);
+                  }}
+                  onImport={makeImportHandler(ev)}
+                  showRevisions={viewMode === 'stable'} // stable 表示時にリビジョン面も見たい場合
+                />
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {currentTab === "contribute" && (
-        <div style={styles.contributeSection}>
-          <h2 style={{ marginBottom: "16px", color: "#374151" }}>
-            コミュニティに貢献しよう
-          </h2>
-          <p
-            style={{
-              marginBottom: "24px",
-              color: "#6b7280",
-              lineHeight: "1.6",
-            }}
-          >
-            あなたの知識でTLwikiをより豊かに。
-            <br />
-            イベントの追加、既存情報の改善など、様々な形で参加できます。
-          </p>
-          {user ? (
-            <div
-              style={{ display: "flex", gap: "12px", justifyContent: "center" }}
-            >
-              <button
-                style={styles.createButton}
-                onClick={() => {
-                  setEditingEvent(null);
-                  setShowEventForm(true);
-                }}
-              >
-                新しいイベントを追加
-              </button>
+      {currentTab === 'history' && (
+        <div style={styles.list}>
+          {recentActivity.length === 0 ? (
+            <div style={{ color: '#6b7280', padding: 24, textAlign: 'center' }}>
+              {busy || apiLoading ? '読み込み中…' : '履歴がありません'}
             </div>
           ) : (
-            <p style={{ color: "#ef4444", fontWeight: "500" }}>
-              編集に参加するにはログインが必要です
-            </p>
+            recentActivity.map((row) => (
+              <div
+                key={row.id || `${row.rev_id}-${row.event_id}-${row.created_at}`}
+                style={{
+                  padding: 12,
+                  border: '1px solid #e5e7eb',
+                  borderRadius: 8,
+                  background: '#fff',
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{row.title || row.event_title || '（無題）'}</div>
+                <div style={{ color: '#6b7280', fontSize: 12 }}>
+                  rev: {row.rev_id || '-'} / {new Date(row.created_at || row.createdAt || Date.now()).toLocaleString()}
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {currentTab === "history" && (
-        <div>
-          <h2 style={{ marginBottom: "16px" }}>最近の編集活動</h2>
-          <div style={styles.historyContainer}>
-            {recentActivity.length === 0 ? (
-              <div
-                style={{
-                  padding: "20px",
-                  textAlign: "center",
-                  color: "#6b7280",
-                }}
-              >
-                編集履歴がありません
-              </div>
-            ) : (
-              recentActivity.map((activity, index) => (
-                <div
-                  key={activity.id || index}
-                  style={{
-                    ...styles.historyItem,
-                    borderBottom:
-                      index < recentActivity.length - 1
-                        ? "1px solid #f3f4f6"
-                        : "none",
-                  }}
-                >
-                  <div>
-                    <span style={{ fontWeight: "500" }}>
-                      {activity.editor_name || "匿名"}
-                    </span>
-                    <span style={{ margin: "0 8px", color: "#6b7280" }}>
-                      が
-                    </span>
-                    <span style={{ color: "#3b82f6" }}>
-                      {activity.event_title}
-                    </span>
-                    <span style={{ margin: "0 8px", color: "#6b7280" }}>
-                      を
-                    </span>
-                    <span style={{ color: "#059669" }}>
-                      {activity.edit_type === "create" ? "新規作成" : "更新"}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: "12px", color: "#9ca3af" }}>
-                    {new Date(activity.created_at).toLocaleString("ja-JP")}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* イベント作成・編集フォーム */}
-      {showEventForm && user && (
+      {/* 追加・編集フォーム */}
+      {showEventForm && (
         <WikiEventForm
           event={editingEvent}
           onSave={handleSaveEvent}
@@ -471,7 +410,7 @@ const WikiBrowser = ({ user, wikiData, onImportEvent, onBackToTimeline }) => {
             setShowEventForm(false);
             setEditingEvent(null);
           }}
-          loading={apiLoading}
+          loading={busy || apiLoading}
         />
       )}
     </div>

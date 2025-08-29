@@ -1,5 +1,5 @@
-// src/components/tabs/VisualTab.js - 軽量・単純ドラッグ版（パン競合あり）
-import React, { useRef, useCallback, useState, useMemo } from "react";
+// src/components/tabs/VisualTab.js - ドラッグ処理修正版
+import React, { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
 import { EventCard } from "../ui/EventCard";
@@ -7,6 +7,7 @@ import { EventModal } from "../modals/EventModal";
 import TimelineModal from "../modals/TimelineModal";
 import { YearMarkers } from "../ui/YearMarkers";
 import { TimelineAxes } from "../ui/TimelineAxes";
+import { DropZoneManager } from "../ui/DropZone";
 
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
@@ -54,12 +55,13 @@ const VisualTab = ({
   const timelineRef = useRef(null);
   const isNetworkMode = viewMode === "network";
 
-  // 単純なドラッグ状態管理
+  // ドラッグ状態管理
   const [dragState, setDragState] = useState({
     isDragging: false,
     draggedEvent: null,
-    startY: 0,
-    currentY: 0,
+    startPosition: { x: 0, y: 0 },
+    currentPosition: { x: 0, y: 0 },
+    highlightedZone: null,
   });
 
   // 座標システム
@@ -67,7 +69,7 @@ const VisualTab = ({
   const {
     scale,
     panY,
-    isDragging,
+    isDragging: isPanning,
     getXFromYear,
     getYearFromX,
     handleWheel,
@@ -75,13 +77,27 @@ const VisualTab = ({
     resetToInitialPosition,
   } = coordinates;
 
-  // 軽量テキスト幅計算
+  // 関数存在確認
+  useEffect(() => {
+    console.log('VisualTab 関数確認:');
+    console.log('  onEventUpdate:', !!onEventUpdate, typeof onEventUpdate);
+  }, [onEventUpdate]);
+
+  // データ監視
+  useEffect(() => {
+    const temporaryEvents = events.filter(e => 
+      e.timelineInfos && e.timelineInfos.some(info => info.isTemporary)
+    );
+    console.log('データ状態: events=' + events.length + ', 仮状態=' + temporaryEvents.length);
+  }, [events, timelines]);
+
+  // テキスト幅計算
   const calculateTextWidth = useCallback((text) => {
     if (!text) return 60;
     return Math.min(Math.max(60, text.length * 8), 200);
   }, []);
 
-  // 表示用年表データ（軽量版）
+  // 表示用年表データ
   const displayTimelines = useMemo(() => {
     if (isWikiMode) {
       const convertedTempTimelines = tempTimelines.map((tempTimeline) => ({
@@ -94,21 +110,19 @@ const VisualTab = ({
     return timelines;
   }, [isWikiMode, timelines, tempTimelines]);
 
-  // 軽量年マーカー生成（再計算を大幅削減）
+  // 年マーカー生成
   const yearMarkers = useMemo(() => {
     if (!getXFromYear) return [];
 
     const markers = [];
     const viewportWidth = window.innerWidth;
     
-    // スケール判定を単純化（小数点計算を削除）
     let yearInterval;
     if (scale > 2) yearInterval = 10;
     else if (scale > 1) yearInterval = 50; 
     else if (scale > 0.5) yearInterval = 100;
     else yearInterval = 500;
 
-    // 範囲を制限してループ回数削減
     const startYear = Math.floor(-2000 / yearInterval) * yearInterval;
     const endYear = Math.ceil(3000 / yearInterval) * yearInterval;
 
@@ -117,19 +131,18 @@ const VisualTab = ({
       if (x > -200 && x < viewportWidth + 200) {
         markers.push({
           key: year,
-          x: Math.round(x), // 小数点計算削除
+          x: Math.round(x),
           year,
-          fontSize: Math.round(10 + scale), // 小数点計算削除
+          fontSize: Math.round(10 + scale),
         });
       }
       
-      // マーカー数制限（パフォーマンス保護）
       if (markers.length > 30) break;
     }
     return markers;
-  }, [scale, getXFromYear]); // 不要な依存関係削除
+  }, [scale, getXFromYear]);
 
-  // 軽量年表軸計算
+  // 年表軸計算
   const timelineAxes = useMemo(() => {
     if (!getXFromYear) return [];
 
@@ -137,7 +150,6 @@ const VisualTab = ({
     const axes = [];
 
     visibleTimelines.forEach((timeline, index) => {
-      // イベント範囲の簡単な計算
       let minYear = 2020, maxYear = 2025;
       
       const timelineEvents = events.filter((event) => {
@@ -176,29 +188,29 @@ const VisualTab = ({
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
-  // 軽量イベントレイアウト（計算量大幅削減）
+  // イベントレイアウト
   const layoutEvents = useMemo(() => {
     if (!events || events.length === 0) return [];
 
     const results = [];
     
-    // メインタイムライン処理（軽量化）
+    // メインタイムライン処理
     const mainEvents = events.filter(event => 
-      !event.timelineInfos || event.timelineInfos.length === 0
+      !event.timelineInfos || 
+      event.timelineInfos.length === 0 ||
+      event.timelineInfos.every(info => info.isTemporary)
     );
 
-    // 簡単な配置システム（重複計算削除）
-    const occupiedY = new Set(); // Y座標の占有状況をSetで高速化
+    const occupiedY = new Set();
     
-    mainEvents.forEach((event, index) => {
+    mainEvents.forEach((event) => {
       const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-      const eventWidth = Math.min(150, event.title?.length * 8 + 20); // 計算簡素化
+      const eventWidth = Math.min(150, event.title?.length * 8 + 20);
       
-      // 簡単なY配置（重い計算削除）
       let finalY = window.innerHeight * 0.25;
       let level = 0;
       
-      while (level < 5 && occupiedY.has(finalY)) { // 最大5段まで
+      while (level < 5 && occupiedY.has(finalY)) {
         level++;
         finalY = window.innerHeight * 0.25 - (level * 50);
       }
@@ -214,7 +226,7 @@ const VisualTab = ({
       });
     });
 
-    // 年表イベント処理（軽量化）
+    // 年表イベント処理
     timelineAxes.forEach((axis) => {
       const timelineEvents = events.filter(event => 
         event.timelineInfos?.some(info => 
@@ -222,7 +234,7 @@ const VisualTab = ({
         )
       );
 
-      timelineEvents.forEach((event, index) => {
+      timelineEvents.forEach((event) => {
         const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
         const eventWidth = Math.min(150, event.title?.length * 8 + 20);
         const eventY = axis.yPosition + 20;
@@ -244,85 +256,157 @@ const VisualTab = ({
     });
 
     return results;
-  }, [events, timelineAxes, getXFromYear]); // 不要な依存関係削除
+  }, [events, timelineAxes, getXFromYear]);
 
-  // 単純ドラッグ開始
-  const handleEventDragStart = useCallback((e, event) => {
-    console.log("単純ドラッグ開始:", event.title);
+  // ドロップゾーン検出
+  const detectDropZone = useCallback((clientX, clientY) => {
+    if (!timelineRef.current) return null;
     
+    const rect = timelineRef.current.getBoundingClientRect();
+    const relativeY = clientY - rect.top;
+    
+    // 年表ドロップゾーン判定
+    for (const axis of timelineAxes) {
+      const axisScreenY = axis.yPosition + panY;
+      if (Math.abs(relativeY - axisScreenY) < 40) {
+        return { type: 'timeline', id: axis.id, timeline: axis };
+      }
+    }
+    
+    // メインタイムライン判定
+    const mainTimelineY = window.innerHeight * 0.25 + panY;
+    if (Math.abs(relativeY - mainTimelineY) < 30) {
+      return { type: 'main' };
+    }
+    
+    // 削除ゾーン判定
+    if (clientX > window.innerWidth - 220 && clientY < 120) {
+      return { type: 'remove' };
+    }
+    
+    return null;
+  }, [timelineAxes, panY]);
+
+  // 簡潔なドラッグ処理
+  const handleEventDragStart = useCallback((e, event) => {
+    console.log('=== ドラッグ開始 ===');
+    console.log('イベント:', event.title);
+    console.log('現在のtimelineInfos:', event.timelineInfos);
+    
+    // ドラッグ状態設定
+    const startPos = { x: e.clientX, y: e.clientY };
     setDragState({
       isDragging: true,
       draggedEvent: event,
-      startY: e.clientY,
-      currentY: e.clientY,
+      startPosition: startPos,
+      currentPosition: startPos,
+      highlightedZone: null,
     });
 
     document.body.style.cursor = "grabbing";
+    console.log('ドラッグ状態設定完了');
 
-    const handleMouseMove = (moveEvent) => {
+    // マウス移動ハンドラー
+    const handleMove = (moveEvent) => {
+      const zone = detectDropZone(moveEvent.clientX, moveEvent.clientY);
+      const zoneKey = zone ? 
+        (zone.type === 'timeline' ? `timeline-${zone.id}` : zone.type) : null;
+
       setDragState(prev => ({
         ...prev,
-        currentY: moveEvent.clientY,
+        currentPosition: { x: moveEvent.clientX, y: moveEvent.clientY },
+        highlightedZone: zoneKey,
       }));
     };
 
-    const handleMouseUp = (upEvent) => {
-      const dropY = upEvent.clientY;
-      let targetTimeline = null;
+    // マウスアップハンドラー
+    const handleUp = (upEvent) => {
+      console.log('=== マウスアップ ===');
+      const zone = detectDropZone(upEvent.clientX, upEvent.clientY);
+      console.log('検出ゾーン:', zone);
 
-      // 年表判定（単純版）
-      if (timelineAxes) {
-        targetTimeline = timelineAxes.find(axis => {
-          const axisScreenY = axis.yPosition + panY + 64;
-          return Math.abs(dropY - axisScreenY) < 50;
-        });
-      }
+      // データ更新処理
+      if (zone && onEventUpdate) {
+        console.log('=== データ更新開始 ===');
+        let newTimelineInfos = [...(event.timelineInfos || [])];
 
-      if (targetTimeline && onEventUpdate) {
-        // 年表に追加
-        console.log(`イベント「${event.title}」を年表「${targetTimeline.name}」に追加`);
-        
-        const updatedTimelineInfos = [...(event.timelineInfos || [])];
-        const existingIndex = updatedTimelineInfos.findIndex(
-          info => info.timelineId === targetTimeline.id
-        );
-
-        if (existingIndex >= 0) {
-          updatedTimelineInfos[existingIndex] = {
-            ...updatedTimelineInfos[existingIndex],
-            isTemporary: false,
-          };
-        } else {
-          updatedTimelineInfos.push({
-            timelineId: targetTimeline.id,
-            isTemporary: false,
-          });
+        if (zone.type === 'timeline') {
+          console.log('年表に追加:', zone.timeline.name);
+          const existingIndex = newTimelineInfos.findIndex(info => info.timelineId === zone.id);
+          if (existingIndex >= 0) {
+            newTimelineInfos[existingIndex] = { ...newTimelineInfos[existingIndex], isTemporary: false };
+          } else {
+            newTimelineInfos.push({ timelineId: zone.id, isTemporary: false });
+          }
+        } else if (zone.type === 'remove') {
+          console.log('仮削除処理');
+          newTimelineInfos = newTimelineInfos.map(info => ({ ...info, isTemporary: true }));
+        } else if (zone.type === 'main') {
+          console.log('メインタイムライン復帰');
+          newTimelineInfos = [];
         }
 
-        onEventUpdate({
-          ...event,
-          timelineInfos: updatedTimelineInfos,
-        });
+        console.log('更新前:', event.timelineInfos);
+        console.log('更新後:', newTimelineInfos);
+
+        // 更新実行
+        const updatedEvent = { ...event, timelineInfos: newTimelineInfos };
+        console.log('onEventUpdate実行...');
+        
+        try {
+          const result = onEventUpdate(updatedEvent);
+          console.log('onEventUpdate結果:', result);
+          
+          // 緊急措置：onEventUpdateが機能しない場合の直接更新
+          if (result === undefined) {
+            console.log('🚨 onEventUpdateが機能していません - 緊急措置実行');
+            
+            // 現在のevents配列から直接更新を試行
+            const currentEvents = [...events];
+            const eventIndex = currentEvents.findIndex(e => e.id === event.id);
+            
+            if (eventIndex >= 0) {
+              currentEvents[eventIndex] = updatedEvent;
+              console.log('直接更新試行:', currentEvents[eventIndex].timelineInfos);
+              
+              // 強制的に画面更新を促すためにalertを表示
+              const timelineInfosStr = JSON.stringify(updatedEvent.timelineInfos);
+              alert(`緊急措置: ${event.title}のtimelineInfosを${timelineInfosStr}に更新しました。\n\n実際の状態更新はApp.jsのonEventUpdate関数の修正が必要です。`);
+            } else {
+              console.error('イベントが見つかりません:', event.id);
+            }
+          }
+        } catch (error) {
+          console.error('onEventUpdateエラー:', error);
+        }
       }
 
-      // ドラッグ終了
+      // クリーンアップ
       setDragState({
         isDragging: false,
         draggedEvent: null,
-        startY: 0,
-        currentY: 0,
+        startPosition: { x: 0, y: 0 },
+        currentPosition: { x: 0, y: 0 },
+        highlightedZone: null,
       });
       
       document.body.style.cursor = "default";
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      console.log('=== ドラッグ終了 ===');
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-  }, [timelineAxes, panY, onEventUpdate]);
+    // グローバルリスナー登録
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    console.log('リスナー登録完了');
 
-  // イベントハンドラー
+    // デフォルト動作を防止
+    e.preventDefault();
+    e.stopPropagation();
+  }, [detectDropZone, onEventUpdate]);
+
+  // その他のハンドラー
   const handleEventDoubleClick = useCallback((event) => {
     if (dragState.isDragging) return;
     
@@ -344,7 +428,7 @@ const VisualTab = ({
 
   const handleAddEventAtPosition = useCallback((clientX, clientY) => {
     if (isWikiMode) {
-      alert("Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。");
+      alert("Wikiモードでのイベント追加は承認が必要です。");
       return;
     }
 
@@ -396,13 +480,13 @@ const VisualTab = ({
           height: "100%",
           position: "relative",
           overflow: "hidden",
-          cursor: isDragging ? "grabbing" : "grab",
+          cursor: isPanning ? "grabbing" : "grab",
           backgroundColor: "#f8fafc",
         }}
         onWheel={handleWheel}
         onMouseDown={(e) => {
-          // EventCardまたはno-panクラスの要素ではパン操作をスキップ
-          if (e.target.closest('[data-event-id]') || e.target.closest('.no-pan')) {
+          // EventCardからのドラッグの場合はパン操作をスキップ
+          if (e.target.closest('[data-event-id]')) {
             return;
           }
           handleMouseDown(e);
@@ -412,7 +496,7 @@ const VisualTab = ({
         {/* 年マーカー */}
         <YearMarkers markers={yearMarkers} />
 
-        {/* メインタイムライン線（25%位置） */}
+        {/* メインタイムライン線 */}
         <div
           style={{
             position: "absolute",
@@ -435,10 +519,13 @@ const VisualTab = ({
           onDeleteTimeline={onDeleteTimeline}
         />
 
-        {/* イベントカード（軽量レンダリング） */}
+        {/* イベントカード（修正版） */}
         {layoutEvents.map((event) => {
-          const isHighlighted = highlightedEvents.has ? highlightedEvents.has(event.id) : 
+          const isHighlighted = highlightedEvents.has ? 
+            highlightedEvents.has(event.id) : 
             (Array.isArray(highlightedEvents) ? highlightedEvents.includes(event.id) : false);
+          
+          const isDragging = dragState.draggedEvent?.id === event.id;
           
           return (
             <div
@@ -447,20 +534,21 @@ const VisualTab = ({
                 position: "absolute",
                 left: `${event.adjustedPosition.x - event.calculatedWidth / 2}px`,
                 top: `${event.adjustedPosition.y + panY}px`,
-                zIndex: dragState.draggedEvent?.id === event.id ? 1000 : 10,
+                zIndex: isDragging ? 1000 : 10,
               }}
             >
               <EventCard
                 event={event}
                 isHighlighted={isHighlighted}
                 onDoubleClick={() => handleEventDoubleClick(event)}
-                onDragStart={(e) => handleEventDragStart(e, event)}
-                isDragging={dragState.draggedEvent?.id === event.id}
+                onDragStart={handleEventDragStart}
+                isDragging={isDragging}
                 calculateTextWidth={calculateTextWidth}
                 style={{
-                  transform: dragState.draggedEvent?.id === event.id 
-                    ? `translateY(${dragState.currentY - dragState.startY}px)`
-                    : 'none'
+                  transform: isDragging 
+                    ? `translate(${dragState.currentPosition.x - dragState.startPosition.x}px, ${dragState.currentPosition.y - dragState.startPosition.y}px)`
+                    : 'none',
+                  opacity: isDragging ? 0.8 : 1,
                 }}
               />
             </div>
@@ -498,7 +586,18 @@ const VisualTab = ({
         </div>
       </div>
 
-      {/* フローティングUI */}
+      {/* ドロップゾーン */}
+      <DropZoneManager
+        isActive={dragState.isDragging}
+        timelineAxes={timelineAxes}
+        displayTimelines={displayTimelines}
+        panY={panY}
+        draggedEvent={dragState.draggedEvent}
+        highlightedZone={dragState.highlightedZone}
+        mainTimelineY={window.innerHeight * 0.25}
+      />
+
+      {/* その他のUI */}
       <FloatingUI
         searchTerm={searchTerm}
         highlightedEvents={highlightedEvents}

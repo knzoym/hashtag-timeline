@@ -1,17 +1,16 @@
-// src/hooks/useAppState.js
+// src/hooks/useAppState.js - updateEvent修正版
 import { useState, useCallback, useEffect } from 'react';
 import { initialEvents, initialTimelines } from '../lib/SampleEvents';
 import { generateUniqueId } from '../utils/timelineUtils';
 
 /**
- * アプリケーション全体の状態管理フック
- * イベント、年表、検索状態などの中核データを管理
+ * アプリケーション全体の状態管理フック（updateEvent修正版）
  */
 export const useAppState = () => {
   // 基本データ状態
   const [events, setEvents] = useState(initialEvents || []);
   const [timelines, setTimelines] = useState(initialTimelines || []);
-  const [tempTimelines, setTempTimelines] = useState([]); // Wiki一時年表
+  const [tempTimelines, setTempTimelines] = useState([]);
   
   // UI状態
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,15 +45,75 @@ export const useAppState = () => {
     return newEvent;
   }, []);
 
+  // 修正版：updateEvent関数
   const updateEvent = useCallback((updatedEvent) => {
-    setEvents(prev => 
-      prev.map(event => 
-        event.id === updatedEvent.id ? updatedEvent : event
-      )
-    );
+    console.log('📝 useAppState.updateEvent 開始');
+    console.log('  更新対象:', updatedEvent.title);
+    console.log('  更新前timelineInfos:', updatedEvent.timelineInfos);
+    console.log('  対象ID:', updatedEvent.id);
+
+    let updateSuccess = false;
+    
+    setEvents(prev => {
+      console.log('  現在のイベント数:', prev.length);
+      
+      const updatedEvents = prev.map(event => {
+        if (event.id === updatedEvent.id) {
+          console.log('  マッチするイベント発見:', event.title);
+          console.log('  更新前:', event.timelineInfos);
+          console.log('  更新後:', updatedEvent.timelineInfos);
+          updateSuccess = true;
+          
+          // 完全に新しいオブジェクトを作成（参照を変更して再レンダリングを確実に発生させる）
+          return {
+            ...event,
+            ...updatedEvent,
+            timelineInfos: [...(updatedEvent.timelineInfos || [])], // 新しい配列参照
+          };
+        }
+        return event;
+      });
+
+      if (updateSuccess) {
+        console.log('✅ useAppState.updateEvent 成功');
+      } else {
+        console.log('❌ useAppState.updateEvent 失敗 - IDが見つかりません');
+        console.log('  探索対象ID:', updatedEvent.id);
+        console.log('  存在するIDs:', prev.map(e => e.id));
+      }
+
+      return updatedEvents;
+    });
+
     setHasUnsavedChanges(true);
     
-    console.log('イベント更新:', updatedEvent.title);
+    // 状態更新を確認するため少し待ってから検証
+    setTimeout(() => {
+      setEvents(currentEvents => {
+        const verifyEvent = currentEvents.find(e => e.id === updatedEvent.id);
+        if (verifyEvent) {
+          console.log('📊 更新後の検証:', verifyEvent.title);
+          console.log('  検証結果timelineInfos:', verifyEvent.timelineInfos);
+          
+          // 期待値と実際値を比較
+          const expected = JSON.stringify(updatedEvent.timelineInfos || []);
+          const actual = JSON.stringify(verifyEvent.timelineInfos || []);
+          
+          if (expected === actual) {
+            console.log('✅ 状態更新完全成功');
+          } else {
+            console.log('❌ 状態更新不完全');
+            console.log('  期待値:', expected);
+            console.log('  実際値:', actual);
+          }
+        } else {
+          console.log('❌ 検証失敗 - イベントが見つかりません');
+        }
+        return currentEvents; // 変更なしで返す
+      });
+    }, 50);
+
+    return updatedEvent;
   }, []);
 
   const deleteEvent = useCallback((eventId) => {
@@ -99,7 +158,7 @@ export const useAppState = () => {
     }));
 
     setTimelines(prev => [...prev, newTimeline]);
-    setHighlightedEvents(new Set()); // 選択状態をクリア
+    setHighlightedEvents(new Set());
     setHasUnsavedChanges(true);
     
     console.log('年表作成:', newTimeline.name, '対象イベント:', highlightedEvents.size);
@@ -125,7 +184,7 @@ export const useAppState = () => {
     };
 
     setTempTimelines(prev => [...prev, newTempTimeline]);
-    setHighlightedEvents(new Set()); // 選択状態をクリア
+    setHighlightedEvents(new Set());
     
     console.log('一時年表作成:', newTempTimeline.name, '対象イベント:', highlightedEvents.size);
     return newTempTimeline;
@@ -202,11 +261,13 @@ export const useAppState = () => {
     if (newSearchTerm.trim()) {
       const matchedEventIds = events
         .filter(event => {
-          const searchLower = newSearchTerm.toLowerCase();
+          const searchText = newSearchTerm.toLowerCase();
           return (
-            event.title.toLowerCase().includes(searchLower) ||
-            event.description.toLowerCase().includes(searchLower) ||
-            event.tags.some(tag => tag.toLowerCase().includes(searchLower))
+            event.title.toLowerCase().includes(searchText) ||
+            event.description.toLowerCase().includes(searchText) ||
+            (event.tags && event.tags.some(tag => 
+              tag.toLowerCase().includes(searchText)
+            ))
           );
         })
         .map(event => event.id);
@@ -217,43 +278,35 @@ export const useAppState = () => {
     }
   }, [events]);
 
-  // 上位タグ取得
+  // タグから検索語句を取得
   const getTopTagsFromSearch = useCallback(() => {
-    const matchedEvents = Array.from(highlightedEvents)
-      .map(id => events.find(e => e.id === id))
-      .filter(Boolean);
+    if (!searchTerm.trim()) return [];
     
-    if (matchedEvents.length === 0) {
-      // 全イベントから頻出タグを取得
-      const allTags = events.flatMap(event => event.tags || []);
-      const tagCounts = {};
-      allTags.forEach(tag => {
+    const allTags = events.flatMap(event => event.tags || []);
+    const tagCounts = {};
+    
+    allTags.forEach(tag => {
+      if (tag.toLowerCase().includes(searchTerm.toLowerCase())) {
         tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-      });
-      
-      return Object.entries(tagCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 8)
-        .map(([tag]) => tag);
-    }
+      }
+    });
+    
+    return Object.entries(tagCounts)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([tag]) => tag);
+  }, [searchTerm, events]);
 
-    // 検索結果のタグを取得
-    const searchTags = matchedEvents.flatMap(event => event.tags || []);
-    const uniqueTags = [...new Set(searchTags)];
-    return uniqueTags.slice(0, 6);
-  }, [highlightedEvents, events]);
-
-  // モーダル操作
+  // モーダル関連
   const handleEventClick = useCallback((event) => {
+    console.log('イベントクリック:', event.title);
     setSelectedEvent(event);
   }, []);
 
-  const handleTimelineClick = useCallback((timelineId) => {
-    const timeline = timelines.find(t => t.id === timelineId);
-    if (timeline) {
-      setSelectedTimeline(timeline);
-    }
-  }, [timelines]);
+  const handleTimelineClick = useCallback((timeline) => {
+    console.log('年表クリック:', timeline.name);
+    setSelectedTimeline(timeline);
+  }, []);
 
   const closeEventModal = useCallback(() => {
     setSelectedEvent(null);
@@ -265,8 +318,8 @@ export const useAppState = () => {
 
   // データリセット
   const resetData = useCallback(() => {
-    setEvents(initialEvents || []);
-    setTimelines(initialTimelines || []);
+    setEvents([]);
+    setTimelines([]);
     setTempTimelines([]);
     setSearchTerm('');
     setHighlightedEvents(new Set());
@@ -328,7 +381,7 @@ export const useAppState = () => {
     
     // イベント操作
     addEvent,
-    updateEvent,
+    updateEvent, // 修正版
     deleteEvent,
     
     // 年表操作

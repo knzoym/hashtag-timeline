@@ -1,4 +1,4 @@
-// src/hooks/useCoordinate.js - 統合座標システム
+// src/hooks/useCoordinate.js - 統合座標システム（Passive Event Listener対応版）
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { TIMELINE_CONFIG } from '../constants/timelineConfig';
 
@@ -6,6 +6,7 @@ import { TIMELINE_CONFIG } from '../constants/timelineConfig';
  * 統合された座標システム
  * 昔のHashtagTimelineの安定性と現在の機能を統合
  * useUnifiedCoordinatesとuseSimpleCoordinatesの役割を統合
+ * Passive Event Listener警告を修正
  */
 export const useCoordinate = (timelineRef) => {
   // 基本座標状態（昔のHashtagTimeline方式）
@@ -50,9 +51,13 @@ export const useCoordinate = (timelineRef) => {
     console.log('座標リセット:', { scale: initialScale, panX: initialPanX, panY: 0 });
   }, []);
   
-  // ホイールズーム処理（昔のHashtagTimeline方式を復元）
+  // ホイールズーム処理（昔のHashtagTimeline方式を復元、Passive Event Listener対応）
   const handleWheel = useCallback((e) => {
-    e.preventDefault();
+    // ブラウザのデフォルトスクロール動作を停止
+    if (e.preventDefault) {
+      e.preventDefault();
+    }
+    
     if (!timelineRef.current) return;
     
     const rect = timelineRef.current.getBoundingClientRect();
@@ -151,6 +156,38 @@ export const useCoordinate = (timelineRef) => {
       document.body.style.userSelect = '';
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
+  
+  // wheelイベントリスナーの設定（Passive Event Listener対応）
+  useEffect(() => {
+    const element = timelineRef.current;
+    if (!element) return;
+    
+    // passive: false を明示的に指定してpreventDefault()を有効化
+    const wheelHandler = (e) => handleWheel(e);
+    
+    // 現代的なブラウザでは { passive: false } オプションが必要
+    const wheelOptions = {
+      passive: false, // preventDefault()を使用可能にする
+      capture: false  // バブリングフェーズでイベントをキャッチ
+    };
+    
+    try {
+      element.addEventListener('wheel', wheelHandler, wheelOptions);
+      console.log('Wheel event listener registered with passive: false');
+    } catch (error) {
+      // 古いブラウザ対応のフォールバック
+      console.warn('Modern event listener options not supported, using fallback');
+      element.addEventListener('wheel', wheelHandler);
+    }
+    
+    return () => {
+      try {
+        element.removeEventListener('wheel', wheelHandler, wheelOptions);
+      } catch (error) {
+        element.removeEventListener('wheel', wheelHandler);
+      }
+    };
+  }, [handleWheel, timelineRef]);
   
   // レスポンシブ対応（ウィンドウサイズ変更時の座標調整）
   useEffect(() => {

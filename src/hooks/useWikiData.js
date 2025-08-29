@@ -76,52 +76,6 @@ export const useWikiData = (user) => {
     }
   }, []);
 
-  // 互換ラッパー：古い呼び出し（getWikiEvents）に対応
-  // 使い方互換：getWikiEvents(searchTerm, limit)
-  // 拡張版：    getWikiEvents({ mode: 'latest' | 'stable', searchTerm, limit })
-  const getWikiEvents = useCallback(
-    async (...args) => {
-      // 引数の解釈（旧: (searchTerm, limit) ／ 新: ({mode, searchTerm, limit}))
-      let mode = "latest";
-      let searchTerm = "";
-      let limit = 50;
-
-      if (typeof args[0] === "object" && args[0] !== null) {
-        const opt = args[0];
-        mode = opt.mode ?? "latest";
-        searchTerm = opt.searchTerm ?? "";
-        limit = opt.limit ?? 50;
-      } else {
-        searchTerm = args[0] ?? "";
-        limit = args[1] ?? 50;
-      }
-
-      if (mode === "stable") {
-        // 安定版（承認済み）タブ用：event_stable の結果を events 風に整形
-        const rows = await getEventsWithScores(searchTerm, limit);
-        return (rows || []).map((r) => {
-          const ev = r.events || {};
-          return {
-            ...ev,
-            startDate: new Date(ev.date_start || ev.start_date),
-            endDate: ev.date_end
-              ? new Date(ev.date_end)
-              : new Date(ev.date_start || ev.start_date),
-            tags: Array.isArray(ev.tags) ? ev.tags : [],
-            sources: Array.isArray(ev.sources) ? ev.sources : [],
-            // 参考情報（必要に応じてUIで使用）
-            stableScore: r.stable_score ?? 0,
-            stableRevisionId: r.stable_revision_id ?? null,
-          };
-        });
-      }
-
-      // 既定は最新（latest）
-      return await getSharedEvents(searchTerm, limit);
-    },
-    [getSharedEvents, getEventsWithScores]
-  );
-
   // 新しい共用イベント作成
   const createSharedEvent = useCallback(
     async (eventData) => {
@@ -523,6 +477,52 @@ export const useWikiData = (user) => {
     []
   );
 
+  // 互換ラッパー：古い呼び出し（getWikiEvents）に対応
+  // 使い方互換：getWikiEvents(searchTerm, limit)
+  // 拡張版：    getWikiEvents({ mode: 'latest' | 'stable', searchTerm, limit })
+  const getWikiEvents = useCallback(
+    async (...args) => {
+      // 引数の解釈（旧: (searchTerm, limit) ／ 新: ({mode, searchTerm, limit}))
+      let mode = "latest";
+      let searchTerm = "";
+      let limit = 50;
+
+      if (typeof args[0] === "object" && args[0] !== null) {
+        const opt = args[0];
+        mode = opt.mode ?? "latest";
+        searchTerm = opt.searchTerm ?? "";
+        limit = opt.limit ?? 50;
+      } else {
+        searchTerm = args[0] ?? "";
+        limit = args[1] ?? 50;
+      }
+
+      if (mode === "stable") {
+        // 安定版（承認済み）タブ用：event_stable の結果を events 風に整形
+        const rows = await getEventsWithScores(searchTerm, limit);
+        return (rows || []).map((r) => {
+          const ev = r.events || {};
+          return {
+            ...ev,
+            startDate: new Date(ev.date_start || ev.start_date),
+            endDate: ev.date_end
+              ? new Date(ev.date_end)
+              : new Date(ev.date_start || ev.start_date),
+            tags: Array.isArray(ev.tags) ? ev.tags : [],
+            sources: Array.isArray(ev.sources) ? ev.sources : [],
+            // 参考情報（必要に応じてUIで使用）
+            stableScore: r.stable_score ?? 0,
+            stableRevisionId: r.stable_revision_id ?? null,
+          };
+        });
+      }
+
+      // 既定は最新（latest）
+      return await getSharedEvents(searchTerm, limit);
+    },
+    [getSharedEvents, getEventsWithScores]
+  );
+
   // リビジョン履歴取得
   const getEventRevisions = useCallback(async (eventId) => {
     try {
@@ -596,7 +596,7 @@ export const useWikiData = (user) => {
             reports,
             stable_score,
             profiles:edited_by(display_name, username),
-            events!inner(title,)
+            events!inner(title)
           `
           )
           .gte("created_at", timeFilter.toISOString())
@@ -912,12 +912,35 @@ export const useWikiData = (user) => {
     }
   }, [user]);
 
+  // 追加：TLwikiの年表プリセット一覧（公開のみ）
+  const getWikiTimelines = useCallback(async (limit = 50) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const { data, error } = await supabase
+        .from("timelines")
+        .select("*")
+        .eq("is_public", true)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.error("getWikiTimelines error:", e);
+      setError(e.message);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   return {
     loading,
     error,
     // 基本的なCRUD操作
     getSharedEvents,
-    getWikiEvents
+    getWikiEvents,
+    getWikiTimelines,
     createSharedEvent,
     updateSharedEvent,
     importEventToPersonal,
