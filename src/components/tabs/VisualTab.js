@@ -7,6 +7,7 @@ import { YearMarkers } from "../ui/YearMarkers";
 import { TimelineAxes } from "../ui/TimelineAxes";
 import { DropZoneManager } from "../ui/DropZone";
 import { NetworkView } from "../views/NetworkView"; // 追加
+import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem"; // 追加
 
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
@@ -96,10 +97,6 @@ const VisualTab = ({
     currentPosition: { x: 0, y: 0 },
     highlightedZone: null,
   });
-
-  // // グループ展開状態
-  // const [expandedGroups, setExpandedGroups] = useState(new Set());
-  // const [hoveredGroupData, setHoveredGroupData] = useState(null);
 
   // 座標システム
   const coordinates = useCoordinate(timelineRef);
@@ -230,156 +227,6 @@ const VisualTab = ({
     return axes;
   }, [isNetworkMode, displayTimelines, events, getXFromYear]);
 
-  // Timelineモード用イベント配置（既存の仮状態配置システム）
-  const { layoutEvents, eventGroups } = useMemo(() => {
-    if (isNetworkMode || !events || events.length === 0) {
-      return { layoutEvents: [], eventGroups: [] };
-    }
-
-    console.log("Timeline仮状態配置システム開始");
-
-    const allLayoutEvents = [];
-    const allEventGroups = [];
-
-    // 各イベントの配置場所を正確に判定
-    events.forEach((event) => {
-      let isPlaced = false;
-
-      // 年表ごとに状態をチェック
-      for (const timeline of displayTimelines) {
-        const status = getEventTimelineStatus(event, timeline);
-
-        if (status === "pending") {
-          // 仮登録：年表エリア内に配置
-          const axis = timelineAxes.find((a) => a.id === timeline.id);
-          if (axis) {
-            const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-            const eventY = axis.yPosition; // 年表軸上に配置
-
-            allLayoutEvents.push({
-              ...event,
-              adjustedPosition: { x: eventX, y: eventY },
-              calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-              calculatedHeight: calculateEventHeight(event),
-              displayStatus: "pending",
-              timelineColor: timeline.color || "#6b7280",
-              timelineInfo: {
-                timelineId: timeline.id,
-                timelineName: timeline.name,
-                timelineColor: timeline.color || "#6b7280",
-              },
-              hiddenByGroup: false,
-            });
-
-            console.log(
-              `仮登録配置: 「${event.title}」→年表「${
-                timeline.name
-              }」(${eventX.toFixed(0)}, ${eventY})`
-            );
-            isPlaced = true;
-            break;
-          }
-        } else if (status === "registered") {
-          // 正式登録：年表エリア内に配置
-          const axis = timelineAxes.find((a) => a.id === timeline.id);
-          if (axis) {
-            const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-            const eventY = axis.yPosition; // 年表軸上に配置
-
-            allLayoutEvents.push({
-              ...event,
-              adjustedPosition: { x: eventX, y: eventY },
-              calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-              calculatedHeight: calculateEventHeight(event),
-              displayStatus: "registered",
-              timelineColor: timeline.color || "#6b7280",
-              timelineInfo: {
-                timelineId: timeline.id,
-                timelineName: timeline.name,
-                timelineColor: timeline.color || "#6b7280",
-              },
-              hiddenByGroup: false,
-            });
-
-            console.log(
-              `正式登録配置: 「${event.title}」→年表「${
-                timeline.name
-              }」(${eventX.toFixed(0)}, ${eventY})`
-            );
-            isPlaced = true;
-            break;
-          }
-        } else if (status === "removed") {
-          // 仮削除：メインタイムラインに配置
-          const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-          const eventY = window.innerHeight * 0.25; // メインタイムライン位置
-
-          allLayoutEvents.push({
-            ...event,
-            adjustedPosition: { x: eventX, y: eventY },
-            calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-            calculatedHeight: calculateEventHeight(event),
-            displayStatus: "removed",
-            timelineColor: "#6b7280", // グレー系
-            timelineInfo: {
-              timelineId: timeline.id,
-              timelineName: timeline.name,
-              timelineColor: timeline.color || "#6b7280",
-            },
-            hiddenByGroup: false,
-          });
-
-          console.log(
-            `仮削除配置: 「${event.title}」→メインタイムライン(${eventX.toFixed(
-              0
-            )}, ${eventY})`
-          );
-          isPlaced = true;
-          break;
-        }
-      }
-
-      // どの年表にも属していない場合：メインタイムライン
-      if (!isPlaced) {
-        const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-        const eventY = window.innerHeight * 0.25; // メインタイムライン位置
-
-        allLayoutEvents.push({
-          ...event,
-          adjustedPosition: { x: eventX, y: eventY },
-          calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-          calculatedHeight: calculateEventHeight(event),
-          displayStatus: "main",
-          timelineColor: "#6b7280",
-          timelineInfo: null,
-          hiddenByGroup: false,
-        });
-
-        console.log(
-          `メイン配置: 「${event.title}」→メインタイムライン(${eventX.toFixed(
-            0
-          )}, ${eventY})`
-        );
-      }
-    });
-
-    console.log(
-      `Timeline仮状態配置完了: 合計 ${allLayoutEvents.length}イベント配置`
-    );
-
-    return {
-      layoutEvents: allLayoutEvents,
-      eventGroups: allEventGroups,
-    };
-  }, [
-    isNetworkMode,
-    events,
-    displayTimelines,
-    timelineAxes,
-    getXFromYear,
-    calculateTextWidth,
-  ]);
-
   // ドロップゾーン検出
   const detectDropZone = useCallback(
     (clientX, clientY) => {
@@ -426,13 +273,13 @@ const VisualTab = ({
 
   // ドラッグハンドラー（共通）
   const handleEventDragStart = useCallback(
-    (e, event) => {
-      console.log("ドラッグ開始:", event.title);
+    (e, draggedEvent) => {
+      console.log("ドラッグ開始:", draggedEvent.title, "ID:", draggedEvent.id);
 
       const startPos = { x: e.clientX, y: e.clientY };
       setDragState({
         isDragging: true,
-        draggedEvent: event,
+        draggedEvent: draggedEvent,
         startPosition: startPos,
         currentPosition: startPos,
         highlightedZone: null,
@@ -472,15 +319,19 @@ const VisualTab = ({
 
             // 既存の関係をクリア
             updatedTimeline.eventIds = updatedTimeline.eventIds.filter(
-              (id) => id !== event.id
+              (id) => id !== draggedEvent.id
             );
             updatedTimeline.pendingEventIds =
-              updatedTimeline.pendingEventIds.filter((id) => id !== event.id);
+              updatedTimeline.pendingEventIds.filter(
+                (id) => id !== draggedEvent.id
+              );
             updatedTimeline.removedEventIds =
-              updatedTimeline.removedEventIds.filter((id) => id !== event.id);
+              updatedTimeline.removedEventIds.filter(
+                (id) => id !== draggedEvent.id
+              );
 
             // 仮登録に追加
-            updatedTimeline.pendingEventIds.push(event.id);
+            updatedTimeline.pendingEventIds.push(draggedEvent.id);
 
             console.log("🚀 年表更新実行:", updatedTimeline.name);
             onTimelineUpdate(updatedTimeline.id, updatedTimeline);
@@ -491,8 +342,8 @@ const VisualTab = ({
             // 現在所属している年表を全て検索
             const relatedTimelines = displayTimelines.filter(
               (timeline) =>
-                timeline.eventIds?.includes(event.id) ||
-                timeline.pendingEventIds?.includes(event.id)
+                timeline.eventIds?.includes(draggedEvent.id) ||
+                timeline.pendingEventIds?.includes(draggedEvent.id)
             );
 
             console.log(
@@ -511,14 +362,16 @@ const VisualTab = ({
 
               // 既存の登録・仮登録から削除
               updatedTimeline.eventIds = updatedTimeline.eventIds.filter(
-                (id) => id !== event.id
+                (id) => id !== draggedEvent.id
               );
               updatedTimeline.pendingEventIds =
-                updatedTimeline.pendingEventIds.filter((id) => id !== event.id);
+                updatedTimeline.pendingEventIds.filter(
+                  (id) => id !== draggedEvent.id
+                );
 
               // 仮削除に追加（重複チェック）
-              if (!updatedTimeline.removedEventIds.includes(event.id)) {
-                updatedTimeline.removedEventIds.push(event.id);
+              if (!updatedTimeline.removedEventIds.includes(draggedEvent.id)) {
+                updatedTimeline.removedEventIds.push(draggedEvent.id);
               }
 
               console.log(`🚀 仮削除更新実行: ${currentTimeline.name}`);
@@ -638,13 +491,6 @@ const VisualTab = ({
   const renderViewContent = () => {
     console.log("VisualTab renderViewContent:", { viewMode, isNetworkMode });
 
-    // 仮削除状態をチェックするヘルパー関数
-    const hasRemovedStatus = (event, timelines) => {
-      return timelines.some(
-        (timeline) => getEventTimelineStatus(event, timeline) === "removed"
-      );
-    };
-
     if (isNetworkMode) {
       // Networkモード：NetworkViewを使用
       console.log(
@@ -653,6 +499,8 @@ const VisualTab = ({
         "timelines:",
         displayTimelines.length
       );
+
+      
 
       return (
         <NetworkView
@@ -671,90 +519,28 @@ const VisualTab = ({
         />
       );
     } else {
-      // Timelineモード：従来のレンダリング（複数年表所属時は複製表示）
-      console.log(
-        "Rendering Timeline view with layoutEvents:",
-        layoutEvents.length
+      // Timelineモード：UnifiedLayoutSystemを使用
+      console.log("Rendering Timeline view with UnifiedLayoutSystem");
+
+      // Timelineモード：UnifiedLayoutSystemを使用
+      const layoutSystem = new UnifiedLayoutSystem(
+        coordinates,
+        calculateTextWidth
       );
 
-      // 年表タブでは同じイベントが複数年表に含まれる場合、それぞれに表示
-      const timelineLayoutEvents = [];
+      // displayTimelines引数を追加！
+      const layoutResult = layoutSystem.executeLayout(
+        events,
+        timelineAxes,
+        displayTimelines
+      );
 
-      events.forEach((event) => {
-        let eventPlaced = false;
+      const processedEvents = layoutResult.allEvents;
+      const processedGroups = layoutResult.eventGroups;
 
-        // 各年表での状態をチェック
-        displayTimelines.forEach((timeline) => {
-          const status = getEventTimelineStatus(event, timeline);
-
-          if (status === "registered" || status === "pending") {
-            const axis = timelineAxes.find((a) => a.id === timeline.id);
-            if (axis) {
-              const eventX = getXFromYear(
-                event.startDate?.getFullYear() || 2024
-              );
-
-              // 年表ごとに別々のイベントとして配置
-              timelineLayoutEvents.push({
-                ...event,
-                id: `${event.id}-${timeline.id}`, // 複数表示用のユニークID
-                originalId: event.id, // 元のIDを保持
-                originalEvent: event, // 元のイベントオブジェクトも保持
-                adjustedPosition: { x: eventX, y: axis.yPosition },
-                calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-                calculatedHeight: calculateEventHeight(event),
-                displayStatus: status,
-                timelineColor: timeline.color || "#6b7280",
-                timelineInfo: {
-                  timelineId: timeline.id,
-                  timelineName: timeline.name,
-                  timelineColor: timeline.color || "#6b7280",
-                },
-                hiddenByGroup: false,
-              });
-
-              eventPlaced = true;
-              console.log(
-                `Timeline配置: 「${event.title}」→年表「${timeline.name}」(${status})`
-              );
-            }
-          }
-        });
-
-        // どの年表にも属していない場合、または仮削除されている場合はメインタイムラインに配置
-        if (!eventPlaced || hasRemovedStatus(event, displayTimelines)) {
-          const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
-          const eventY = window.innerHeight * 0.25;
-
-          // 仮削除状態の判定
-          const removedTimeline = displayTimelines.find(
-            (timeline) => getEventTimelineStatus(event, timeline) === "removed"
-          );
-
-          timelineLayoutEvents.push({
-            ...event,
-            adjustedPosition: { x: eventX, y: eventY },
-            calculatedWidth: calculateEventWidth(event, calculateTextWidth),
-            calculatedHeight: calculateEventHeight(event),
-            displayStatus: removedTimeline ? "removed" : "main",
-            timelineColor: removedTimeline ? "#6b7280" : "#6b7280",
-            timelineInfo: removedTimeline
-              ? {
-                  timelineId: removedTimeline.id,
-                  timelineName: removedTimeline.name,
-                  timelineColor: removedTimeline.color || "#6b7280",
-                }
-              : null,
-            hiddenByGroup: false,
-          });
-
-          console.log(
-            `メイン配置: 「${event.title}」→${
-              removedTimeline ? "仮削除" : "メインタイムライン"
-            }`
-          );
-        }
-      });
+      console.log(
+        `UnifiedLayoutSystem結果: ${processedEvents.length}イベント, ${processedGroups.length}グループ`
+      );
 
       return (
         <>
@@ -768,8 +554,8 @@ const VisualTab = ({
             onDeleteTimeline={onDeleteTimeline}
           />
 
-          {/* イベントカード（年表別複製表示） */}
-          {timelineLayoutEvents.map((event) => {
+          {/* イベントカード（UnifiedLayoutSystem処理済み） */}
+          {processedEvents.map((event) => {
             // highlightedEventsの型を統一的にチェック
             let isHighlighted = false;
             const eventId = event.originalId || event.id;
@@ -789,11 +575,11 @@ const VisualTab = ({
                 highlightedEvents.includes(eventId);
             }
 
-            const isDragging = dragState.draggedEvent?.id === eventId;
+            const isDragging = dragState.draggedEvent?.id === event.Id;
 
             return (
               <div
-                key={event.id} // 複数表示用のユニークID使用
+                key={event.id}
                 style={{
                   position: "absolute",
                   left: `${
@@ -808,10 +594,8 @@ const VisualTab = ({
                   isHighlighted={isHighlighted}
                   onDoubleClick={() =>
                     handleEventDoubleClick(event.originalEvent || event)
-                  } // 元のイベントを使用
-                  onDragStart={(e) =>
-                    handleEventDragStart(e, event.originalEvent || event)
-                  } // 元のイベントを使用
+                  }
+                  onDragStart={(e) => handleEventDragStart(e, event)}
                   isDragging={isDragging}
                   calculateTextWidth={calculateTextWidth}
                   style={{
@@ -830,6 +614,36 @@ const VisualTab = ({
               </div>
             );
           })}
+
+          {/* イベントグループ（必要に応じて表示） */}
+          {processedGroups.map((group) => (
+            <div
+              key={group.id}
+              style={{
+                position: "absolute",
+                left: `${group.position.x - 30}px`,
+                top: `${group.position.y + panY}px`,
+                width: "60px",
+                height: "20px",
+                backgroundColor: group.timelineColor,
+                borderRadius: "10px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "12px",
+                color: "white",
+                fontWeight: "bold",
+                zIndex: 5,
+                cursor: "pointer",
+              }}
+              onClick={() => {
+                // グループクリック処理（必要に応じて実装）
+                console.log(`グループクリック: ${group.id}`);
+              }}
+            >
+              {group.getDisplayCount()}
+            </div>
+          ))}
         </>
       );
     }
