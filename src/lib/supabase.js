@@ -22,3 +22,7 @@ export const testConnection = async () => {
     return false
   }
 }
+
+// supabase.ts / supabaseClient.js など
+console.log('SB_URL =', process.env.REACT_APP_SUPABASE_URL || import.meta.env?.VITE_SUPABASE_URL);
+console.log('SB_ANON =', (process.env.REACT_APP_SUPABASE_ANON_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY || '').slice(0,8));

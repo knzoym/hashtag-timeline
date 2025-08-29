@@ -1,5 +1,5 @@
-// components/ui/EventCard.js - 既存システム協調版
-import React, { useState, useRef, useCallback } from "react";
+// components/ui/EventCard.js - 単純ドラッグ版
+import React, { useState, useCallback } from "react";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 import {
   calculateEventWidth,
@@ -7,9 +7,6 @@ import {
   getEventDisplayInfo,
 } from "../../utils/eventSizeUtils";
 
-/**
- * 色の明度を計算して、適切なテキスト色を決定
- */
 function getContrastColor(hexColor) {
   if (!hexColor) return "#000000";
 
@@ -49,17 +46,14 @@ export const EventCard = ({
   event,
   isHighlighted = false,
   onDoubleClick,
-  onMouseDown,
-  onDragStart, // 既存のドラッグ開始ハンドラー
-  isDragging = false, // 既存のドラッグ状態
+  onDragStart, // 単純ドラッグシステム用
+  isDragging = false,
   style = {},
   className = "",
   calculateTextWidth = null,
   ...props
 }) => {
-  const [isPressed, setIsPressed] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const longPressTimer = useRef(null);
 
   const displayInfo = getEventDisplayInfo(event, calculateTextWidth);
 
@@ -73,68 +67,25 @@ export const EventCard = ({
     const hasTemporary = event.timelineInfos.some(info => info.isTemporary);
     
     if (allTemporary && event.timelineInfos.length > 0) {
-      return 'temporary'; // 全て仮削除
+      return 'temporary';
     } else if (hasTemporary) {
-      return 'partial'; // 一部仮削除
+      return 'partial';
     } else {
-      return 'registered'; // 全て正式登録
+      return 'registered';
     }
   };
 
   const temporaryStatus = getTemporaryStatus();
 
-  // 300ms長押し処理（既存システム用）
-  const handleMouseDownInternal = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const startPos = { x: e.clientX, y: e.clientY };
-    setIsPressed(true);
-
-    // 通常のonMouseDownも呼び出し
-    if (onMouseDown) {
-      onMouseDown(e);
+  // 既存useDragDrop統合ハンドラー（300ms長押し対応）
+  const handleMouseDown = useCallback((e) => {
+    console.log(`EventCard 既存useDragDrop統合: "${event.title}"`);
+    
+    // 既存のuseDragDropシステムを活用（300ms長押し）
+    if (onDragStart) {
+      onDragStart(e, event);
     }
-
-    // 300ms長押しタイマー
-    longPressTimer.current = setTimeout(() => {
-      console.log(`EventCard: 300ms長押し完了でドラッグ開始: ${event.title}`);
-      
-      if (onDragStart) {
-        // 既存のドラッグシステム用のデータ形式で呼び出し
-        const dragData = {
-          ...event,
-          startPosition: startPos,
-          type: 'event'
-        };
-        onDragStart(e, 'event', dragData);
-      }
-      setIsPressed(false);
-    }, 300); // 300msで長押し判定
-
-    // 早期移動検出
-    const handleEarlyMove = (moveEvent) => {
-      const deltaX = Math.abs(moveEvent.clientX - startPos.x);
-      const deltaY = Math.abs(moveEvent.clientY - startPos.y);
-
-      if (deltaX > 5 || deltaY > 5) {
-        clearTimeout(longPressTimer.current);
-        setIsPressed(false);
-        document.removeEventListener("mousemove", handleEarlyMove);
-      }
-    };
-
-    // 早期リリース検出
-    const handleEarlyUp = () => {
-      clearTimeout(longPressTimer.current);
-      setIsPressed(false);
-      document.removeEventListener("mousemove", handleEarlyMove);
-      document.removeEventListener("mouseup", handleEarlyUp);
-    };
-
-    document.addEventListener("mousemove", handleEarlyMove);
-    document.addEventListener("mouseup", handleEarlyUp);
-  }, [onMouseDown, onDragStart, event]);
+  }, [onDragStart, event]);
 
   // 色設定
   const getEventColors = () => {
@@ -183,7 +134,7 @@ export const EventCard = ({
   // スタイル計算
   const getCardStyles = () => {
     const baseStyles = {
-      position: "absolute",
+      position: "relative",
       minWidth: `${TIMELINE_CONFIG.EVENT_MIN_WIDTH}px`,
       maxWidth: `${TIMELINE_CONFIG.EVENT_MAX_WIDTH}px`,
       width: `${displayInfo.width}px`,
@@ -201,8 +152,8 @@ export const EventCard = ({
       userSelect: "none",
       boxShadow: isHighlighted
         ? "0 3px 8px rgba(59, 130, 246, 0.4)"
-        : isPressed
-        ? "0 2px 6px rgba(0, 0, 0, 0.3)"
+        : isDragging
+        ? "0 4px 12px rgba(0, 0, 0, 0.3)"
         : "0 1px 3px rgba(0, 0, 0, 0.1)",
       display: "flex",
       flexDirection: "column",
@@ -213,14 +164,15 @@ export const EventCard = ({
       overflow: "hidden",
       zIndex: isDragging ? 999 : (isHighlighted ? 20 : 10),
       opacity: colors.opacity,
-      willChange: "transform",
+      transform: isDragging ? "scale(1.05)" : "scale(1)",
+      transition: isDragging ? "none" : "all 0.2s ease",
       ...style,
     };
 
     return baseStyles;
   };
 
-  // ホバー効果（色の変化のみ）
+  // ホバー効果
   const handleMouseEnter = useCallback(() => {
     if (!isDragging) {
       setIsHovered(true);
@@ -232,120 +184,105 @@ export const EventCard = ({
   }, []);
 
   return (
-    <div>
+    <div
+      style={getCardStyles()}
+      className={className}
+      onDoubleClick={onDoubleClick}
+      onMouseDown={handleMouseDown}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      data-event-id={event.id}
+      title={`${displayInfo.title} (${displayInfo.year})${
+        temporaryStatus === "temporary" ? " - 仮削除" : ""
+      }`}
+      {...props}
+    >
+      {/* イベントタイトル */}
       <div
-        style={getCardStyles()}
-        className={className}
-        onDoubleClick={onDoubleClick}
-        onMouseDown={handleMouseDownInternal}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        data-event-id={event.id}
-        title={`${displayInfo.title} (${displayInfo.year})${
-          temporaryStatus === "temporary" ? " - 仮削除" : ""
-        }`}
-        {...props}
+        style={{
+          fontSize: "9px",
+          fontWeight: "600",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          maxWidth: "100%",
+        }}
       >
-        {/* イベントタイトル */}
-        <div
-          style={{
-            fontSize: "9px",
-            fontWeight: "600",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: "100%",
-          }}
-        >
-          {displayInfo.title}
-        </div>
-
-        {/* 年号表示 */}
-        <div
-          style={{
-            fontSize: "8px",
-            opacity: 0.9,
-            marginTop: "1px",
-          }}
-        >
-          {displayInfo.year}
-        </div>
-
-        {/* 仮削除インジケーター */}
-        {temporaryStatus === "temporary" && (
-          <div
-            style={{
-              position: "absolute",
-              top: "-2px",
-              right: "-2px",
-              width: "8px",
-              height: "8px",
-              backgroundColor: "#f59e0b",
-              borderRadius: "50%",
-              border: "1px solid white",
-            }}
-            title="仮削除状態"
-          />
-        )}
-        
-        {temporaryStatus === "partial" && (
-          <div
-            style={{
-              position: "absolute",
-              top: "-2px",
-              right: "-2px",
-              width: "8px",
-              height: "8px",
-              backgroundColor: "#f97316",
-              borderRadius: "50%",
-              border: "1px solid white",
-            }}
-            title="一部仮削除状態"
-          />
-        )}
-
-        {/* 年表所属インジケーター */}
-        {displayInfo.hasTimelineInfo && temporaryStatus !== "temporary" && (
-          <div
-            style={{
-              position: "absolute",
-              top: "-1px",
-              right: "-1px",
-              width: "6px",
-              height: "6px",
-              backgroundColor: colors.borderColor,
-              borderRadius: "50%",
-              border: "1px solid white",
-            }}
-          />
-        )}
-
-        {/* 長押し中インジケーター */}
-        {isPressed && (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-              borderRadius: "6px",
-              pointerEvents: "none",
-            }}
-          />
-        )}
-
-        {/* ドラッグ中インジケーター */}
-        {isDragging && (
-          <div
-            style={{
-              position: "absolute",
-              inset: "-2px",
-              border: "2px solid #3b82f6",
-              borderRadius: "8px",
-              pointerEvents: "none",
-            }}
-          />
-        )}
+        {displayInfo.title}
       </div>
+
+      {/* 年号表示 */}
+      <div
+        style={{
+          fontSize: "8px",
+          opacity: 0.9,
+          marginTop: "1px",
+        }}
+      >
+        {displayInfo.year}
+      </div>
+
+      {/* 仮削除インジケーター */}
+      {temporaryStatus === "temporary" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-2px",
+            right: "-2px",
+            width: "8px",
+            height: "8px",
+            backgroundColor: "#f59e0b",
+            borderRadius: "50%",
+            border: "1px solid white",
+          }}
+          title="仮削除状態"
+        />
+      )}
+      
+      {temporaryStatus === "partial" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-2px",
+            right: "-2px",
+            width: "8px",
+            height: "8px",
+            backgroundColor: "#f97316",
+            borderRadius: "50%",
+            border: "1px solid white",
+          }}
+          title="一部仮削除状態"
+        />
+      )}
+
+      {/* 年表所属インジケーター */}
+      {displayInfo.hasTimelineInfo && temporaryStatus !== "temporary" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-1px",
+            right: "-1px",
+            width: "6px",
+            height: "6px",
+            backgroundColor: colors.borderColor,
+            borderRadius: "50%",
+            border: "1px solid white",
+          }}
+        />
+      )}
+
+      {/* ドラッグ中インジケーター */}
+      {isDragging && (
+        <div
+          style={{
+            position: "absolute",
+            inset: "-2px",
+            border: "2px solid #3b82f6",
+            borderRadius: "8px",
+            pointerEvents: "none",
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -1,24 +1,17 @@
-// src/components/tabs/VisualTab.js - ドラッグ統合・timelineInfos対応版
+// src/components/tabs/VisualTab.js - 軽量・単純ドラッグ版（パン競合あり）
 import React, { useRef, useCallback, useState, useMemo } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
 import { EventCard } from "../ui/EventCard";
 import { EventModal } from "../modals/EventModal";
 import TimelineModal from "../modals/TimelineModal";
-import { SmoothLines } from "../ui/SmoothLines";
-import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
-
-import { useCoordinate } from "../../hooks/useCoordinate";
-import { useDragDrop } from "../../hooks/useDragDrop";
-import { UnifiedLayoutSystem } from "../../utils/groupLayoutSystem";
 import { YearMarkers } from "../ui/YearMarkers";
 import { TimelineAxes } from "../ui/TimelineAxes";
 
+import { useCoordinate } from "../../hooks/useCoordinate";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
 
 import { FloatingUI } from "../ui/FloatingUI";
-import { TimelineView } from "../views/TimelineView";
-import { NetworkView } from "../views/NetworkView";
 
 const VisualTab = ({
   // データ
@@ -27,7 +20,7 @@ const VisualTab = ({
   tempTimelines = [],
   user,
   isWikiMode,
-  viewMode = "timeline", // timeline | network
+  viewMode = "timeline",
 
   // App.jsからの操作関数
   onEventUpdate,
@@ -61,10 +54,15 @@ const VisualTab = ({
   const timelineRef = useRef(null);
   const isNetworkMode = viewMode === "network";
 
-  // グループ状態管理
-  const [expandedGroups, setExpandedGroups] = useState(new Set());
+  // 単純なドラッグ状態管理
+  const [dragState, setDragState] = useState({
+    isDragging: false,
+    draggedEvent: null,
+    startY: 0,
+    currentY: 0,
+  });
 
-  // 座標システム（統合されたuseCoordinate）
+  // 座標システム
   const coordinates = useCoordinate(timelineRef);
   const {
     scale,
@@ -77,288 +75,13 @@ const VisualTab = ({
     resetToInitialPosition,
   } = coordinates;
 
-  // ドラッグ処理のコールバック関数群
-  const handleEventMove = useCallback((eventId, newY, conflictingEvents) => {
-    console.log(`イベント移動: ${eventId} を Y=${newY} に移動`);
-    // メインタイムラインでの位置調整ロジック
-    const targetEvent = events.find(e => e.id === eventId);
-    if (targetEvent && onEventUpdate) {
-      const updatedEvent = {
-        ...targetEvent,
-        adjustedPosition: {
-          ...targetEvent.adjustedPosition,
-          y: newY
-        }
-      };
-      onEventUpdate(updatedEvent);
-    }
-  }, [events, onEventUpdate]);
-
-  const handleTimelineMove = useCallback((timelineId, newPosition) => {
-    console.log(`年表移動: ${timelineId}`);
-    // 年表移動処理（必要に応じて実装）
-  }, []);
-
-  const handleEventAddToTimeline = useCallback((event, timelineId) => {
-    console.log(`仮登録処理: イベント「${event.title}」を年表ID「${timelineId}」に仮登録`);
-    
-    if (!onEventUpdate) return;
-
-    const updatedTimelineInfos = [...(event.timelineInfos || [])];
-    const existingIndex = updatedTimelineInfos.findIndex(
-      (info) => info.timelineId === timelineId
-    );
-
-    if (existingIndex >= 0) {
-      // 既存の関連を正式登録に変更（仮削除→正式登録）
-      updatedTimelineInfos[existingIndex] = {
-        ...updatedTimelineInfos[existingIndex],
-        isTemporary: false,
-      };
-      console.log(`既存関連を正式登録に変更: ${event.title}`);
-    } else {
-      // 新規仮登録
-      updatedTimelineInfos.push({
-        timelineId: timelineId,
-        isTemporary: false, // 仮登録ではなく正式登録として追加
-      });
-      console.log(`新規登録: ${event.title} を年表に追加`);
-    }
-
-    const updatedEvent = {
-      ...event,
-      timelineInfos: updatedTimelineInfos,
-    };
-
-    onEventUpdate(updatedEvent);
-  }, [onEventUpdate]);
-
-  const handleEventRemoveFromTimeline = useCallback((timelineId, eventId) => {
-    console.log(`仮削除処理: イベントID「${eventId}」を年表ID「${timelineId}」から仮削除`);
-    
-    if (!onEventUpdate) return;
-
-    const targetEvent = events.find(e => e.id === eventId);
-    if (!targetEvent) return;
-
-    if (targetEvent.timelineInfos && targetEvent.timelineInfos.length > 0) {
-      // timelineInfos方式: 該当する年表情報を仮削除状態に変更
-      const updatedTimelineInfos = targetEvent.timelineInfos.map((info) => {
-        if (info.timelineId === timelineId) {
-          return { ...info, isTemporary: true };
-        }
-        return info;
-      });
-
-      const updatedEvent = {
-        ...targetEvent,
-        timelineInfos: updatedTimelineInfos,
-      };
-
-      onEventUpdate(updatedEvent);
-      console.log(`timelineInfos方式で仮削除: ${targetEvent.title}`);
-    }
-  }, [events, onEventUpdate]);
-
-  // 統合ドラッグシステム
-  const dragSystem = useDragDrop(
-    handleEventMove,
-    handleTimelineMove,
-    handleEventAddToTimeline,
-    handleEventRemoveFromTimeline
-  );
-  // EventCard用のドラッグ開始ハンドラー
-  const handleDragStart = useCallback((e, dragType, dragData) => {
-    console.log("EventCard → VisualTab ドラッグ開始:", dragData.title);
-    
-    // 既存のuseDragDropシステムを使用
-    dragSystem.handleMouseDown(e, dragType, dragData);
-  }, [dragSystem]);
-
-  const handleDragEnd = useCallback((e) => {
-    if (!dragState.isDragging || !dragState.draggedEvent) return;
-
-    const dropY = e.clientY;
-    console.log("ドロップ位置 Y:", dropY);
-
-    // 年表軸との重なりをチェック
-    let targetTimeline = null;
-
-    if (timelineAxes && timelineAxes.length > 0) {
-      targetTimeline = timelineAxes.find((axis) => {
-        const headerOffset = 64;
-        const axisScreenY = axis.yPosition + panY + headerOffset;
-        const dropZoneTop = axisScreenY - 40;
-        const dropZoneBottom = axisScreenY + 40;
-        return dropY >= dropZoneTop && dropY <= dropZoneBottom;
-      });
-    }
-
-    const draggedEvent = dragState.draggedEvent;
-
-    if (targetTimeline) {
-      // 年表エリアにドロップ：仮登録
-      console.log(`イベント「${draggedEvent.title}」を年表「${targetTimeline.name}」に仮登録`);
-
-      const updatedTimelineInfos = [...(draggedEvent.timelineInfos || [])];
-      const existingIndex = updatedTimelineInfos.findIndex(
-        (info) => info.timelineId === targetTimeline.id
-      );
-
-      if (existingIndex >= 0) {
-        updatedTimelineInfos[existingIndex] = {
-          ...updatedTimelineInfos[existingIndex],
-          isTemporary: false,
-        };
-      } else {
-        updatedTimelineInfos.push({
-          timelineId: targetTimeline.id,
-          isTemporary: false,
-        });
-      }
-
-      const updatedEvent = {
-        ...draggedEvent,
-        timelineInfos: updatedTimelineInfos,
-      };
-
-      if (onEventUpdate) {
-        onEventUpdate(updatedEvent);
-      }
-    } else {
-      // 年表エリア外にドロップ：仮削除処理
-      if (draggedEvent.timelineInfos && draggedEvent.timelineInfos.length > 0) {
-        console.log(`イベント「${draggedEvent.title}」を仮削除状態に変更`);
-
-        const updatedTimelineInfos = draggedEvent.timelineInfos.map((info) => ({
-          ...info,
-          isTemporary: true,
-        }));
-
-        const updatedEvent = {
-          ...draggedEvent,
-          timelineInfos: updatedTimelineInfos,
-        };
-
-        if (onEventUpdate) {
-          onEventUpdate(updatedEvent);
-        }
-      }
-    }
-
-    // ドラッグ状態リセット
-    setDragState({
-      isDragging: false,
-      draggedEvent: null,
-      startPosition: { x: 0, y: 0 },
-      currentPosition: { x: 0, y: 0 },
-    });
-
-    document.body.style.cursor = "default";
-  }, [dragState, timelineAxes, panY, onEventUpdate]);
-  const handleEventMove = useCallback((eventId, newY, conflictingEvents) => {
-    console.log(`イベント移動: ${eventId} を Y=${newY} に移動`);
-    // メインタイムラインでの位置調整ロジック
-    const targetEvent = events.find(e => e.id === eventId);
-    if (targetEvent && onEventUpdate) {
-      const updatedEvent = {
-        ...targetEvent,
-        adjustedPosition: {
-          ...targetEvent.adjustedPosition,
-          y: newY
-        }
-      };
-      onEventUpdate(updatedEvent);
-    }
-  }, [events, onEventUpdate]);
-
-  const handleTimelineMove = useCallback((timelineId, newPosition) => {
-    console.log(`年表移動: ${timelineId}`);
-    // 年表移動処理（必要に応じて実装）
-  }, []);
-
-  const handleEventAddToTimeline = useCallback((event, timelineId) => {
-    console.log(`仮登録処理: イベント「${event.title}」を年表ID「${timelineId}」に仮登録`);
-    
-    if (!onEventUpdate) return;
-
-    const updatedTimelineInfos = [...(event.timelineInfos || [])];
-    const existingIndex = updatedTimelineInfos.findIndex(
-      (info) => info.timelineId === timelineId
-    );
-
-    if (existingIndex >= 0) {
-      // 既存の関連を正式登録に変更（仮削除→正式登録）
-      updatedTimelineInfos[existingIndex] = {
-        ...updatedTimelineInfos[existingIndex],
-        isTemporary: false,
-      };
-      console.log(`既存関連を正式登録に変更: ${event.title}`);
-    } else {
-      // 新規仮登録
-      updatedTimelineInfos.push({
-        timelineId: timelineId,
-        isTemporary: false, // 仮登録ではなく正式登録として追加
-      });
-      console.log(`新規登録: ${event.title} を年表に追加`);
-    }
-
-    const updatedEvent = {
-      ...event,
-      timelineInfos: updatedTimelineInfos,
-    };
-
-    onEventUpdate(updatedEvent);
-  }, [onEventUpdate]);
-
-  const handleEventRemoveFromTimeline = useCallback((timelineId, eventId) => {
-    console.log(`仮削除処理: イベントID「${eventId}」を年表ID「${timelineId}」から仮削除`);
-    
-    if (!onEventUpdate) return;
-
-    const targetEvent = events.find(e => e.id === eventId);
-    if (!targetEvent) return;
-
-    if (targetEvent.timelineInfos && targetEvent.timelineInfos.length > 0) {
-      // timelineInfos方式: 該当する年表情報を仮削除状態に変更
-      const updatedTimelineInfos = targetEvent.timelineInfos.map((info) => {
-        if (info.timelineId === timelineId) {
-          return { ...info, isTemporary: true };
-        }
-        return info;
-      });
-
-      const updatedEvent = {
-        ...targetEvent,
-        timelineInfos: updatedTimelineInfos,
-      };
-
-      onEventUpdate(updatedEvent);
-      console.log(`timelineInfos方式で仮削除: ${targetEvent.title}`);
-    }
-  }, [events, onEventUpdate]);
-
-  // 統合ドラッグシステム
-  const dragSystem = useDragDrop(
-    handleEventMove,
-    handleTimelineMove,
-    handleEventAddToTimeline,
-    handleEventRemoveFromTimeline
-  );
-
-  // テキスト幅計算
+  // 軽量テキスト幅計算
   const calculateTextWidth = useCallback((text) => {
     if (!text) return 60;
     return Math.min(Math.max(60, text.length * 8), 200);
   }, []);
 
-  // 統合レイアウトシステムのインスタンス化
-  const layoutManager = useMemo(() => {
-    if (!coordinates || !calculateTextWidth) return null;
-    return new UnifiedLayoutSystem(coordinates, calculateTextWidth);
-  }, [coordinates, calculateTextWidth]);
-
-  // 表示用の統合年表データ
+  // 表示用年表データ（軽量版）
   const displayTimelines = useMemo(() => {
     if (isWikiMode) {
       const convertedTempTimelines = tempTimelines.map((tempTimeline) => ({
@@ -371,71 +94,58 @@ const VisualTab = ({
     return timelines;
   }, [isWikiMode, timelines, tempTimelines]);
 
-  // 年マーカー生成
+  // 軽量年マーカー生成（再計算を大幅削減）
   const yearMarkers = useMemo(() => {
     if (!getXFromYear) return [];
 
     const markers = [];
     const viewportWidth = window.innerWidth;
-
-    // スケールに応じた年間隔
+    
+    // スケール判定を単純化（小数点計算を削除）
     let yearInterval;
-    const adjustedScale = scale / 2.5;
+    if (scale > 2) yearInterval = 10;
+    else if (scale > 1) yearInterval = 50; 
+    else if (scale > 0.5) yearInterval = 100;
+    else yearInterval = 500;
 
-    if (adjustedScale > 12) yearInterval = 1;
-    else if (adjustedScale > 6) yearInterval = 2;
-    else if (adjustedScale > 2) yearInterval = 5;
-    else if (adjustedScale > 0.8) yearInterval = 10;
-    else if (adjustedScale > 0.4) yearInterval = 50;
-    else if (adjustedScale > 0.2) yearInterval = 100;
-    else if (adjustedScale > 0.1) yearInterval = 200;
-    else if (adjustedScale > 0.04) yearInterval = 500;
-    else yearInterval = 1000;
+    // 範囲を制限してループ回数削減
+    const startYear = Math.floor(-2000 / yearInterval) * yearInterval;
+    const endYear = Math.ceil(3000 / yearInterval) * yearInterval;
 
-    for (let year = -5000; year <= 5000; year += yearInterval) {
+    for (let year = startYear; year <= endYear; year += yearInterval) {
       const x = getXFromYear(year);
-      if (x > -100 && x < viewportWidth + 100) {
+      if (x > -200 && x < viewportWidth + 200) {
         markers.push({
           key: year,
-          x,
+          x: Math.round(x), // 小数点計算削除
           year,
-          fontSize: Math.max(8, Math.min(14, 10 + adjustedScale)),
+          fontSize: Math.round(10 + scale), // 小数点計算削除
         });
       }
+      
+      // マーカー数制限（パフォーマンス保護）
+      if (markers.length > 30) break;
     }
     return markers;
-  }, [scale, getXFromYear]);
+  }, [scale, getXFromYear]); // 不要な依存関係削除
 
-  // 年表軸計算（範囲限定対応）
+  // 軽量年表軸計算
   const timelineAxes = useMemo(() => {
     if (!getXFromYear) return [];
 
-    const visibleTimelines = displayTimelines.filter(
-      (t) => t.isVisible !== false
-    );
+    const visibleTimelines = displayTimelines.filter((t) => t.isVisible !== false);
     const axes = [];
 
     visibleTimelines.forEach((timeline, index) => {
-      // 年表に属するイベントを検索
+      // イベント範囲の簡単な計算
+      let minYear = 2020, maxYear = 2025;
+      
       const timelineEvents = events.filter((event) => {
-        // timelineInfos方式
-        if (
-          event.timelineInfos?.some(
-            (info) => info.timelineId === timeline.id && !info.isTemporary
-          )
-        ) {
-          return true;
-        }
-        // eventIds方式
-        if (timeline.eventIds?.includes(event.id)) {
-          return true;
-        }
-        return false;
+        return event.timelineInfos?.some(
+          (info) => info.timelineId === timeline.id && !info.isTemporary
+        ) || timeline.eventIds?.includes(event.id);
       });
 
-      // 年範囲計算（イベントの実際の範囲を使用）
-      let minYear = 2020,
-        maxYear = 2025;
       if (timelineEvents.length > 0) {
         const years = timelineEvents
           .map((e) => e.startDate?.getFullYear?.())
@@ -446,349 +156,235 @@ const VisualTab = ({
         }
       }
 
-      // 座標計算（25%位置基準）
       const startX = getXFromYear(minYear);
       const endX = getXFromYear(maxYear);
-      const yPosition =
-        TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
+      const yPosition = TIMELINE_CONFIG.FIRST_ROW_Y() + index * TIMELINE_CONFIG.ROW_HEIGHT;
 
       axes.push({
         id: timeline.id,
         name: timeline.name,
         color: timeline.color || "#6b7280",
         yPosition,
-        startX, // 軸線の開始点（イベント範囲）
-        endX, // 軸線の終了点（イベント範囲）
+        startX,
+        endX,
         cardX: Math.max(20, startX - 150),
         eventCount: timelineEvents.length,
         timeline,
       });
     });
 
-    console.log(`年表軸計算完了（25%位置・範囲限定）: ${axes.length}軸`);
     return axes;
   }, [displayTimelines, events, getXFromYear]);
 
-  // 統合レイアウトシステムによるイベント配置計算
-  const layoutEventsWithGroups = useMemo(() => {
-    if (!events || !layoutManager || !timelineAxes) {
-      return { allEvents: [], eventGroups: [] };
-    }
+  // 軽量イベントレイアウト（計算量大幅削減）
+  const layoutEvents = useMemo(() => {
+    if (!events || events.length === 0) return [];
 
-    try {
-      const layoutResult = layoutManager.executeLayout(events, timelineAxes);
+    const results = [];
+    
+    // メインタイムライン処理（軽量化）
+    const mainEvents = events.filter(event => 
+      !event.timelineInfos || event.timelineInfos.length === 0
+    );
 
-      console.log(
-        `統合レイアウト結果（25%位置）: ${layoutResult.allEvents.length}イベント, ${layoutResult.eventGroups.length}グループ`
+    // 簡単な配置システム（重複計算削除）
+    const occupiedY = new Set(); // Y座標の占有状況をSetで高速化
+    
+    mainEvents.forEach((event, index) => {
+      const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+      const eventWidth = Math.min(150, event.title?.length * 8 + 20); // 計算簡素化
+      
+      // 簡単なY配置（重い計算削除）
+      let finalY = window.innerHeight * 0.25;
+      let level = 0;
+      
+      while (level < 5 && occupiedY.has(finalY)) { // 最大5段まで
+        level++;
+        finalY = window.innerHeight * 0.25 - (level * 50);
+      }
+      occupiedY.add(finalY);
+
+      results.push({
+        ...event,
+        adjustedPosition: { x: eventX, y: finalY },
+        calculatedWidth: eventWidth,
+        calculatedHeight: 40,
+        timelineColor: '#6b7280',
+        hiddenByGroup: false,
+      });
+    });
+
+    // 年表イベント処理（軽量化）
+    timelineAxes.forEach((axis) => {
+      const timelineEvents = events.filter(event => 
+        event.timelineInfos?.some(info => 
+          info.timelineId === axis.id && !info.isTemporary
+        )
       );
-      layoutResult.eventGroups.forEach((group) => {
-        console.log(
-          `グループ ${group.id}: 位置(${group.position.x.toFixed(0)}, ${
-            group.position.y
-          }) 色=${group.timelineColor} ${group.events.length}イベント`
-        );
-      });
 
-      return layoutResult;
-    } catch (error) {
-      console.error("レイアウト計算エラー:", error);
-      return { allEvents: [], eventGroups: [] };
-    }
-  }, [events, timelineAxes, layoutManager]);
+      timelineEvents.forEach((event, index) => {
+        const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+        const eventWidth = Math.min(150, event.title?.length * 8 + 20);
+        const eventY = axis.yPosition + 20;
 
-  // ネットワーク専用レイアウト計算
-  const networkLayout = useMemo(() => {
-    if (!isNetworkMode) return { events: [], connections: [] };
-
-    console.log("ネットワークレイアウト計算開始（25%位置対応）");
-    const networkEvents = [];
-    const viewportHeight = window.innerHeight;
-    const viewportWidth = window.innerWidth;
-
-    // 各年表の中心Y座標を計算（25%基準）
-    const timelinePositions = displayTimelines
-      .filter((t) => t.isVisible !== false)
-      .map((timeline, index) => {
-        const centerY =
-          viewportHeight * 0.15 + (index + 1) * (viewportHeight * 0.15);
-        return {
-          id: timeline.id,
-          name: timeline.name,
-          color: timeline.color || "#6b7280",
-          centerY: Math.min(centerY, viewportHeight * 0.8),
-          timeline,
-        };
-      });
-
-    // 年表ごとにイベントを配置
-    timelinePositions.forEach((timelinePos, timelineIndex) => {
-      const timelineEvents = events.filter((event) => {
-        return (
-          event.timelineInfos?.some(
-            (info) => info.timelineId === timelinePos.id && !info.isTemporary
-          ) || timelinePos.timeline.eventIds?.includes(event.id)
-        );
-      });
-
-      if (timelineEvents.length === 0) return;
-
-      // 時系列順にソート
-      const sortedEvents = [...timelineEvents].sort((a, b) => {
-        const aYear = a.startDate ? a.startDate.getFullYear() : 0;
-        const bYear = b.startDate ? b.startDate.getFullYear() : 0;
-        return aYear - bYear;
-      });
-
-      // イベントをY軸周りに配置（円弧状に分散）
-      sortedEvents.forEach((event, eventIndex) => {
-        const eventX = event.startDate
-          ? getXFromYear(event.startDate.getFullYear())
-          : viewportWidth / 2;
-
-        // ネットワーク専用のY座標計算（年表中心から放射状に配置）
-        const angleRange = Math.PI * 0.6; // 約108度の範囲
-        const startAngle = -angleRange / 2;
-        const angle =
-          sortedEvents.length > 1
-            ? startAngle + (eventIndex / (sortedEvents.length - 1)) * angleRange
-            : 0;
-
-        const radiusVariation = 40 + (eventIndex % 3) * 20; // 半径のバリエーション
-        const eventY = timelinePos.centerY + Math.sin(angle) * radiusVariation;
-
-        networkEvents.push({
+        results.push({
           ...event,
-          adjustedPosition: {
-            x: eventX,
-            y: Math.max(50, Math.min(eventY, viewportHeight - 100)),
-          },
-          calculatedWidth: calculateTextWidth(event.title || "") + 20,
+          adjustedPosition: { x: eventX, y: eventY },
+          calculatedWidth: eventWidth,
           calculatedHeight: 40,
-          timelineColor: timelinePos.color,
-          timelineInfo: {
-            timelineId: timelinePos.id,
-            timelineName: timelinePos.name,
-            timelineColor: timelinePos.color,
-            networkPosition: { angle, radius: radiusVariation },
-          },
+          timelineColor: axis.color,
           hiddenByGroup: false,
+          timelineInfo: {
+            timelineId: axis.id,
+            timelineName: axis.name,
+            timelineColor: axis.color,
+          }
         });
       });
-
-      console.log(
-        `年表「${timelinePos.name}」: ${timelineEvents.length}イベントをネットワーク配置`
-      );
     });
 
-    return { events: networkEvents, timelinePositions };
-  }, [
-    isNetworkMode,
-    events,
-    displayTimelines,
-    getXFromYear,
-    calculateTextWidth,
-  ]);
+    return results;
+  }, [events, timelineAxes, getXFromYear]); // 不要な依存関係削除
 
-  // レイアウト選択（タイムライン or ネットワーク）
-  const currentLayout = useMemo(() => {
-    if (isNetworkMode) {
-      return {
-        allEvents: networkLayout.events,
-        eventGroups: [], // ネットワークモードではグループ化しない
-      };
-    }
-    return layoutEventsWithGroups;
-  }, [isNetworkMode, networkLayout, layoutEventsWithGroups]);
-
-  // ネットワーク接続線データ生成（修正版）
-  const networkConnections = useMemo(() => {
-    if (!isNetworkMode) return [];
-
-    const connections = [];
-    console.log("ネットワークモード: 接続線生成開始");
-
-    // ネットワークレイアウトのイベントから接続線を生成
-    if (networkLayout.timelinePositions) {
-      networkLayout.timelinePositions.forEach((timelinePos) => {
-        const timelineEvents = networkLayout.events.filter(
-          (event) => event.timelineInfo?.timelineId === timelinePos.id
-        );
-
-        console.log(
-          `年表「${timelinePos.name}」: ${timelineEvents.length}個の接続可能イベント`
-        );
-
-        if (timelineEvents.length >= 2) {
-          // イベントを時系列順にソート
-          const sortedEvents = [...timelineEvents].sort((a, b) => {
-            const aYear = a.startDate ? a.startDate.getFullYear() : 0;
-            const bYear = b.startDate ? b.startDate.getFullYear() : 0;
-            return aYear - bYear;
-          });
-
-          // ネットワーク用の接続ポイント生成
-          const connectionPoints = sortedEvents.map((event) => ({
-            x: event.adjustedPosition.x,
-            y: event.adjustedPosition.y, // panYは後でSmoothLinesで適用される
-          }));
-
-          connections.push({
-            id: timelinePos.id,
-            name: timelinePos.name,
-            color: timelinePos.color,
-            points: connectionPoints,
-          });
-
-          console.log(`  → 接続線追加: ${connectionPoints.length}ポイント`);
-        }
-      });
-    }
-
-    console.log(`ネットワーク接続線生成完了: ${connections.length}本の接続線`);
-    return connections;
-  }, [isNetworkMode, networkLayout]);
-
-  // グループ管理
-  const toggleEventGroup = useCallback((groupId) => {
-    setExpandedGroups((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(groupId)) {
-        newSet.delete(groupId);
-      } else {
-        newSet.add(groupId);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // イベントハンドラー
-  const handleEventDoubleClick = useCallback(
-    (event) => {
-      if (dragSystem.isDragging) return;
-      console.log("VisualTab: Event double click:", event.title);
-
-      // イベントの正規化
-      const normalizedEvent = {
-        ...event,
-        id: event.id || `temp-${Date.now()}`,
-        title: event.title || "新規イベント",
-        description: event.description || "",
-        startDate: event.startDate || new Date(),
-        endDate: event.endDate || null,
-        tags: event.tags || [],
-        timelineInfos: event.timelineInfos || [],
-      };
-
-      if (onEventClick) {
-        onEventClick(normalizedEvent);
-      }
-    },
-    [onEventClick, dragSystem.isDragging]
-  );
-
-  // ドラッグ開始ハンドラー（EventCard用）
-  const handleEventDragStart = useCallback((e, dragData) => {
-    console.log("統合ドラッグ開始:", dragData.title);
+  // 単純ドラッグ開始
+  const handleEventDragStart = useCallback((e, event) => {
+    console.log("単純ドラッグ開始:", event.title);
     
-    // useDragDropのhandleMouseDownを呼び出し
-    dragSystem.handleMouseDown(e, 'event', dragData);
+    setDragState({
+      isDragging: true,
+      draggedEvent: event,
+      startY: e.clientY,
+      currentY: e.clientY,
+    });
 
-    // ドラッグ中のマウス移動を監視
+    document.body.style.cursor = "grabbing";
+
     const handleMouseMove = (moveEvent) => {
-      dragSystem.handleMouseMove(moveEvent);
+      setDragState(prev => ({
+        ...prev,
+        currentY: moveEvent.clientY,
+      }));
     };
 
-    // ドラッグ終了
     const handleMouseUp = (upEvent) => {
-      dragSystem.handleMouseUp(upEvent, timelineAxes);
+      const dropY = upEvent.clientY;
+      let targetTimeline = null;
+
+      // 年表判定（単純版）
+      if (timelineAxes) {
+        targetTimeline = timelineAxes.find(axis => {
+          const axisScreenY = axis.yPosition + panY + 64;
+          return Math.abs(dropY - axisScreenY) < 50;
+        });
+      }
+
+      if (targetTimeline && onEventUpdate) {
+        // 年表に追加
+        console.log(`イベント「${event.title}」を年表「${targetTimeline.name}」に追加`);
+        
+        const updatedTimelineInfos = [...(event.timelineInfos || [])];
+        const existingIndex = updatedTimelineInfos.findIndex(
+          info => info.timelineId === targetTimeline.id
+        );
+
+        if (existingIndex >= 0) {
+          updatedTimelineInfos[existingIndex] = {
+            ...updatedTimelineInfos[existingIndex],
+            isTemporary: false,
+          };
+        } else {
+          updatedTimelineInfos.push({
+            timelineId: targetTimeline.id,
+            isTemporary: false,
+          });
+        }
+
+        onEventUpdate({
+          ...event,
+          timelineInfos: updatedTimelineInfos,
+        });
+      }
+
+      // ドラッグ終了
+      setDragState({
+        isDragging: false,
+        draggedEvent: null,
+        startY: 0,
+        currentY: 0,
+      });
+      
+      document.body.style.cursor = "default";
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
-  }, [dragSystem, timelineAxes]);
+  }, [timelineAxes, panY, onEventUpdate]);
 
-  const handleAddEventAtPosition = useCallback(
-    (clientX, clientY) => {
-      if (isWikiMode) {
-        alert(
-          "Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。"
-        );
-        return;
+  // イベントハンドラー
+  const handleEventDoubleClick = useCallback((event) => {
+    if (dragState.isDragging) return;
+    
+    const normalizedEvent = {
+      ...event,
+      id: event.id || `temp-${Date.now()}`,
+      title: event.title || "新規イベント",
+      description: event.description || "",
+      startDate: event.startDate || new Date(),
+      endDate: event.endDate || null,
+      tags: event.tags || [],
+      timelineInfos: event.timelineInfos || [],
+    };
+
+    if (onEventClick) {
+      onEventClick(normalizedEvent);
+    }
+  }, [onEventClick, dragState.isDragging]);
+
+  const handleAddEventAtPosition = useCallback((clientX, clientY) => {
+    if (isWikiMode) {
+      alert("Wikiモードでのイベント追加は承認が必要です。イベント編集タブから申請してください。");
+      return;
+    }
+
+    if (onAddEvent && getYearFromX && timelineRef.current) {
+      const rect = timelineRef.current.getBoundingClientRect();
+      const relativeX = clientX - rect.left;
+      const clickedYear = Math.round(getYearFromX(relativeX));
+      
+      const eventDate = new Date();
+      eventDate.setFullYear(clickedYear);
+
+      onAddEvent({
+        title: "新規イベント",
+        startDate: eventDate,
+        description: "",
+        tags: [],
+        position: { x: relativeX, y: clientY - rect.top },
+      });
+    }
+  }, [onAddEvent, getYearFromX, isWikiMode]);
+
+  const handleTimelineDoubleClick = useCallback((e) => {
+    if (!e.target.closest("[data-event-id]")) {
+      handleAddEventAtPosition(e.clientX, e.clientY);
+    }
+  }, [handleAddEventAtPosition]);
+
+  const handleCreateTimeline = useCallback((timelineName) => {
+    const finalTimelineName = timelineName || searchTerm.trim() || "新しい年表";
+
+    if (isWikiMode) {
+      if (onCreateTempTimeline) {
+        onCreateTempTimeline(finalTimelineName);
       }
-
-      if (onAddEvent && getYearFromX && timelineRef.current) {
-        const rect = timelineRef.current.getBoundingClientRect();
-        const relativeX = clientX - rect.left;
-        const relativeY = clientY - rect.top;
-
-        // クリック座標から年を計算
-        const clickedYear = Math.round(getYearFromX(relativeX));
-
-        // 新しいイベントの日付を設定
-        const eventDate = new Date();
-        eventDate.setFullYear(clickedYear);
-
-        onAddEvent({
-          title: "新規イベント",
-          startDate: eventDate,
-          description: "",
-          tags: [],
-          position: { x: relativeX, y: relativeY },
-        });
-
-        console.log(
-          `座標 (${relativeX}, ${relativeY}) に ${clickedYear} 年のイベントを追加`
-        );
+    } else {
+      if (onCreateTimeline) {
+        onCreateTimeline(finalTimelineName);
       }
-    },
-    [onAddEvent, getYearFromX, isWikiMode]
-  );
-
-  const handleTimelineDoubleClick = useCallback(
-    (e) => {
-      // イベントやグループ以外の場所でのダブルクリック
-      if (
-        !e.target.closest("[data-event-id]") &&
-        !e.target.closest("[data-group-id]")
-      ) {
-        handleAddEventAtPosition(e.clientX, e.clientY);
-      }
-    },
-    [handleAddEventAtPosition]
-  );
-
-  const handleCreateTimeline = useCallback(
-    (timelineName) => {
-      // 引数で年表名を受け取る、またはsearchTermから自動設定
-      const finalTimelineName =
-        timelineName || searchTerm.trim() || "新しい年表";
-
-      if (isWikiMode) {
-        if (onCreateTempTimeline) {
-          onCreateTempTimeline(finalTimelineName);
-        }
-      } else {
-        if (onCreateTimeline) {
-          onCreateTimeline(finalTimelineName);
-        }
-      }
-    },
-    [onCreateTimeline, onCreateTempTimeline, isWikiMode, searchTerm]
-  );
-
-  console.log(`VisualTab ${isNetworkMode ? "Network" : "Timeline"} render:`, {
-    events: events?.length || 0,
-    timelines: displayTimelines?.length || 0,
-    layoutEvents: layoutEventsWithGroups.allEvents?.length || 0,
-    eventGroups: layoutEventsWithGroups.eventGroups?.length || 0,
-    expandedGroups: expandedGroups.size,
-    connections: networkConnections?.length || 0,
-    scale: scale?.toFixed(2),
-    position: "25%基準",
-    dragSystem: dragSystem.isDragging ? "ドラッグ中" : "待機中",
-  });
+    }
+  }, [onCreateTimeline, onCreateTempTimeline, isWikiMode, searchTerm]);
 
   return (
     <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
@@ -804,7 +400,13 @@ const VisualTab = ({
           backgroundColor: "#f8fafc",
         }}
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
+        onMouseDown={(e) => {
+          // EventCardまたはno-panクラスの要素ではパン操作をスキップ
+          if (e.target.closest('[data-event-id]') || e.target.closest('.no-pan')) {
+            return;
+          }
+          handleMouseDown(e);
+        }}
         onDoubleClick={handleTimelineDoubleClick}
       >
         {/* 年マーカー */}
@@ -823,46 +425,47 @@ const VisualTab = ({
           }}
         />
 
-        {/* viewModeに応じて描画コンポーネントを切り替え */}
-        {isNetworkMode ? (
-          <NetworkView
-            networkLayout={networkLayout}
-            networkConnections={networkConnections}
-            panY={panY}
-            highlightedEvents={highlightedEvents || []}
-            onTimelineClick={onTimelineClick}
-            handleEventDoubleClick={handleEventDoubleClick}
-            calculateTextWidth={calculateTextWidth}
-            // ドラッグ統合
-            onDragStart={handleDragStart}
-            isDragging={dragSystem.isDragging}
-          />
-        ) : (
-          <>
-            <TimelineAxes
-              axes={timelineAxes}
-              displayTimelines={displayTimelines}
-              panY={panY}
-              onTimelineClick={onTimelineClick}
-              onDeleteTempTimeline={onDeleteTempTimeline}
-              onDeleteTimeline={onDeleteTimeline}
-            />
-            <TimelineView
-              layoutData={layoutEventsWithGroups}
-              panY={panY}
-              highlightedEvents={highlightedEvents || []}
-              hoveredGroup={hoveredGroup}
-              expandedGroups={expandedGroups}
-              setHoveredGroup={setHoveredGroup}
-              toggleEventGroup={toggleEventGroup}
-              handleEventDoubleClick={handleEventDoubleClick}
-              calculateTextWidth={calculateTextWidth}
-              // ドラッグ統合
-              onDragStart={handleDragStart}
-              isDragging={dragSystem.isDragging}
-            />
-          </>
-        )}
+        {/* 年表軸 */}
+        <TimelineAxes
+          axes={timelineAxes}
+          displayTimelines={displayTimelines}
+          panY={panY}
+          onTimelineClick={onTimelineClick}
+          onDeleteTempTimeline={onDeleteTempTimeline}
+          onDeleteTimeline={onDeleteTimeline}
+        />
+
+        {/* イベントカード（軽量レンダリング） */}
+        {layoutEvents.map((event) => {
+          const isHighlighted = highlightedEvents.has ? highlightedEvents.has(event.id) : 
+            (Array.isArray(highlightedEvents) ? highlightedEvents.includes(event.id) : false);
+          
+          return (
+            <div
+              key={event.id}
+              style={{
+                position: "absolute",
+                left: `${event.adjustedPosition.x - event.calculatedWidth / 2}px`,
+                top: `${event.adjustedPosition.y + panY}px`,
+                zIndex: dragState.draggedEvent?.id === event.id ? 1000 : 10,
+              }}
+            >
+              <EventCard
+                event={event}
+                isHighlighted={isHighlighted}
+                onDoubleClick={() => handleEventDoubleClick(event)}
+                onDragStart={(e) => handleEventDragStart(e, event)}
+                isDragging={dragState.draggedEvent?.id === event.id}
+                calculateTextWidth={calculateTextWidth}
+                style={{
+                  transform: dragState.draggedEvent?.id === event.id 
+                    ? `translateY(${dragState.currentY - dragState.startY}px)`
+                    : 'none'
+                }}
+              />
+            </div>
+          );
+        })}
 
         {/* 現在線 */}
         <div
@@ -909,7 +512,7 @@ const VisualTab = ({
         handleAddEventAtPosition={handleAddEventAtPosition}
       />
 
-      {/* モーダル（App.jsで管理） */}
+      {/* モーダル */}
       {selectedEvent && (
         <EventModal
           event={selectedEvent}
