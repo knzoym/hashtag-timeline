@@ -1,4 +1,4 @@
-// src/components/tabs/VisualTab.js - 仮状態配置完全修正版
+// src/components/tabs/VisualTab.js - NetworkView統合版
 import React, { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import SearchPanel from "../ui/SearchPanel";
 import { TimelineCard } from "../ui/TimelineCard";
@@ -9,6 +9,7 @@ import { YearMarkers } from "../ui/YearMarkers";
 import { TimelineAxes } from "../ui/TimelineAxes";
 import { DropZoneManager } from "../ui/DropZone";
 import { EventGroupIcon, GroupTooltip, GroupCard } from "../ui/EventGroup";
+import { NetworkView } from "../views/NetworkView"; // 追加
 
 import { useCoordinate } from "../../hooks/useCoordinate";
 import { TIMELINE_CONFIG } from "../../constants/timelineConfig";
@@ -43,7 +44,8 @@ const VisualTab = ({
   tempTimelines = [],
   user,
   isWikiMode,
-  viewMode = "timeline",
+  viewMode = "timeline", // TabSystemから渡される: "timeline" または "network"
+  visualMode, // 後方互換性のため
 
   // App.jsからの操作関数
   onEventUpdate,
@@ -75,7 +77,12 @@ const VisualTab = ({
   showPendingEvents = false,
 }) => {
   const timelineRef = useRef(null);
-  const isNetworkMode = viewMode === "network";
+  
+  // viewModeの正規化（visualModeからの変換も含む）
+  const normalizedViewMode = visualMode || viewMode;
+  const isNetworkMode = normalizedViewMode === "network";
+  
+  console.log('VisualTab viewMode:', { viewMode, visualMode, normalizedViewMode, isNetworkMode });
 
   // ドラッグ状態管理
   const [dragState, setDragState] = useState({
@@ -154,9 +161,9 @@ const VisualTab = ({
     return markers;
   }, [scale, getXFromYear]);
 
-  // 年表軸計算
+  // 年表軸計算（Timelineモード用）
   const timelineAxes = useMemo(() => {
-    if (!getXFromYear) return [];
+    if (isNetworkMode || !getXFromYear) return [];
 
     const visibleTimelines = displayTimelines.filter((t) => t.isVisible !== false);
     const axes = [];
@@ -209,15 +216,15 @@ const VisualTab = ({
     });
 
     return axes;
-  }, [displayTimelines, events, getXFromYear]);
+  }, [isNetworkMode, displayTimelines, events, getXFromYear]);
 
-  // 仮状態イベント配置の根本修正
+  // Timelineモード用イベント配置（既存の仮状態配置システム）
   const { layoutEvents, eventGroups } = useMemo(() => {
-    if (!events || events.length === 0) {
+    if (isNetworkMode || !events || events.length === 0) {
       return { layoutEvents: [], eventGroups: [] };
     }
 
-    console.log('仮状態配置システム開始');
+    console.log('Timeline仮状態配置システム開始');
     
     const allLayoutEvents = [];
     const allEventGroups = [];
@@ -332,13 +339,13 @@ const VisualTab = ({
       }
     });
 
-    console.log(`仮状態配置完了: 合計 ${allLayoutEvents.length}イベント配置`);
+    console.log(`Timeline仮状態配置完了: 合計 ${allLayoutEvents.length}イベント配置`);
     
     return {
       layoutEvents: allLayoutEvents,
       eventGroups: allEventGroups
     };
-  }, [events, displayTimelines, timelineAxes, getXFromYear, calculateTextWidth]);
+  }, [isNetworkMode, events, displayTimelines, timelineAxes, getXFromYear, calculateTextWidth]);
 
   // ドロップゾーン検出
   const detectDropZone = useCallback((clientX, clientY) => {
@@ -359,7 +366,7 @@ const VisualTab = ({
     return { type: 'general' };
   }, [timelineAxes, panY]);
 
-  // 年表ベース仮登録・仮削除処理
+  // ドラッグハンドラー（共通）
   const handleEventDragStart = useCallback((e, event) => {
     console.log('ドラッグ開始:', event.title);
     
@@ -458,48 +465,7 @@ const VisualTab = ({
     e.stopPropagation();
   }, [detectDropZone, onTimelineUpdate, displayTimelines]);
 
-  // グループ関連ハンドラー
-  const handleGroupHover = useCallback((groupId, groupData) => {
-    setHoveredGroupData(groupData);
-    if (setHoveredGroup) {
-      setHoveredGroup(groupId);
-    }
-  }, [setHoveredGroup]);
-
-  const handleGroupClick = useCallback((groupId, groupData) => {
-    setExpandedGroups(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(groupId)) {
-        newSet.delete(groupId);
-      } else {
-        newSet.add(groupId);
-      }
-      return newSet;
-    });
-  }, []);
-
-  // ツールチップクリック機能
-  const handleTooltipClick = useCallback((groupData) => {
-    if (groupData && groupData.id) {
-      setExpandedGroups(prev => {
-        const newSet = new Set(prev);
-        newSet.add(groupData.id);
-        return newSet;
-      });
-      setHoveredGroupData(null);
-      if (setHoveredGroup) {
-        setHoveredGroup(null);
-      }
-    }
-  }, [setHoveredGroup]);
-
-  const handleGroupEventDoubleClick = useCallback((event) => {
-    if (onEventClick) {
-      onEventClick(event);
-    }
-  }, [onEventClick]);
-
-  // その他のハンドラー
+  // その他のハンドラー（共通）
   const handleEventDoubleClick = useCallback((event) => {
     if (dragState.isDragging) return;
     
@@ -563,6 +529,156 @@ const VisualTab = ({
     }
   }, [onCreateTimeline, onCreateTempTimeline, isWikiMode, searchTerm]);
 
+  // レンダリング内容の決定
+  const renderViewContent = () => {
+    console.log('VisualTab renderViewContent:', { viewMode, isNetworkMode });
+    
+    if (isNetworkMode) {
+      // Networkモード：NetworkViewを使用
+      console.log('Rendering NetworkView with events:', events.length, 'timelines:', displayTimelines.length);
+      
+      return (
+        <NetworkView
+          events={events}
+          timelines={displayTimelines}
+          panY={panY}
+          getXFromYear={getXFromYear}
+          coordinates={coordinates}
+          calculateTextWidth={calculateTextWidth}
+          onEventClick={onEventClick}
+          onTimelineClick={onTimelineClick}
+          handleEventDoubleClick={handleEventDoubleClick}
+          handleEventDragStart={handleEventDragStart}
+          highlightedEvents={highlightedEvents}
+          dragState={dragState}
+        />
+      );
+    } else {
+      // Timelineモード：従来のレンダリング（複数年表所属時は複製表示）
+      console.log('Rendering Timeline view with layoutEvents:', layoutEvents.length);
+      
+      // 年表タブでは同じイベントが複数年表に含まれる場合、それぞれに表示
+      const timelineLayoutEvents = [];
+      
+      events.forEach(event => {
+        let eventPlaced = false;
+        
+        // 各年表での状態をチェック
+        displayTimelines.forEach(timeline => {
+          const status = getEventTimelineStatus(event, timeline);
+          
+          if (status === 'registered' || status === 'pending' || status === 'removed') {
+            const axis = timelineAxes.find(a => a.id === timeline.id);
+            if (axis) {
+              const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+              
+              // 年表ごとに別々のイベントとして配置
+              timelineLayoutEvents.push({
+                ...event,
+                id: `${event.id}-${timeline.id}`, // 複数表示用のユニークID
+                originalId: event.id, // 元のIDを保持
+                adjustedPosition: { x: eventX, y: axis.yPosition },
+                calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+                calculatedHeight: calculateEventHeight(event),
+                displayStatus: status,
+                timelineColor: timeline.color || '#6b7280',
+                timelineInfo: {
+                  timelineId: timeline.id,
+                  timelineName: timeline.name,
+                  timelineColor: timeline.color || '#6b7280'
+                },
+                hiddenByGroup: false
+              });
+              
+              eventPlaced = true;
+              console.log(`Timeline配置: 「${event.title}」→年表「${timeline.name}」(${status})`);
+            }
+          }
+        });
+        
+        // どの年表にも属していない場合はメインタイムラインに配置
+        if (!eventPlaced) {
+          const eventX = getXFromYear(event.startDate?.getFullYear() || 2024);
+          const eventY = window.innerHeight * 0.25;
+          
+          timelineLayoutEvents.push({
+            ...event,
+            adjustedPosition: { x: eventX, y: eventY },
+            calculatedWidth: calculateEventWidth(event, calculateTextWidth),
+            calculatedHeight: calculateEventHeight(event),
+            displayStatus: 'main',
+            timelineColor: '#6b7280',
+            timelineInfo: null,
+            hiddenByGroup: false
+          });
+        }
+      });
+      
+      return (
+        <>
+          {/* 年表軸 */}
+          <TimelineAxes
+            axes={timelineAxes}
+            displayTimelines={displayTimelines}
+            panY={panY}
+            onTimelineClick={onTimelineClick}
+            onDeleteTempTimeline={onDeleteTempTimeline}
+            onDeleteTimeline={onDeleteTimeline}
+          />
+
+          {/* イベントカード（年表別複製表示） */}
+          {timelineLayoutEvents.map((event) => {
+            // highlightedEventsの型を統一的にチェック
+            let isHighlighted = false;
+            const eventId = event.originalId || event.id;
+            
+            if (!highlightedEvents) {
+              isHighlighted = false;
+            } else if (highlightedEvents.has) {
+              // Set型の場合
+              isHighlighted = highlightedEvents.has(eventId);
+            } else if (Array.isArray(highlightedEvents)) {
+              // 配列の場合
+              isHighlighted = highlightedEvents.some(e => e.id === eventId);
+            } else {
+              // その他の場合
+              isHighlighted = highlightedEvents.includes && highlightedEvents.includes(eventId);
+            }
+            
+            const isDragging = dragState.draggedEvent?.id === eventId;
+            
+            return (
+              <div
+                key={event.id} // 複数表示用のユニークID使用
+                style={{
+                  position: "absolute",
+                  left: `${event.adjustedPosition.x - event.calculatedWidth / 2}px`,
+                  top: `${event.adjustedPosition.y + panY}px`,
+                  zIndex: isDragging ? 1000 : 10,
+                }}
+              >
+                <EventCard
+                  event={event}
+                  isHighlighted={isHighlighted}
+                  onDoubleClick={() => handleEventDoubleClick(event)}
+                  onDragStart={handleEventDragStart}
+                  isDragging={isDragging}
+                  calculateTextWidth={calculateTextWidth}
+                  style={{
+                    transform: isDragging 
+                      ? `translate(${dragState.currentPosition.x - dragState.startPosition.x}px, ${dragState.currentPosition.y - dragState.startPosition.y}px)`
+                      : 'none',
+                    opacity: isDragging ? 0.8 : 1,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </>
+      );
+    }
+  };
+
   return (
     <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
       {/* メインタイムライン表示エリア */}
@@ -601,115 +717,8 @@ const VisualTab = ({
           }}
         />
 
-        {/* 年表軸 */}
-        <TimelineAxes
-          axes={timelineAxes}
-          displayTimelines={displayTimelines}
-          panY={panY}
-          onTimelineClick={onTimelineClick}
-          onDeleteTempTimeline={onDeleteTempTimeline}
-          onDeleteTimeline={onDeleteTimeline}
-        />
-
-        {/* イベントカード */}
-        {layoutEvents.map((event) => {
-          const isHighlighted = highlightedEvents.has ? 
-            highlightedEvents.has(event.id) : 
-            (Array.isArray(highlightedEvents) ? highlightedEvents.includes(event.id) : false);
-          
-          const isDragging = dragState.draggedEvent?.id === event.id;
-          
-          return (
-            <div
-              key={event.id}
-              style={{
-                position: "absolute",
-                left: `${event.adjustedPosition.x - event.calculatedWidth / 2}px`,
-                top: `${event.adjustedPosition.y + panY}px`,
-                zIndex: isDragging ? 1000 : 10,
-              }}
-            >
-              <EventCard
-                event={event}
-                isHighlighted={isHighlighted}
-                onDoubleClick={() => handleEventDoubleClick(event)}
-                onDragStart={handleEventDragStart}
-                isDragging={isDragging}
-                calculateTextWidth={calculateTextWidth}
-                style={{
-                  transform: isDragging 
-                    ? `translate(${dragState.currentPosition.x - dragState.startPosition.x}px, ${dragState.currentPosition.y - dragState.startPosition.y}px)`
-                    : 'none',
-                  opacity: isDragging ? 0.8 : 1,
-                }}
-              />
-            </div>
-          );
-        })}
-
-        {/* イベントグループ */}
-        {eventGroups.map((group) => {
-          const isExpanded = expandedGroups.has(group.id);
-          const isHovered = hoveredGroup === group.id;
-          
-          return (
-            <React.Fragment key={group.id}>
-              {/* グループアイコン */}
-              {!isExpanded && (
-                <EventGroupIcon
-                  groupData={group}
-                  position={group.position}
-                  panY={panY}
-                  timelineColor={group.timelineColor}
-                  onHover={handleGroupHover}
-                  onClick={handleGroupClick}
-                  onDoubleClick={handleGroupClick}
-                  isHighlighted={isHovered}
-                  scale={1} // 固定値
-                />
-              )}
-
-              {/* 展開されたグループカード */}
-              {isExpanded && (
-                <GroupCard
-                  groupData={group}
-                  position={group.position}
-                  panY={panY}
-                  timelineColor={group.timelineColor}
-                  onEventDoubleClick={handleGroupEventDoubleClick}
-                  onClose={() => setExpandedGroups(prev => {
-                    const newSet = new Set(prev);
-                    newSet.delete(group.id);
-                    return newSet;
-                  })}
-                  calculateTextWidth={calculateTextWidth}
-                />
-              )}
-            </React.Fragment>
-          );
-        })}
-
-        {/* クリック可能なホバーツールチップ */}
-        {hoveredGroupData && !expandedGroups.has(hoveredGroupData.id) && (
-          <div
-            style={{
-              position: "absolute",
-              left: `${hoveredGroupData.position.x + 30}px`,
-              top: `${hoveredGroupData.position.y + panY - 12}px`,
-              zIndex: 2000,
-              pointerEvents: "auto",
-              cursor: "pointer"
-            }}
-            onClick={() => handleTooltipClick(hoveredGroupData)}
-          >
-            <GroupTooltip
-              groupData={hoveredGroupData}
-              position={{ x: 0, y: 0 }}
-              panY={0}
-              onClick={() => handleTooltipClick(hoveredGroupData)}
-            />
-          </div>
-        )}
+        {/* モード別表示内容 */}
+        {renderViewContent()}
 
         {/* 現在線 */}
         <div
@@ -742,16 +751,18 @@ const VisualTab = ({
         </div>
       </div>
 
-      {/* ドロップゾーン */}
-      <DropZoneManager
-        isActive={dragState.isDragging}
-        timelineAxes={timelineAxes}
-        displayTimelines={displayTimelines}
-        panY={panY}
-        draggedEvent={dragState.draggedEvent}
-        highlightedZone={dragState.highlightedZone}
-        mainTimelineY={null}
-      />
+      {/* ドロップゾーン（Timelineモードのみ） */}
+      {!isNetworkMode && (
+        <DropZoneManager
+          isActive={dragState.isDragging}
+          timelineAxes={timelineAxes}
+          displayTimelines={displayTimelines}
+          panY={panY}
+          draggedEvent={dragState.draggedEvent}
+          highlightedZone={dragState.highlightedZone}
+          mainTimelineY={null}
+        />
+      )}
 
       {/* その他のUI */}
       <FloatingUI

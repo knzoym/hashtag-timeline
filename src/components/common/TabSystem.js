@@ -1,4 +1,4 @@
-// src/components/common/TabSystem.js - getPageModeInfo修正版
+// src/components/common/TabSystem.js - viewMode修正版
 import React from 'react';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -109,18 +109,20 @@ const TabSystem = ({
     try {
       switch (currentTab) {
         case 'timeline':
+          console.log('Rendering timeline tab with viewMode=timeline');
           return (
             <VisualTab
               {...visualProps}
-              visualMode="timeline"
+              viewMode="timeline"
             />
           );
           
         case 'network':
+          console.log('Rendering network tab with viewMode=network');
           return (
             <VisualTab
               {...visualProps}
-              visualMode="network"
+              viewMode="network"
             />
           );
           
