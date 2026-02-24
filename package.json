@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "NEXT_PRIVATE_LOCAL_WEBPACK=1 next dev",
+    "build": "NEXT_PRIVATE_LOCAL_WEBPACK=1 next build",
     "start": "next start",
     "lint": "eslint"
   },
