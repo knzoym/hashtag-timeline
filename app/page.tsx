@@ -35,7 +35,6 @@ export default function Home() {
     alert("【お知らせ】現在、一部の機能が工事中です。ご不便をおかけします。");
   }, []);
 
-  
   return (
     <div className="h-screen flex flex-col">
       <header className="bg-white border-b px-4 py-2 flex items-center justify-between">
